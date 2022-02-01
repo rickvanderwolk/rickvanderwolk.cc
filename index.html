@@ -27,8 +27,8 @@
     </p>
 
     <script>
-        var navElement = document.getElementById('nav');
-        var navLinks = [
+        const navElement = document.getElementById('nav');
+        const navLinks = [
             {
                 timestamp: '2022-02-01',
                 name: 'evolving square',
@@ -51,17 +51,22 @@
             },
         ];
 
-        for (let i = 0; i < navLinks.length; i++) {
-            navElement.innerHTML += '<li>' + navLinks[i].timestamp + ' ' + '<a href="' + navLinks[i].href + '" target="_blank" style="color: ' + getRandomColor() + '">' + navLinks[i].name + '</a></li>';
-        }
-
-        window.onblur = function() {
-            location.reload();
-        };
-
         function getRandomColor() {
             return 'hsla(' + (Math.random() * 360) + ', 100%, 50%, 1)';
         }
+
+        function renderNavLinks() {
+            var html = '';
+            for (let i = 0; i < navLinks.length; i++) {
+                html += '<li>' + navLinks[i].timestamp + ' ' + '<a href="' + navLinks[i].href + '" target="_blank" style="color: ' + getRandomColor() + '">' + navLinks[i].name + '</a></li>';
+            }
+            navElement.innerHTML = html;
+        }
+
+        renderNavLinks();
+        window.onblur = function() {
+            renderNavLinks();
+        };
     </script>
 </body>
 </html>

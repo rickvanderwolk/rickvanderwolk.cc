@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <!-- Required meta tags -->
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-1BmE4kWBq78iYhFldvKuhfTAU6auU8tT94WrHftjDbrCEXSU1oBoqyl2QvZ6jIW3" crossorigin="anonymous">
+
+    <title>Hello, world!</title><style>
+    body {
+        background-color: linen;
+    }
+
+    h1 {
+        color: maroon;
+        margin-left: 40px;
+    }
+</style>
+</head>
+<body>
+<h1>Hello, world!</h1><div class="container"><div class="alert alert-primary" role="alert">
+    A simple primary alert—check it out!
+</div><div id="ticker-box">
+    <ul>
+        <li>First ticker item.</li>
+        <li>Second ticker item.</li>
+        <li>Final ticker item.</li>
+    </ul>
+</div>
+    <div class="row">
+        <div class="col">
+            Column<span class="h1">h1. Bootstrap heading<span class="badge bg-secondary">New</span></span><p>In <a href="/wiki/Human%E2%80%93computer_interaction" title="Human–computer interaction">human–computer interaction</a> and <a href="/wiki/User_interface_design" title="User interface design">user interface design</a>, <b>cut</b>, <b>copy</b>, and <b>paste</b> are related <a href="/wiki/Command_(computing)" title="Command (computing)">commands</a> that offer an <a href="/wiki/Interprocess_communication" class="mw-redirect" title="Interprocess communication">interprocess communication</a> technique for transferring <a href="/wiki/Data_(computing)" title="Data (computing)">data</a> through a computer's <a href="/wiki/User_interface" title="User interface">user interface</a>. The <i>cut</i> command removes the <a href="/wiki/Selection_(user_interface)" title="Selection (user interface)">selected data</a> from its original position, while the <i>copy</i> command creates a duplicate; in both cases the selected data is kept in temporary storage (the <a href="/wiki/Clipboard_(computing)" title="Clipboard (computing)">clipboard</a>). The data from the clipboard is later inserted wherever a <i>paste</i> command is issued. The data remains available to any application supporting the feature, thus allowing easy data transfer between applications.
+        </p><a href="https://en.wikipedia.org/wiki/Cut,_copy,_and_paste" data-ved="2ahUKEwi_jPOp4uj1AhUHrqQKHdQZDEMQFnoECC0QAQ" ping="/url?sa=t&amp;source=web&amp;rct=j&amp;url=https://en.wikipedia.org/wiki/Cut,_copy,_and_paste&amp;ved=2ahUKEwi_jPOp4uj1AhUHrqQKHdQZDEMQFnoECC0QAQ"><br><h3 class="LC20lb MBeuO DKV0Md">Cut, copy, and paste - Wikipedia</h3><div class="TbwUpd NJjxre"><cite class="iUh30 qLRx3b tjvcx" role="text">https://en.wikipedia.org<span class="dyjrff qzEoUe" role="text"> › wiki › Cut...</span></cite></div></a>
+        </div>
+        <div class="col">
+            Column<kbd class="keyboard-key nowrap" style="border: 1px solid #aaa; border-radius: 0.2em; box-shadow: 0.1em 0.1em 0.2em rgba(0,0,0,0.1); background-color: #f9f9f9; background-image: linear-gradient(to bottom, #eee, #f9f9f9, #eee); color: #000; padding: 0.1em 0.3em; font-family: inherit; font-size: 0.85em;">⌘ Command</kbd>+<h1 id="firstHeading" class="firstHeading mw-first-heading">AND</h1><kbd class="keyboard-key nowrap" style="border: 1px solid #aaa; border-radius: 0.2em; box-shadow: 0.1em 0.1em 0.2em rgba(0,0,0,0.1); background-color: #f9f9f9; background-image: linear-gradient(to bottom, #eee, #f9f9f9, #eee); color: #000; padding: 0.1em 0.3em; font-family: inherit; font-size: 0.85em;">⌘ Command</kbd>+<kbd class="keyboard-key nowrap" style="border: 1px solid #aaa; border-radius: 0.2em; box-shadow: 0.1em 0.1em 0.2em rgba(0,0,0,0.1); background-color: #f9f9f9; background-image: linear-gradient(to bottom, #eee, #f9f9f9, #eee); color: #000; padding: 0.1em 0.3em; font-family: inherit; font-size: 0.85em;">V</kbd>
+        </div>
+        <div class="col">
+            Column<iframe width="560" height="315" src="https://www.youtube.com/embed/N92BaOnunGk" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe><iframe src="https://www.meteoblue.com/en/weather/maps/widget/lelystad_netherlands_2751738?windAnimation=0&windAnimation=1&gust=0&gust=1&satellite=0&satellite=1&geoloc=fixed&tempunit=C&windunit=km%252Fh&lengthunit=metric&zoom=5&autowidth=auto"  frameborder="0" scrolling="NO" allowtransparency="true" sandbox="allow-same-origin allow-scripts allow-popups allow-popups-to-escape-sandbox" style="width: 100%; height: 720px"></iframe><div><!-- DO NOT REMOVE THIS LINK --><a href="https://www.meteoblue.com/en/weather/maps/lelystad_netherlands_2751738?utm_source=weather_widget&utm_medium=linkus&utm_content=map&utm_campaign=Weather%2BWidget" target="_blank" rel="noopener">meteoblue</a></div>
+        </div>
+    </div>
+</div>
+
+<!-- Optional JavaScript; choose one of the two! -->
+<script>/*!
+ * MangoTicker v1.0.0
+ * Text Ticker JavaScript Library
+ * http://phppot.com/mango-ticker/
+ *
+ * Copyright 2015, PhpPot
+ * Released under the MIT license
+ *
+ * Date: 2015-04-16
+ */
+
+function applyStyles(obj,styles){
+    var property;
+    var styleLength = Object.keys(styles).length;
+    for (var i=0; i<styleLength; i++) {
+        property = Object.keys(styles)[i];
+        obj.style[property] = styles[property];
+    }
+}
+
+function extend(object1,object2){
+    for (var attrname in object2) {
+        object1[attrname] = object2[attrname];
+    }
+    return object1;
+}
+
+function startTicker(id,param){
+    var tickerBox = document.getElementById(id);
+    var defaultParam={speed:5,delay:500,rotate:true};
+    var extendedParam = extend(defaultParam,param);
+    applyStyles(tickerBox,{overflow:"hidden",'min-height':'40px'});
+    var ul=tickerBox.getElementsByTagName("ul");
+    var li=ul[0].getElementsByTagName("li");
+    applyStyles(ul[0],{padding:0,margin:0,position:'relative','list-style-type':'none'});
+    for (i = 0; i < li.length; i++) {
+        applyStyles(li[i],{position:'absolute','white-space': 'nowrap',display:'none'});
+    }
+
+    var li_index = 0;
+    var trans_width = tickerBox.offsetWidth;
+    var chunk_width = 1;
+
+    var iterateTickerElement = function(trans_width) {
+        li[li_index].style.left = trans_width+"px";
+        li[li_index].style.display = '';
+        var t = setInterval(function(){
+            if (parseInt(li[li_index].style.left) > -li[li_index].offsetWidth) {
+                li[li_index].style.left = parseInt(li[li_index].style.left) - chunk_width + "px";
+            } else {
+                clearInterval(t);
+                trans_width = tickerBox.offsetWidth;
+                li_index++;
+                if(li_index == li.length && extendedParam.rotate == true){
+                    li_index = 0;
+                    iterateTickerElement(trans_width);
+                } else if (li_index < li.length) {
+                    setTimeout(function(){iterateTickerElement(trans_width);},extendedParam.delay);
+                }
+            }
+        },extendedParam.speed);
+        tickerBox.onmouseover =	function(){
+            clearInterval(t);
+        }
+        tickerBox.onmouseout =	function(){
+            iterateTickerElement(parseInt(li[li_index].style.left));
+        }
+    }
+    iterateTickerElement(trans_width);
+}startTicker('ticker-box');</script>
+<!-- Option 1: Bootstrap Bundle with Popper -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-ka7Sk0Gln4gmtz2MlQnikT1wXgYsOg+OMhuP+IlRH9sENBO0LRn5q+8nbTov4+1p" crossorigin="anonymous"></script>
+
+<!-- Option 2: Separate Popper and Bootstrap JS -->
+<!--
+<script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.10.2/dist/umd/popper.min.js" integrity="sha384-7+zCNj/IqJ95wo16oMtfsKbZ9ccEh31eOz1HGyDuCQ6wgnyJNSYdrPa03rtR1zdB" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.min.js" integrity="sha384-QJHtvGhmr9XOIpI6YVutG+2QOK9T+ZnN4kzFN1RtK3zEFEIsxhlmWl5/YESvpZ13" crossorigin="anonymous"></script>
+-->
+</body>
+</html>

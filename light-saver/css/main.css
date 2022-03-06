@@ -1,0 +1,15 @@
+html,
+body {
+    overflow: hidden;
+    margin: 0;
+    padding: 0;
+    background: #000;
+    color: #777;
+    touch-action: manipulation;
+}
+
+#actions {
+    display: flex;
+    justify-content: space-around;
+    padding: 20px;
+}

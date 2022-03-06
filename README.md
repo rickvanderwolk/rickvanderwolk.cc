@@ -1,3 +1,5 @@
-# rickvanderwolk.cc
+# Hello world
 
-[Live](https://rickvanderwolk.cc)
+This is my creative coding playground.
+
+[rickvanderwolk.cc](https://rickvanderwolk.cc)

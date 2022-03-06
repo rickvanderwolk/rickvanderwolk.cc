@@ -86,7 +86,7 @@
         }
 
         function renderNavLinks() {
-            var html = '';
+            let html = '';
             for (let i = 0; i < navLinks.length; i++) {
                 html += '<li>' + navLinks[i].timestamp + ' ' + '<a href="' + navLinks[i].href + '" target="_blank" style="color: ' + getRandomColor() + '">' + navLinks[i].name + '</a></li>';
             }

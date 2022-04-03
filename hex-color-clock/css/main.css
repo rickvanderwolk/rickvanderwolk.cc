@@ -1,0 +1,28 @@
+html,
+body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    background: black;
+    color: white;
+    font-family: Verdana, Geneva, Tahoma, sans-serif;
+}
+
+#clock-wrapper {
+    height: 95%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+#clock-color {
+    font-size: 4em;
+    text-align: center;
+    margin: 0;
+}
+
+@media only screen and (max-width: 768px) {
+    #clock-color {
+        font-size: 2em;
+    }
+}

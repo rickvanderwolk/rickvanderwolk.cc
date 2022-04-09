@@ -34,11 +34,7 @@ function getBlocks() {
 
         let xSize = size;
         let ySize = size;
-        if (
-            shape === 'rectangle'
-            ||
-            shape === 'bridge'
-        ) {
+        if (shape === 'bridge') {
             xSize = size * 2;
         }
 

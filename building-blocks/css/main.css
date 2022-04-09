@@ -1,7 +1,6 @@
 html,
 body {
-    background: #000;
-    color: #777;
+    background: white;
     overflow: hidden;
     display: flex;
     align-items: center;

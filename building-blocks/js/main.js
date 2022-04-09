@@ -33,10 +33,17 @@ function getBlocks() {
         const shape = getRandomishShape()
 
         let xSize = size;
-        let ySize = size;
         if (shape === 'bridge') {
             xSize = size * 2;
+        } else if (
+            shape === 'triangle'
+            &&
+            Math.random() > 0.75
+        ) {
+            xSize = size * 2;
         }
+
+        let ySize = size;
 
         let potentialNewBlock = {
             x: currentXPosition,

@@ -1,4 +1,4 @@
-const backgroundColor = 'black';
+const backgroundColor = 'white';
 const canvasMargin = 20;
 const maxNumberOfBlocks = 200;
 
@@ -23,52 +23,70 @@ function initialise () {
     redraw();
 }
 
-function setBlocks () {
+function getBlocks() {
     size = width / 10;
     currentXPosition = 0;
     currentYPosition = height - size;
-    blocks = getBlocks();
-}
 
-function getBlocks() {
     let blocks = [];
     for (let i = 0; i < maxNumberOfBlocks; i++) {
+        const shape = getRandomishShape()
+
+        let xSize = size;
+        let ySize = size;
+        if (
+            shape === 'rectangle'
+            ||
+            shape === 'bridge'
+        ) {
+            xSize = size * 2;
+        }
+
         let potentialNewBlock = {
             x: currentXPosition,
             y: currentYPosition,
-            size: size,
-            color: getRandomishColor(),
-            shape: getRandomishShape()
+            xSize: xSize,
+            ySize: ySize,
+            color: getRandomishColor(shape),
+            shape: shape
         };
 
         if (skipBlock(potentialNewBlock, blocks) === false) {
             blocks.push(potentialNewBlock);
         }
 
-        currentXPosition = currentXPosition + size;
-        if ((currentXPosition + size) > width) {
+        currentXPosition = currentXPosition + xSize;
+        if ((currentXPosition + xSize) > width) {
             currentXPosition = 0;
             currentYPosition = currentYPosition - size;
         }
     }
-    return blocks;
+
+    /*
+        Reverse order as bridges are drawn using a full circle.
+        Rendering in normal order will display bottom half of the circle on top of the shape below.
+    */
+    return blocks.reverse();
 }
 
 function skipBlock(block, blocks) {
-    if ((block.y - size) < 0) {
+    if ((block.y - block.ySize) < 0) {
+        return true;
+    }
+    if ((block.x + block.xSize) > width) {
         return true;
     }
 
-    if (currentYPosition < (height - size)) {
+    if (currentYPosition < (height - block.ySize)) {
         if (hasUnderlyingBlock(block, blocks) === false) {
             return true;
         }
     }
 
-    // increase probability the higher the structure gets
+    // Increase the probability the higher the structure gets
     let probability = currentYPosition / height;
 
-    // increase probability of higher towers
+    // Increase probability of higher towers
     if (Math.random() > 0.33) {
         probability = (probability * 1.5);
     } else {
@@ -82,15 +100,41 @@ function skipBlock(block, blocks) {
 }
 
 function hasUnderlyingBlock(block, blocks) {
-    let supportingBlockX = block.x;
-    let supportingBlockY = (block.y + size);
+    let supportBlockX = block.x;
+    let supportBlockY = block.y + block.ySize;
+
+    if (block.xSize === (size * 2)) {
+        const foundSupportBlockLeft = getSupportingBlock(blocks, supportBlockX, supportBlockY, ['circle', 'triangle']);
+        const foundSupportBlockRight = getSupportingBlock(blocks, (supportBlockX + size), supportBlockY, ['circle', 'triangle']);
+        if (foundSupportBlockLeft && foundSupportBlockRight) {
+            return true;
+        }
+        return getSupportingBlock(blocks, supportBlockX, supportBlockY, ['triangle'], true);
+    } else {
+        return getSupportingBlock(blocks, supportBlockX, supportBlockY, ['triangle']);
+    }
+}
+
+function getSupportingBlock(blocks, x, y, ignoreShapes, extraWideBlock) {
+    extraWideBlock = extraWideBlock || false;
     for (let i = 0; i < blocks.length; i++) {
+        let block = blocks[i];
         if (
-            blocks[i].x === supportingBlockX
+            block.x === x
             &&
-            blocks[i].y === supportingBlockY
+            block.y === y
             &&
-            blocks[i].shape !== 'triangle'
+            ignoreShapes.includes(block.shape) === false
+            &&
+            (
+                extraWideBlock === false
+                ||
+                (
+                    extraWideBlock === true
+                    &&
+                    block.xSize === (size * 2)
+                )
+            )
         ) {
             return true;
         }
@@ -98,60 +142,111 @@ function hasUnderlyingBlock(block, blocks) {
     return false;
 }
 
-function drawRectangle(x, y, size, color) {
+function drawBridge(x, y, xSize, ySize, color) {
     fill(color);
-    rect(x, y, size, size);
+    drawRectangle(x, y, xSize, ySize, color);
+    drawCircle(x + (xSize / 8), y + (ySize / 3), (xSize / 4) * 3, (ySize * 1.5), backgroundColor);
 }
 
-function drawCircle(x, y, size, color) {
+function drawCircle(x, y, xSize, ySize, color) {
     fill(color);
-    x = x + (size / 2);
-    y = y + (size / 2);
-    ellipse(x, y, size, size);
+    x = x + (xSize / 2);
+    y = y + (ySize / 2);
+    ellipse(x, y, xSize, ySize);
 }
 
-function drawTriangle(x, y, size, color) {
+function drawRectangle(x, y, xSize, ySize, color) {
     fill(color);
-    const x1 = x + (size / 2);
-    const y1 = y;
-    const x2 = x + size;
-    const y2 = y + size;
-    const x3 = x;
-    const y3 = y + size;
+    rect(x, y, xSize, ySize);
+}
+
+function drawSquare(x, y, xSize, ySize, color) {
+    fill(color);
+    rect(x, y, xSize, ySize);
+}
+
+function drawTriangle(x, y, xSize, ySize, color) {
+    fill(color);
+
+    const variants = ['left', 'right'];
+    const variant = variants[Math.floor(Math.random() * variants.length)];
+    let x1, y1, x2, y2, x3, y3;
+
+    switch (variant) {
+        case 'left':
+            x1 = x;
+            y1 = y;
+            x2 = x + xSize;
+            y2 = y + ySize;
+            x3 = x;
+            y3 = y + ySize;
+            break;
+        case 'right':
+            x1 = x + xSize;
+            y1 = y;
+            x2 = x + xSize;
+            y2 = y + ySize;
+            x3 = x;
+            y3 = y + ySize;
+            break;
+    }
     triangle(x1, y1, x2, y2, x3, y3);
 }
 
-function getRandomishColor() {
-    return 'hsla(' + Math.floor((Math.random() * 360)) + ', 100%, 50%, 1.0)';
+function getRandomishColor(shape) {
+    let colors = [
+        '#429CDC',
+        '#59BC7A',
+        '#D14F53',
+        '#EDCD69'
+    ];
+    if (
+        shape !== 'bridge'
+        &&
+        shape !== 'triangle'
+    ) {
+        colors.push('#F0D2BE');
+        colors.push('#F0D2BE');
+        colors.push('#F0D2BE');
+        colors.push('#F0D2BE');
+    }
+    return colors[Math.floor(Math.random() * colors.length)];
 }
 
 function getRandomishShape() {
-    // Add some shapes multiple times to increase chance to return that shape and decrease the chance of return the other shapes
+    /*
+        Add some shapes multiple times to increase probability of that shape
+        and decrease the probability of the other shapes
+     */
     const shapes = [
-        'rectangle',
-        'rectangle',
-        'rectangle',
-        'circle',
-        'circle',
-        'triangle',
+        'bridge', 'bridge',
+        'circle', 'circle', 'circle', 'circle',
+        'square', 'square', 'square', 'square', 'square', 'square',
+        'triangle', 'triangle',
     ];
     return shapes[Math.floor(Math.random() * shapes.length)];
 }
 
 function draw() {
-    setBlocks();
-
     background(backgroundColor);
-    noStroke();
+    stroke(backgroundColor);
 
+    blocks = getBlocks();
     for (let i = 0; i < blocks.length; i++) {
         let block = blocks[i];
-        if (block.shape === 'rectangle') {
-            drawRectangle(block.x, block.y, block.size, block.color);
-        } else if (block.shape === 'circle') {
-            drawCircle(block.x, block.y, block.size, block.color);
-        } else if (block.shape === 'triangle') {
-            drawTriangle(block.x, block.y, block.size, block.color);
+        switch (block.shape) {
+            case 'bridge':
+                drawBridge(block.x, block.y, block.xSize, block.ySize, block.color);
+                break;
+            case 'circle':
+                drawCircle(block.x, block.y, block.xSize, block.ySize, block.color);
+                break;
+            case 'square':
+                drawSquare(block.x, block.y, block.xSize, block.ySize, block.color);
+                break;
+            case 'triangle':
+                drawTriangle(block.x, block.y, block.xSize, block.ySize, block.color);
+                break;
         }
     }
 

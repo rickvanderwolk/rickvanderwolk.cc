@@ -107,14 +107,14 @@ function hasUnderlyingBlock(block, blocks) {
     let supportBlockY = block.y + block.ySize;
 
     if (block.xSize === (size * 2)) {
-        const foundSupportBlockLeft = getSupportingBlock(blocks, supportBlockX, supportBlockY, ['triangle']);
-        const foundSupportBlockRight = getSupportingBlock(blocks, (supportBlockX + size), supportBlockY, ['triangle']);
+        const foundSupportBlockLeft = getSupportingBlock(blocks, supportBlockX, supportBlockY, ['semi-circle', 'triangle']);
+        const foundSupportBlockRight = getSupportingBlock(blocks, (supportBlockX + size), supportBlockY, ['semi-circle', 'triangle']);
         if (foundSupportBlockLeft && foundSupportBlockRight) {
             return true;
         }
-        return getSupportingBlock(blocks, supportBlockX, supportBlockY, ['triangle'], true);
+        return getSupportingBlock(blocks, supportBlockX, supportBlockY, ['semi-circle', 'triangle'], true);
     } else {
-        return getSupportingBlock(blocks, supportBlockX, supportBlockY, ['triangle']);
+        return getSupportingBlock(blocks, supportBlockX, supportBlockY, ['semi-circle', 'triangle']);
     }
 }
 
@@ -163,6 +163,11 @@ function drawRectangle(x, y, xSize, ySize, color) {
     rect(x, y, xSize, ySize);
 }
 
+function drawSemiCircle(x, y, xSize, ySize, color) {
+    y += (size / 2);
+    drawCircle(x, y, xSize, ySize, color);
+}
+
 function drawSquare(x, y, xSize, ySize, color) {
     fill(color);
     rect(x, y, xSize, ySize);
@@ -197,17 +202,18 @@ function drawTriangle(x, y, xSize, ySize, color) {
 }
 
 function getRandomishColor(shape) {
+    const coloredOnlyShapes = [
+        'bridge',
+        'semi-circle',
+        'triangle',
+    ];
     let colors = [
         '#429CDC',
         '#59BC7A',
         '#D14F53',
         '#EDCD69'
     ];
-    if (
-        shape !== 'bridge'
-        &&
-        shape !== 'triangle'
-    ) {
+    if (coloredOnlyShapes.includes(shape) === false) {
         colors.push('#F0D2BE');
         colors.push('#F0D2BE');
         colors.push('#F0D2BE');
@@ -222,9 +228,10 @@ function getRandomishShape() {
         and decrease the probability of the other shapes
      */
     const shapes = [
-        'bridge', 'bridge',
-        'square', 'square', 'square', 'square', 'square', 'square',
-        'triangle', 'triangle',
+        'bridge', 'bridge', 'bridge',
+        'semi-circle',
+        'square', 'square', 'square', 'square', 'square', 'square', 'square', 'square', 'square',
+        'triangle', 'triangle', 'triangle',
     ];
     return shapes[Math.floor(Math.random() * shapes.length)];
 }
@@ -239,6 +246,9 @@ function draw() {
         switch (block.shape) {
             case 'bridge':
                 drawBridge(block.x, block.y, block.xSize, block.ySize, block.color);
+                break;
+            case 'semi-circle':
+                drawSemiCircle(block.x, block.y, block.xSize, block.ySize, block.color);
                 break;
             case 'square':
                 drawSquare(block.x, block.y, block.xSize, block.ySize, block.color);

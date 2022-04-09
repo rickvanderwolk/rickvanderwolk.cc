@@ -33,14 +33,17 @@ function getBlocks() {
         const shape = getRandomishShape()
 
         let xSize = size;
-        let ySize = size;
-        if (
-            shape === 'rectangle'
-            ||
-            shape === 'bridge'
+        if (shape === 'bridge') {
+            xSize = size * 2;
+        } else if (
+            shape === 'triangle'
+            &&
+            Math.random() > 0.75
         ) {
             xSize = size * 2;
         }
+
+        let ySize = size;
 
         let potentialNewBlock = {
             x: currentXPosition,
@@ -104,8 +107,8 @@ function hasUnderlyingBlock(block, blocks) {
     let supportBlockY = block.y + block.ySize;
 
     if (block.xSize === (size * 2)) {
-        const foundSupportBlockLeft = getSupportingBlock(blocks, supportBlockX, supportBlockY, ['circle', 'triangle']);
-        const foundSupportBlockRight = getSupportingBlock(blocks, (supportBlockX + size), supportBlockY, ['circle', 'triangle']);
+        const foundSupportBlockLeft = getSupportingBlock(blocks, supportBlockX, supportBlockY, ['triangle']);
+        const foundSupportBlockRight = getSupportingBlock(blocks, (supportBlockX + size), supportBlockY, ['triangle']);
         if (foundSupportBlockLeft && foundSupportBlockRight) {
             return true;
         }
@@ -220,7 +223,6 @@ function getRandomishShape() {
      */
     const shapes = [
         'bridge', 'bridge',
-        'circle', 'circle', 'circle', 'circle',
         'square', 'square', 'square', 'square', 'square', 'square',
         'triangle', 'triangle',
     ];
@@ -237,9 +239,6 @@ function draw() {
         switch (block.shape) {
             case 'bridge':
                 drawBridge(block.x, block.y, block.xSize, block.ySize, block.color);
-                break;
-            case 'circle':
-                drawCircle(block.x, block.y, block.xSize, block.ySize, block.color);
                 break;
             case 'square':
                 drawSquare(block.x, block.y, block.xSize, block.ySize, block.color);

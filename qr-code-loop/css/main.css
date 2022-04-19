@@ -1,0 +1,19 @@
+html,
+body {
+    background: #000;
+    height: 98%;
+    max-height: 98%;
+    overflow: hidden;
+}
+
+body {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+img {
+    background: white;
+    height: 50%;
+    width: auto;
+}

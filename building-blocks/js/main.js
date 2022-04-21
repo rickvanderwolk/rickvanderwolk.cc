@@ -1,6 +1,6 @@
 const backgroundColor = 'white';
 const canvasMargin = 20;
-const maxNumberOfBlocks = 200;
+const maxNumberOfBlocks = 9000;
 
 let blocks = [];
 let currentXPosition = 0;
@@ -24,9 +24,16 @@ function initialise () {
 }
 
 function getBlocks() {
-    size = width / 10;
+    if (height > width) {
+        size = width / 10;
+    } else {
+        size = width / 25;
+    }
     currentXPosition = 0;
     currentYPosition = height - size;
+    
+    let tries = 100;
+    let drawn = false;
 
     let blocks = [];
     for (let i = 0; i < maxNumberOfBlocks; i++) {
@@ -56,12 +63,22 @@ function getBlocks() {
 
         if (skipBlock(potentialNewBlock, blocks) === false) {
             blocks.push(potentialNewBlock);
+            drawn = true;
         }
 
-        currentXPosition = currentXPosition + xSize;
-        if ((currentXPosition + xSize) > width) {
-            currentXPosition = 0;
-            currentYPosition = currentYPosition - size;
+        tries--;
+        if (
+            tries === 0
+            ||
+            drawn === true
+        ) {
+            tries = 100;
+            drawn = false;
+            currentXPosition = currentXPosition + xSize;
+            if ((currentXPosition + xSize) > width) {
+                currentXPosition = 0;
+                currentYPosition = currentYPosition - size;
+            }
         }
     }
 
@@ -98,7 +115,7 @@ function skipBlock(block, blocks) {
     if (probability < 0.2) {
         probability = 0.2;
     }
-    
+
     return Math.random() > (probability);
 }
 

@@ -1,6 +1,6 @@
 const backgroundColor = 'white';
 const canvasMargin = 20;
-const maxNumberOfBlocks = 9000;
+const maxNumberOfBlocks = 1000;
 
 let blocks = [];
 let currentXPosition = 0;
@@ -31,51 +31,67 @@ function getBlocks() {
     }
     currentXPosition = 0;
     currentYPosition = height - size;
-    
-    let tries = 100;
-    let drawn = false;
 
     let blocks = [];
     for (let i = 0; i < maxNumberOfBlocks; i++) {
-        const shape = getRandomishShape()
+        const shouldDraw = getShouldDraw();
 
-        let xSize = size;
-        if (shape === 'bridge') {
-            xSize = size * 2;
-        } else if (
-            shape === 'triangle'
+        let triedShapes = [];
+        const maxShapes = 4;
+        let drawn = false;
+
+        if (shouldDraw === false) {
+            continue;
+        }
+
+        while (
+            drawn === false
             &&
-            Math.random() > 0.75
+            triedShapes.length < maxShapes
         ) {
-            xSize = size * 2;
-        }
+            let shape = getRandomishShape(triedShapes);
+            triedShapes.push(shape);
 
-        let ySize = size;
+            let xSize = size;
+            if (shape === 'bridge') {
+                xSize = size * 2;
+            } else if (
+                shape === 'triangle'
+                &&
+                Math.random() > 0.75
+            ) {
+                xSize = size * 2;
+            }
 
-        let potentialNewBlock = {
-            x: currentXPosition,
-            y: currentYPosition,
-            xSize: xSize,
-            ySize: ySize,
-            color: getRandomishColor(shape),
-            shape: shape
-        };
+            let ySize = size;
 
-        if (skipBlock(potentialNewBlock, blocks) === false) {
+            let potentialNewBlock = {
+                x: currentXPosition,
+                y: currentYPosition,
+                xSize: xSize,
+                ySize: ySize,
+                color: getRandomishColor(shape),
+                shape: shape
+            };
+
+            if (skipBlock(potentialNewBlock, blocks) === true) {
+                shape = getRandomishShape(triedShapes);
+                continue;
+            }
+
             blocks.push(potentialNewBlock);
-            drawn = true;
-        }
 
-        tries--;
-        if (
-            tries === 0
-            ||
-            drawn === true
-        ) {
-            tries = 100;
-            drawn = false;
+            drawn = true;
             currentXPosition = currentXPosition + xSize;
             if ((currentXPosition + xSize) > width) {
+                currentXPosition = 0;
+                currentYPosition = currentYPosition - size;
+            }
+        }
+
+        if (drawn === false) {
+            currentXPosition = currentXPosition + size;
+            if ((currentXPosition + size) > width) {
                 currentXPosition = 0;
                 currentYPosition = currentYPosition - size;
             }
@@ -103,11 +119,15 @@ function skipBlock(block, blocks) {
         }
     }
 
+    return false;
+}
+
+function getShouldDraw() {
     // Increase the probability the higher the structure gets
     let probability = currentYPosition / height;
 
     // Increase probability of higher towers
-    if (Math.random() > 0.33) {
+    if (Math.random() > 0.5) {
         probability = (probability * 1.5);
     } else {
         probability = (probability * 1.25);
@@ -116,7 +136,7 @@ function skipBlock(block, blocks) {
         probability = 0.2;
     }
 
-    return Math.random() > (probability);
+    return Math.random() < (probability);
 }
 
 function hasUnderlyingBlock(block, blocks) {
@@ -239,17 +259,36 @@ function getRandomishColor(shape) {
     return colors[Math.floor(Math.random() * colors.length)];
 }
 
-function getRandomishShape() {
+function getRandomishShape(triedShapes) {
     /*
         Add some shapes multiple times to increase probability of that shape
         and decrease the probability of the other shapes
      */
-    const shapes = [
-        'bridge', 'bridge', 'bridge',
-        'semi-circle',
-        'square', 'square', 'square', 'square', 'square', 'square', 'square', 'square', 'square',
-        'triangle', 'triangle', 'triangle',
-    ];
+    let shapes = [];
+    if (triedShapes.includes('bridge') === false) {
+        shapes.push('bridge');
+        shapes.push('bridge');
+        shapes.push('bridge');
+    }
+    if (triedShapes.includes('semi-circle') === false) {
+        shapes.push('semi-circle');
+    }
+    if (triedShapes.includes('square') === false) {
+        shapes.push('square');
+        shapes.push('square');
+        shapes.push('square');
+        shapes.push('square');
+        shapes.push('square');
+        shapes.push('square');
+        shapes.push('square');
+        shapes.push('square');
+        shapes.push('square');
+    }
+    if (triedShapes.includes('triangle') === false) {
+        shapes.push('triangle');
+        shapes.push('triangle');
+        shapes.push('triangle');
+    }
     return shapes[Math.floor(Math.random() * shapes.length)];
 }
 

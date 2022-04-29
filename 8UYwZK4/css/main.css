@@ -1,0 +1,35 @@
+html,
+body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    width: 100%;
+    background: black;
+    color: white;
+    font-family: Verdana, Geneva, Tahoma, sans-serif;
+}
+
+h1 {
+    font-size: 1em;
+    font-weight: bold;
+    margin: 0;
+    display: table;
+    width: 100%;
+    table-layout: fixed;
+}
+
+h1 span {
+    display: table-cell;
+    text-align: center;
+    vertical-align: middle;
+}
+
+#clock-wrapper {
+    margin-left: auto;
+    margin-right: auto;
+    height: 100%;
+    width: 90%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}

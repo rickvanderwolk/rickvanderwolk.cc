@@ -2,8 +2,8 @@ html,
 body {
     margin: 0;
     padding: 0;
-    height: 100%;
     width: 100%;
+    height: 100%;
     background: black;
     color: white;
     font-family: Verdana, Geneva, Tahoma, sans-serif;
@@ -21,8 +21,36 @@ body {
     justify-content: center;
 }
 
-@media screen and (max-height: 400px) {
-  body {
-    font-size: 12px;
-  }
+#clock {
+    display: flex;
+    flex-direction: column;
+}
+
+.row {
+    display: flex;
+    flex-direction: row;
+}
+
+.column {
+    padding: 2px;
+}
+
+@media only screen and (max-width: 768px) {
+    html {
+        height: auto;
+        min-height: 100%;
+    }
+    #clock-wrapper {
+        padding-top: 75px;
+        padding-bottom: 75px;
+    }
+    #clock {
+        flex-direction: row;
+    }
+    .row {
+        flex-direction: column;
+    }
+    .column {
+        padding: 3px;
+    }
 }

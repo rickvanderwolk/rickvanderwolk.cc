@@ -17,10 +17,10 @@ setInterval(function () {
 }, 100);
 
 function render () {
-    let html = '<table><tbody>';
+    let html = '';
     for (let i = 0; i < hours.length; i++) {
-        html += '<tr>';
-        html += '<td>';
+        html += '<div class="row">';
+        html += '<div class="column">';
         let hourText = hours[i];
         if (hourText < 10) {
             hourText = '0' + hours[i];
@@ -30,21 +30,21 @@ function render () {
         } else {
             html += '<span style="color: #333">' + hourText + '</span>';
         }
-        html += '</td>';
+        html += '</div>';
         for (let j = 0; j < minutes.length; j++) {
             let minuteText = minutes[j];
             if (minuteText < 10) {
                 minuteText = '0' + minutes[j];
             }
-            html += '<td>';
+            html += '<div class="column">';
             if (hours[i] === currentHour && minutes[j] === currentMinute) {
                 html += '<span style="color: #FFF">' + minuteText + '</span>';
             } else {
                 html += '<span style="color: #333">' + minuteText + '</span>';
             }
-            html += '</td>';
+            html += '</div>';
         }
-        html += '</tr>';
+        html += '</div>';
     }
     html += '</tbody></table>';
     clockElement.innerHTML = html;
@@ -54,6 +54,8 @@ function update () {
     currentHour = getCurrentHour();
     currentMinute = getCurrentMinute();
     if (currentHour !== previousHour || currentMinute !== previousMinute) {
+        previousHour = currentHour;
+        previousMinute = currentMinute;
         render();
     }
 }

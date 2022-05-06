@@ -1,0 +1,28 @@
+html,
+body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    width: 100%;
+    background: black;
+    color: white;
+    font-family: Verdana, Geneva, Tahoma, sans-serif;
+    font-size: 13px;
+    line-height: 18px;
+}
+
+#clock-wrapper {
+    margin-left: auto;
+    margin-right: auto;
+    height: 100%;
+    width: 90%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+@media screen and (max-height: 400px) {
+  body {
+    font-size: 12px;
+  }
+}

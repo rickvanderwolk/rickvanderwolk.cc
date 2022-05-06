@@ -1,0 +1,26 @@
+html,
+body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    background: black;
+    color: greenyellow;
+    font-family: Verdana, Geneva, Tahoma, sans-serif;
+}
+
+p {
+    font-size: 1.25rem;
+    margin: 0;
+}
+
+#clock-wrapper {
+    padding: 20px;
+    padding-top: 5px;
+}
+
+@media only screen and (max-width: 768px) {
+    p {
+        font-size: 1rem;
+    }
+}

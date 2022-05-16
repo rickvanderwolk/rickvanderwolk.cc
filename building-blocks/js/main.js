@@ -17,6 +17,10 @@ function windowResized () {
     initialise();
 }
 
+function mousePressed () {
+    initialise();
+}
+
 function initialise () {
     const cnv = createCanvas((window.innerWidth - canvasMargin), (window.innerHeight - canvasMargin));
     cnv.style('display', 'block');

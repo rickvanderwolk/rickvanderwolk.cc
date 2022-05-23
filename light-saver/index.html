@@ -13,7 +13,12 @@
         <button id="redraw" onclick="draw()">Light</button>
         <button id="download" onclick="download()">Save</button>
     </div>
-    <script src="js/p5.min.js"></script>
+    <script src="https://rickvanderwolk.cc/cdn/js/p5.js/1.4.1/p5.min.js"></script>
+    <script>
+        if (typeof p5 === 'undefined') {
+            document.write(unescape("%3Cscript src='js/p5.min.js' type='text/javascript'%3E%3C/script%3E"));
+        }
+    </script>
     <script src="js/main.js"></script>
 </body>
 </html>

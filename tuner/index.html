@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>tuner</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="tuner">
+  <meta name="author" content="Rick van der Wolk">
+  <link rel="stylesheet" href="css/main.css">
+</head>
+<body>
+  <div id="tuner">
+    <input
+      type="range"
+      min="1"
+      max="100"
+      value="0"
+      id="slider"
+      class="slider"
+    >
+  </div>
+
+  <div id="audio-container-wrapper">
+    <!-- set by js -->
+  </div>
+
+  <div id="white-noise-wrapper">
+    <audio
+      id="white-noise-container"
+      loop
+    >
+      <source
+        type="audio/mp3"
+        src="assets/white-noise.mp3"
+      >
+    </audio>
+  </div>
+
+  <p id="footer">
+    <a href="https://pixabay.com/users/blendertimer-9538909">
+      Thanks BlenderTimer for the white noise sound
+    </a>
+  </p>
+
+  <script src="js/jquery.min.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,31 @@
+html,
+body {
+    background: #222;
+}
+
+a {
+    color: #777777;
+}
+
+p {
+    text-align: center;
+}
+
+#tuner {
+    position: fixed;
+    width: 90%;
+    top: 50%;
+    left: 50%;
+    -webkit-transform: translate(-50%, -50%);
+    transform: translate(-50%, -50%);
+}
+
+#slider {
+    width: 100%;
+}
+
+#footer {
+    position: fixed;
+    width: 98%;
+    bottom: 0;
+}

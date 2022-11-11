@@ -22,7 +22,7 @@ p {
 
 @media only screen and (max-width: 768px) {
     p {
-        font-size: 0.4rem;
+        font-size: 7px;
     }
 
     #clock-wrapper {

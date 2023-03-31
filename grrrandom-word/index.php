@@ -16,6 +16,7 @@
             background: white;
             color: black;
             font-family: 'Times New Roman', Times, serif;
+            cursor: pointer;
         }
         h1 {
             font-size: 8em;

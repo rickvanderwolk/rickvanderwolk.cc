@@ -28,13 +28,11 @@ function getLastPalindromeTime (time) {
     const second = timeParts[2];
     let lastPalindromeTime = null;
     for (let i = 0; i < palindromeTimes.length; i++) {
-        const palindromeTimeParts = palindromeTimes[i].split(':');
+        const palindromeTime = palindromeTimes[i];
+        const palindromeTimeParts = palindromeTime.split(':');
         const palindromeHour = palindromeTimeParts[0];
         const palindromeMinute = palindromeTimeParts[1];
         const palindromeSecond = palindromeTimeParts[2];
-        if (parseInt(palindromeHour) < parseInt(hour)) {
-            lastPalindromeTime = palindromeTimes[i];
-        }
         if (
             parseInt(palindromeHour) <= parseInt(hour)
             &&
@@ -42,7 +40,31 @@ function getLastPalindromeTime (time) {
             &&
             parseInt(palindromeSecond) <= parseInt(second)
         ) {
-            lastPalindromeTime = palindromeTimes[i];
+            lastPalindromeTime = palindromeTime;
+        } else if (
+            parseInt(palindromeHour) <= parseInt(hour)
+            &&
+            parseInt(palindromeMinute) <= parseInt(minute)
+            &&
+            parseInt(palindromeSecond) < parseInt(second)
+        ) {
+            lastPalindromeTime = palindromeTime;
+        } else if (
+            parseInt(palindromeHour) <= parseInt(hour)
+            &&
+            parseInt(palindromeMinute) < parseInt(minute)
+            &&
+            parseInt(palindromeSecond) < parseInt(second)
+        ) {
+            lastPalindromeTime = palindromeTime;
+        } else if (
+            parseInt(palindromeHour) <= parseInt(hour)
+            &&
+            parseInt(palindromeMinute) < parseInt(minute)
+        ) {
+            lastPalindromeTime = palindromeTime;
+        } else if (parseInt(palindromeHour) < parseInt(hour)) {
+            lastPalindromeTime = palindromeTime;
         }
     }
     return lastPalindromeTime;

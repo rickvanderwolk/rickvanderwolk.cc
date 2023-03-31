@@ -46,7 +46,7 @@
         }
         @media only screen and (max-width: 768px) {
             h1 {
-                font-size: 5em;
+                font-size: 4em;
             }
         }
     </style>

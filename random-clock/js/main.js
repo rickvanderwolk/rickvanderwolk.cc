@@ -39,7 +39,44 @@ function update () {
             totalNumberOfSuccessfulAttempts++;
             numberOfAttemptsSinceLastSuccessfulAttempt = 0;
         } else {
-            clockElement.innerHTML = '<h1 style="color: red;">' + randomTime + '</h1>';
+            const timeParts = time.split(':');
+            const randomTimeParts = randomTime.split(':');
+            let html = '<h1>';
+            if (timeParts[0] === randomTimeParts[0]) {
+                html += '<span style="color: green;">' + randomTimeParts[0] + '</span>';
+            } else {
+                html += '<span style="color: red;">' + randomTimeParts[0] + '</span>';
+            }
+            if (
+                timeParts[0] === randomTimeParts[0]
+                &&
+                timeParts[1] === randomTimeParts[1]
+            ) {
+                html += '<span style="color: green;">:</span>';
+            } else {
+                html += '<span style="color: red;">:</span>';
+            }
+            if (timeParts[1] === randomTimeParts[1]) {
+                html += '<span style="color: green;">' + randomTimeParts[1] + '</span>';
+            } else {
+                html += '<span style="color: red;">' + randomTimeParts[1] + '</span>';
+            }
+            if (
+                timeParts[1] === randomTimeParts[1]
+                &&
+                timeParts[2] === randomTimeParts[2]
+            ) {
+                html += '<span style="color: green;">:</span>';
+            } else {
+                html += '<span style="color: red;">:</span>';
+            }
+            if (timeParts[2] === randomTimeParts[2]) {
+                html += '<span style="color: green;">' + randomTimeParts[2] + '</span>';
+            } else {
+                html += '<span style="color: red;">' + randomTimeParts[2] + '</span>';
+            }
+            html += '</h1>';
+            clockElement.innerHTML = html;
         }
         numberOfAttemptsSinceLastSuccessfulAttempt++;
         totalNumberOfAttempts++;

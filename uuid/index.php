@@ -10,7 +10,7 @@ $uuid = Uuid::uuid4();
     <meta charset="utf-8">
     <title>UUID</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="one word, one request">
+    <meta name="description" content="one uuid, one request">
     <meta name="author" content="Rick van der Wolk">
     <style>
         html,

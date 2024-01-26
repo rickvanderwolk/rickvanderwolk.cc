@@ -29,7 +29,7 @@ if (!empty($_GET['alias']) && array_key_exists($_GET['alias'], $aliases)) {
     </style>
 </head>
 <body>
-    <h1>/$</h1><?php
+    <h1>/$ (aliases)</h1><?php
         if (!empty($_GET['alias'])) {
             ?><p style="color: red;">Unknown alias</p><?php
         }

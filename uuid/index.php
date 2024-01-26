@@ -10,7 +10,7 @@ $uuid = Uuid::uuid4();
     <meta charset="utf-8">
     <title>UUID</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="one uuid, one request">
+    <meta name="description" content="one UUID, one request">
     <meta name="author" content="Rick van der Wolk">
     <style>
         html,
@@ -27,16 +27,6 @@ $uuid = Uuid::uuid4();
             font-size: 4em;
             margin: 15px;
         }
-        #random-word-wrapper {
-            margin-left: auto;
-            margin-right: auto;
-            height: 100%;
-            width: 90%;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-        }
         @media (prefers-color-scheme: dark) {
             html,
             body {
@@ -52,7 +42,7 @@ $uuid = Uuid::uuid4();
     </style>
 </head>
 <body>
-<div id="random-word-wrapper">
+<div>
     <h1><?php echo $uuid; ?></h1>
 </div>
 </body>

@@ -27,6 +27,16 @@ $uuid = Uuid::uuid4();
             font-size: 4em;
             margin: 15px;
         }
+        #uuid-wrapper {
+            margin-left: auto;
+            margin-right: auto;
+            height: 100%;
+            width: 90%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
         @media (prefers-color-scheme: dark) {
             html,
             body {
@@ -42,7 +52,7 @@ $uuid = Uuid::uuid4();
     </style>
 </head>
 <body>
-<div>
+<div id="uuid-wrapper">
     <h1><?php echo $uuid; ?></h1>
 </div>
 </body>

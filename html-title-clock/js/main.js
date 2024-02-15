@@ -1,34 +1,33 @@
 let time = null;
 let previousTime = null;
 
+const defaultFormat = 'HH:mm:ss';
+const queryParams = new URLSearchParams(window.location.search);
+const format = queryParams.get('format') || defaultFormat;
+
 update();
 setInterval(function () {
     update();
 }, 100);
 
+console.group('URL parameters');
+console.group('optional');
+console.group('format');
+console.log('description: Moment.js format');
+console.log('default: ' + defaultFormat);
+console.log('example: ?year=h:mm:ss a');
+console.groupEnd();
+console.groupEnd();
+console.groupEnd();
+
 function update () {
-    const time = getTime();
+    const time = getTime(format);
     if (time !== previousTime) {
         previousTime = time;
         document.title = time;
     }
 }
 
-function getTime () {
-    const now = new Date();
-
-    let hour = now.getHours();
-    if (hour < 10) {
-        hour = '0' + hour;
-    }
-    let minute = now.getMinutes();
-    if (minute < 10) {
-        minute = '0' + minute;
-    }
-    let second = now.getSeconds();
-    if (second < 10) {
-        second = '0' + second;
-    }
-
-    return String(hour) + ':' + String(minute) + ':' + String(second);
+function getTime (format) {
+    return moment().format(format);
 }

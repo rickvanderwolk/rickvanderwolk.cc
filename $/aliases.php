@@ -7,5 +7,6 @@ $aliases = [
     'gh' => 'https://github.com/rickvanderwolk',
     'pp' => BASE_URL . '/pretty-potato/',
     'rw' => BASE_URL . '/grrrandom-word',
+    'tc' => BASE_URL . '/html-title-clock',
     'uuid' => BASE_URL . '/uuid',
 ];

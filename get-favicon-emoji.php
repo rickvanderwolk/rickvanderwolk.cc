@@ -75,9 +75,15 @@ function getWeatherAndMoonEmoji(
                 return '🌧️';
             case 'Snow':
                 return '❄️';
-            case 'Mist':
             case 'Fog':
+            case 'Haze':
+            case 'Mist':
                 return '🌫️';
+            case 'Thunderstorm':
+                return '⚡';
+            case 'Squall':
+            case 'Tornado':
+                return '🌪️';
             default:
                 return '🌈';
         }

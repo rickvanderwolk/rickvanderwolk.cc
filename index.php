@@ -13,7 +13,7 @@ if (file_exists($cacheFilePath) && (time() - filemtime($cacheFilePath)) < $cache
     if ($readmeMarkdown !== false) {
         file_put_contents($cacheFilePath, $readmeMarkdown);
     } else {
-        echo "Kon README.md niet ophalen van GitHub.";
+        echo 'Unable to load README.md';
         exit;
     }
 }
@@ -49,7 +49,12 @@ $readmeHtml = preg_replace_callback('/<a href="(.*?)"/', function ($matches) {
         <?php echo $readmeHtml; ?>
 
         <p>
-            View source code on <a href="https://github.com/rickvanderwolk/rickvanderwolk.cc" target="_blank" >github</a>
+            View source code on
+                <a
+                    href="https://github.com/rickvanderwolk/rickvanderwolk.cc"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                >GitHub</a>
         </p>
     </div>
 

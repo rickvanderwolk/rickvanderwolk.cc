@@ -2,18 +2,19 @@
 
 This is my creative coding playground.
 
+- [Live](#live)
+- [Clocks](#clocks)
+- [GRRR](#grrr)
+- [Other](#other)
+
+<a id="live"></a>
 ## Live
 - [Lorem ipsum blog](https://rickvanderwolk.cc/lorem-ipsum-blog/)
 [![Lorem ipsum blog](assets/lorem-ipsum-blog.png)](https://rickvanderwolk.cc/lorem-ipsum-blog/)
 - [Unscripted](https://www.youtube.com/watch?v=OctNFWsr9WQ)
 [![Unscripted](assets/unscripted.png)](https://rickvanderwolk.cc/unscripted/)
 
-## More
-
-- [Clocks](#clocks)
-- [GRRR](#grrr)
-- [Other](#other)
-
+<a id="clocks"></a>
 ## Clocks
 
 - [8UYwZK4](https://rickvanderwolk.cc/8UYwZK4/)
@@ -46,12 +47,14 @@ This is my creative coding playground.
 - [Unix gradient](https://unixgradient.org/)
 - [Windup clock](https://rickvanderwolk.cc/wind-up-clock/)
 
+<a id="grrr"></a>
 ## GRRR
 
 - [Calendar](https://rickvanderwolk.cc/calendar/)
 - [GRRRandom word](https://rickvanderwolk.cc/grrrandom-word/)
 - [UUID](https://rickvanderwolk.cc/uuid/)
 
+<a id="other"></a>
 ## Other
 
 - [3oGVnm6](https://rickvanderwolk.cc/3oGVnm6/)

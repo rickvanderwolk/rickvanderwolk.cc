@@ -1,0 +1,24 @@
+html,
+body {
+    background: black;
+    color: #777;
+    width: 100%;
+    padding-bottom: 25px;
+}
+
+img {
+    display: block;
+    max-width: 95%;
+    border: 1px solid #777;
+}
+
+a:hover {
+    -webkit-filter: invert(100%);
+    filter: invert(100%);
+}
+
+@media only screen and (max-width: 768px) {
+    body {
+        font-size: 1.25rem;
+    }
+}

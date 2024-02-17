@@ -15,7 +15,7 @@ console.group('optional');
 console.group('format');
 console.log('description: Moment.js format');
 console.log('default: ' + defaultFormat);
-console.log('example: ?year=h:mm:ss a');
+console.log('example: ?format=h:mm:ss a');
 console.groupEnd();
 console.groupEnd();
 console.groupEnd();

@@ -4,7 +4,7 @@ require 'vendor/autoload.php';
 
 $githubRepoReadmeUrl = 'https://raw.githubusercontent.com/rickvanderwolk/rickvanderwolk.cc/main/README.md';
 $cacheFilePath = 'cache/readme.md';
-$cacheTime = 5 * 60;
+$cacheTime = 60 * 60;
 
 if (file_exists($cacheFilePath) && (time() - filemtime($cacheFilePath)) < $cacheTime) {
     $readmeMarkdown = file_get_contents($cacheFilePath);

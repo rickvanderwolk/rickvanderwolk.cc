@@ -2,22 +2,7 @@
 
 require 'vendor/autoload.php';
 
-$githubRepoReadmeUrl = 'https://raw.githubusercontent.com/rickvanderwolk/rickvanderwolk.cc/main/README.md';
-$cacheFilePath = 'cache/readme.md';
-$cacheTime = 60 * 60;
-
-if (file_exists($cacheFilePath) && (time() - filemtime($cacheFilePath)) < $cacheTime) {
-    $readmeMarkdown = file_get_contents($cacheFilePath);
-} else {
-    $readmeMarkdown = file_get_contents($githubRepoReadmeUrl);
-    if ($readmeMarkdown !== false) {
-        file_put_contents($cacheFilePath, $readmeMarkdown);
-    } else {
-        echo 'Unable to load README.md';
-        exit;
-    }
-}
-
+$readmeMarkdown = file_get_contents('README.md');
 $parsedown = new Parsedown();
 $readmeHtml = $parsedown->text($readmeMarkdown);
 

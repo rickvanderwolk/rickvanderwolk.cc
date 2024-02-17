@@ -52,7 +52,6 @@ This is my creative coding playground.
 - [UUID](https://rickvanderwolk.cc/uuid/)
 
 ## Other
-Hier is de lijst gesorteerd op alfabetische volgorde:
 
 - [3oGVnm6](https://rickvanderwolk.cc/3oGVnm6/)
   [![3oGVnm6](assets/3oGVnm6.png)](https://rickvanderwolk.cc/3oGVnm6/)

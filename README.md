@@ -51,6 +51,7 @@ This is my creative coding playground.
 ## GRRR
 
 - [Calendar](https://rickvanderwolk.cc/calendar/)
+- [Emojis](https://rickvanderwolk.cc/emojis/)
 - [GRRRandom word](https://rickvanderwolk.cc/grrrandom-word/)
 - [UUID](https://rickvanderwolk.cc/uuid/)
 

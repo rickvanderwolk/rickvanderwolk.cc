@@ -50,10 +50,7 @@ This is my creative coding playground.
 <a id="grrr"></a>
 ## GRRR
 
-- [Calendar](https://rickvanderwolk.cc/calendar/)
-- [Emojis](https://rickvanderwolk.cc/emojis/)
-- [GRRRandom word](https://rickvanderwolk.cc/grrrandom-word/)
-- [UUID](https://rickvanderwolk.cc/uuid/)
+- [Grrr.li](https://grrr.li)
 
 <a id="other"></a>
 ## Other

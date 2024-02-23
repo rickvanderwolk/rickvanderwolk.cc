@@ -5,6 +5,6 @@
     <title>This page has been moved to https://grrr.li/uuid/</title>
 </head>
 <body>
-<h1>This page has been moved to <a href="https://grrr.li/calendar/">https://grrr.li/uuid/</a></h1>
+<h1>This page has been moved to <a href="https://grrr.li/uuid/">https://grrr.li/uuid/</a></h1>
 </body>
 </html>

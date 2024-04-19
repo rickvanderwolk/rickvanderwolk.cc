@@ -19,6 +19,13 @@ $readmeHtml = preg_replace_callback('/<a href="(.*?)"/', function ($matches) {
     return "<a href=\"{$url}\" style=\"color: {$color};\"{$targetRelAttributes}";
 }, $readmeHtml);
 
+$readmeHtml = preg_replace_callback('/<img\s+([^>]*)src="([^"]+)"([^>]*)>/', function ($matches) {
+    if (!str_contains($matches[0], 'loading=')) {
+        return "<img {$matches[1]}src=\"{$matches[2]}\"{$matches[3]} loading=\"lazy\">";
+    }
+    return $matches[0];
+}, $readmeHtml);
+
 ?><!DOCTYPE html>
 <html>
 <head>

@@ -50,7 +50,12 @@ $readmeHtml = preg_replace_callback('/<img\s+([^>]*)src="([^"]+)"([^>]*)>/', fun
         </p>
     </div>
 
+    <div id="screensaver">
+        <div id="screensaver-bouncing-text">rickvanderwolk.cc</div>
+    </div>
+
     <script type="text/javascript" src="/assets/js/favicon.js"></script>
     <script type="text/javascript" src="/assets/js/onblur.js"></script>
+    <script type="text/javascript" src="/assets/js/screensaver.js"></script>
 </body>
 </html>

@@ -25,6 +25,7 @@ This is my creative coding playground.
 - [Barcode clock](https://rickvanderwolk.cc/barcode-clock/)
 - [Binary](https://rickvanderwolk.cc/binary/)
 - [Conflict](https://rickvanderwolk.cc/conflict/)
+- [Double](https://rickvanderwolk.cc/double/)
 - [Fizz buzz clock](https://rickvanderwolk.cc/fizz-buzz-clock/)
 - [Gate](https://rickvanderwolk.cc/gate/)
   [![Gate](assets/images/gate.png)](https://rickvanderwolk.cc/gate/)

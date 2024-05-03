@@ -44,6 +44,7 @@ This is my creative coding playground.
 - [Satisfaction level 1](https://rickvanderwolk.cc/satisfaction-level-1/)
 - [Satisfaction level 2](https://rickvanderwolk.cc/satisfaction-level-2/)
 - [Software update clock](https://softwareupdateclock.com/)
+- [Sun position clock](https://rickvanderwolk.cc/sun-position-clock/)
 - [Terminal clock](https://rickvanderwolk.cc/terminal-clock/)
 - [Unix gradient](https://unixgradient.org/)
 - [Windup clock](https://rickvanderwolk.cc/wind-up-clock/)

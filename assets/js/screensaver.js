@@ -7,7 +7,7 @@ function getRandomishColor() {
 function resetTimer() {
     document.getElementById('screensaver').style.display = 'none';
     clearTimeout(screensaverTimeout);
-    screensaverTimeout = setTimeout(showScreensaver, 5 * 1000);
+    screensaverTimeout = setTimeout(showScreensaver, 25 * 1000);
 }
 
 function showScreensaver() {

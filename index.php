@@ -97,6 +97,18 @@ $readmeHtml = preg_replace_callback('/<img\s+([^>]*)src="([^"]+)"([^>]*)>/', fun
     <div id="content">
         <?php echo $readmeHtml; ?>
 
+        <div id="counter">
+            <?php
+            $counterText = getCounterText();
+            foreach (str_split($counterText) as $char) {
+                $font = getRandomFont();
+                $color = getRandomColor();
+                $border = getRandomBorder();
+                echo "<span style='font-family: $font; color: $color; border: $border; padding: 10px; margin: 5px;'>$char</span>";
+            }
+            ?>
+        </div>
+
         <p>
             View source code on
                 <a
@@ -105,18 +117,6 @@ $readmeHtml = preg_replace_callback('/<img\s+([^>]*)src="([^"]+)"([^>]*)>/', fun
                     rel="noopener noreferrer"
                 >GitHub</a>
         </p>
-    </div>
-
-    <div id="counter">
-        <?php
-            $counterText = getCounterText();
-            foreach (str_split($counterText) as $char) {
-                $font = getRandomFont();
-                $color = getRandomColor();
-                $border = getRandomBorder();
-                echo "<span style='font-family: $font; color: $color; border: $border; padding: 10px; margin: 5px;'>$char</span>";
-            }
-        ?>
     </div>
 
     <div id="screensaver">

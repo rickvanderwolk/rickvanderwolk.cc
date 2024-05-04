@@ -190,7 +190,7 @@ function drawCircle(x, y, xSize, ySize, color) {
 function drawCircleBridge(x, y, xSize, ySize, color) {
     fill(color);
     x = x + (xSize / 2);
-    y = y + (ySize / 2) - 5;
+    y = y + (ySize / 2) - 4;
     arc(x, y, (xSize - 7), (ySize - 9), PI, TWO_PI, CHORD);
 }
 

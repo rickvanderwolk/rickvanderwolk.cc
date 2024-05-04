@@ -2,7 +2,7 @@ html,
 body {
     background: black;
     color: #777;
-    padding-bottom: 25px;
+    padding-bottom: 50px;
 }
 
 img {
@@ -30,15 +30,27 @@ a:hover {
 
 #screensaver-bouncing-text {
     position: absolute;
-    font-size: 48px;
     text-shadow: 0 0 10px;
+}
+
+#screen-saver-text,
+#counter {
+    font-size: 48px;
+}
+
+#counter {
+    margin-top: 50px;
+    text-align: center;
 }
 
 @media only screen and (max-width: 768px) {
     body {
         font-size: 1.25rem;
     }
-    #screensaver-bouncing-text {
+    #screen-saver-text {
         font-size: 24px;
+    }
+    #counter {
+        font-size: 16px;
     }
 }

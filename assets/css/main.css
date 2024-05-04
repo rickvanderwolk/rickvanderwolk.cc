@@ -11,6 +11,10 @@ img {
     border: 1px solid #777;
 }
 
+pre {
+    font-size: 1.2rem;
+}
+
 a:hover {
     -webkit-filter: invert(100%);
     filter: invert(100%);
@@ -28,12 +32,12 @@ a:hover {
     background-color: black;
 }
 
-#screensaver-bouncing-text {
+#screensaver-text {
     position: absolute;
     text-shadow: 0 0 10px;
 }
 
-#screen-saver-text,
+#screensaver-text,
 #counter {
     font-size: 48px;
 }
@@ -47,19 +51,13 @@ a:hover {
     body {
         font-size: 1.25rem;
     }
-    #screen-saver-text {
+    pre {
+        font-size: 0.3rem;
+    }
+    #screensaver-text {
         font-size: 24px;
     }
     #counter {
         font-size: 16px;
-    }
-}
-
-pre {
-    font-size: 1.2rem;
-}
-@media (max-width: 600px) {
-    pre {
-        font-size: 0.35rem;
     }
 }

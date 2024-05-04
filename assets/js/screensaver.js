@@ -16,7 +16,7 @@ function showScreensaver() {
 }
 
 function animate() {
-    const text = document.getElementById('screensaver-bouncing-text');
+    const text = document.getElementById('screensaver-text');
     let x = Math.random() * (window.innerWidth - text.clientWidth);
     let y = Math.random() * (window.innerHeight - text.clientHeight);
     let dx = 2;

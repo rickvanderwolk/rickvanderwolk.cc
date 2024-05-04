@@ -8,7 +8,6 @@
 
 - [Live](#live)
 - [Clocks](#clocks)
-- [GRRR](#grrr)
 - [Other](#other)
 - [Inspiration](#inspiration)
 
@@ -70,15 +69,6 @@
 - [Terminal clock](https://rickvanderwolk.cc/terminal-clock/)
 - [Unix gradient](https://unixgradient.org/)
 - [Windup clock](https://rickvanderwolk.cc/wind-up-clock/)
-
-<a id="grrr"></a>
-```h2
- ______     ______     ______     ______
-/\  ___\   /\  == \   /\  == \   /\  == \
-\ \ \__ \  \ \  __<   \ \  __<   \ \  __<
- \ \_____\  \ \_\ \_\  \ \_\ \_\  \ \_\ \_\
-  \/_____/   \/_/ /_/   \/_/ /_/   \/_/ /_/ 
-```
 
 - [Grrr.li](https://grrr.li)
 

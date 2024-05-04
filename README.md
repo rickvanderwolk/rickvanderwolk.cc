@@ -6,8 +6,6 @@
   \/_/\/_/   \/_____/   \/_____/   \/_____/   \/_____/      \/_/   \/_/   \/_____/   \/_/ /_/   \/_____/   \/____/ 
 ```
 
-This is my creative coding playground.
-
 - [Live](#live)
 - [Clocks](#clocks)
 - [GRRR](#grrr)
@@ -15,14 +13,27 @@ This is my creative coding playground.
 - [Inspiration](#inspiration)
 
 <a id="live"></a>
-## Live
+```h2
+ __         __     __   __   ______    
+/\ \       /\ \   /\ \ / /  /\  ___\
+\ \ \____  \ \ \  \ \ \'/   \ \  __\
+ \ \_____\  \ \_\  \ \__|    \ \_____\
+  \/_____/   \/_/   \/_/      \/_____/
+```
+
 - [Lorem ipsum blog](https://rickvanderwolk.cc/lorem-ipsum-blog/)
 [![Lorem ipsum blog](assets/images/lorem-ipsum-blog.png)](https://rickvanderwolk.cc/lorem-ipsum-blog/)
 - [Unscripted](https://www.youtube.com/watch?v=OctNFWsr9WQ)
 [![Unscripted](assets/images/unscripted.png)](https://rickvanderwolk.cc/unscripted/)
 
 <a id="clocks"></a>
-## Clocks
+```h2
+ ______     __         ______     ______     __  __     ______
+/\  ___\   /\ \       /\  __ \   /\  ___\   /\ \/ /    /\  ___\
+\ \ \____  \ \ \____  \ \ \/\ \  \ \ \____  \ \  _"-.  \ \___  \
+ \ \_____\  \ \_____\  \ \_____\  \ \_____\  \ \_\ \_\  \/\_____\
+  \/_____/   \/_____/   \/_____/   \/_____/   \/_/\/_/   \/_____/
+```
 
 - [8UYwZK4](https://rickvanderwolk.cc/8UYwZK4/)
   [![8UYwZK4](assets/images/8UYwZK4.png)](https://rickvanderwolk.cc/8UYwZK4/)
@@ -61,12 +72,24 @@ This is my creative coding playground.
 - [Windup clock](https://rickvanderwolk.cc/wind-up-clock/)
 
 <a id="grrr"></a>
-## GRRR
+```h2
+ ______     ______     ______     ______
+/\  ___\   /\  == \   /\  == \   /\  == \
+\ \ \__ \  \ \  __<   \ \  __<   \ \  __<
+ \ \_____\  \ \_\ \_\  \ \_\ \_\  \ \_\ \_\
+  \/_____/   \/_/ /_/   \/_/ /_/   \/_/ /_/ 
+```
 
 - [Grrr.li](https://grrr.li)
 
 <a id="other"></a>
-## Other
+```h2
+ ______     ______   __  __     ______     ______
+/\  __ \   /\__  _\ /\ \_\ \   /\  ___\   /\  == \
+\ \ \/\ \  \/_/\ \/ \ \  __ \  \ \  __\   \ \  __<
+ \ \_____\    \ \_\  \ \_\ \_\  \ \_____\  \ \_\ \_\
+  \/_____/     \/_/   \/_/\/_/   \/_____/   \/_/ /_/
+```
 
 - [3oGVnm6](https://rickvanderwolk.cc/3oGVnm6/)
   [![3oGVnm6](assets/images/3oGVnm6.png)](https://rickvanderwolk.cc/3oGVnm6/)
@@ -88,9 +111,13 @@ This is my creative coding playground.
 - [X marks the spot](https://rickvanderwolk.cc/x-marks-the-spot/)
 
 <a id="inspiration"></a>
-## Inspiration
-
-### Books
+```h2
+ __     __   __     ______     ______   __     ______     ______     ______   __     ______     __   __
+/\ \   /\ "-.\ \   /\  ___\   /\  == \ /\ \   /\  == \   /\  __ \   /\__  _\ /\ \   /\  __ \   /\ "-.\ \
+\ \ \  \ \ \-.  \  \ \___  \  \ \  _-/ \ \ \  \ \  __<   \ \  __ \  \/_/\ \/ \ \ \  \ \ \/\ \  \ \ \-.  \
+ \ \_\  \ \_\\"\_\  \/\_____\  \ \_\    \ \_\  \ \_\ \_\  \ \_\ \_\    \ \_\  \ \_\  \ \_____\  \ \_\\"\_\
+  \/_/   \/_/ \/_/   \/_____/   \/_/     \/_/   \/_/ /_/   \/_/\/_/     \/_/   \/_/   \/_____/   \/_/ \/_/ 
+```
 
 - Barbare Sher - Refuse To Choose! [quotes on goodreads.com](https://www.goodreads.com/work/quotes/279246)
 - Rick Rubin - The Creative Act [quotes on goodreads.com](https://www.goodreads.com/work/quotes/96114890)

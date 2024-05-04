@@ -51,6 +51,7 @@ This is my creative coding playground.
 - [Rows and columns](https://rickvanderwolk.cc/rows-and-columns-clock/)
 - [Satisfaction level 1](https://rickvanderwolk.cc/satisfaction-level-1/)
 - [Satisfaction level 2](https://rickvanderwolk.cc/satisfaction-level-2/)
+- [Shifted](https://rickvanderwolk.cc/shifted/)
 - [Software update clock](https://softwareupdateclock.com/)
 - [Sun position clock](https://rickvanderwolk.cc/sun-position-clock/)
 - [Terminal clock](https://rickvanderwolk.cc/terminal-clock/)

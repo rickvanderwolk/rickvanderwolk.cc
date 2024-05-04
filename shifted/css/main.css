@@ -1,0 +1,58 @@
+html,
+body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    width: 100%;
+    background: black;
+}
+
+#clock-wrapper {
+    position: absolute;
+    left: calc(50% - 100px);
+    right: calc(50% - 100px);
+    width: 90%;
+    height: 100%;
+}
+
+#clock {
+    height: 80%;
+    margin-top: 5%;
+    margin-left: 115px;
+}
+
+.clock-hand-wrapper {
+    position: absolute;
+    width: 100px;
+    height: 100%;
+}
+
+.clock-hand {
+    position: absolute;
+    height: 30%;
+    width: 5px;
+    background: white;
+    transform: rotate(0deg);
+    transform-origin: 50% 100%;
+}
+
+h1 {
+    font-size: 4em;
+}
+
+#hour-hand {
+    z-index: 300;
+    background-color: red;
+}
+
+#minute-hand {
+    z-index: 200;
+    background-color: green;
+    margin-top: 100%;
+}
+
+#second-hand {
+    z-index: 100;
+    background-color: blue;
+    margin-top: 200%;
+}

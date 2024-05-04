@@ -67,6 +67,7 @@ function initialiseChart(chartElement, title) {
         type: 'pie',
         data: data,
         options: {
+            events: [],
             responsive: true,
             maintainAspectRatio: false,
             elements: {

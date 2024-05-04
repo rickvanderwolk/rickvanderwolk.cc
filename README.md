@@ -31,6 +31,7 @@ This is my creative coding playground.
 - [Barcode clock](https://rickvanderwolk.cc/barcode-clock/)
 - [Binary](https://rickvanderwolk.cc/binary/)
 - [Conflict](https://rickvanderwolk.cc/conflict/)
+- [Decimal clock](https://rickvanderwolk.cc/decimal-clock/)
 - [Double](https://rickvanderwolk.cc/double/)
 - [Fizz buzz clock](https://rickvanderwolk.cc/fizz-buzz-clock/)
 - [Gate](https://rickvanderwolk.cc/gate/)

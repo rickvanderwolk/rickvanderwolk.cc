@@ -41,6 +41,7 @@
 - [Barcode clock](https://rickvanderwolk.cc/barcode-clock/)
 - [Binary](https://rickvanderwolk.cc/binary/)
 - [Conflict](https://rickvanderwolk.cc/conflict/)
+- [Countdown clock](https://rickvanderwolk.cc/countdown-clock/)
 - [Decimal clock](https://rickvanderwolk.cc/decimal-clock/)
 - [Double](https://rickvanderwolk.cc/double/)
 - [Fizz buzz clock](https://rickvanderwolk.cc/fizz-buzz-clock/)

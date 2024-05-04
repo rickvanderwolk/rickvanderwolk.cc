@@ -20,7 +20,6 @@ function getCurrentTime() {
     const now = new Date();
     const hour = now.getHours();
     const minute = now.getMinutes();
-    const decimal = parseInt((minute / 60) * 100);
-    return hour + ',' + decimal;
+    const decimalMinute = (minute / 60).toFixed(2).split('.')[1];
+    return hour + ',' + decimalMinute;
 }
-r

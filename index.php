@@ -123,9 +123,9 @@ $readmeHtml = preg_replace_callback('/<img\s+([^>]*)src="([^"]+)"([^>]*)>/', fun
         <div id="screensaver-text">rickvanderwolk.cc</div>
     </div>
 
-    <script type="text/javascript" src="/assets/js/favicon.js"></script>
-    <script type="text/javascript" src="/assets/js/onblur.js"></script>
-    <script type="text/javascript" src="/assets/js/screensaver.js"></script>
+    <script type="text/javascript" src="/assets/js/favicon.js" defer></script>
+    <script type="text/javascript" src="/assets/js/onblur.js" defer></script>
+    <script type="text/javascript" src="/assets/js/screensaver.js" defer></script>
 </body>
 </html>
 

@@ -12,7 +12,7 @@
 - [Inspiration](#inspiration)
 
 <a id="live"></a>
-```h2
+```
  __         __     __   __   ______    
 /\ \       /\ \   /\ \ / /  /\  ___\
 \ \ \____  \ \ \  \ \ \'/   \ \  __\
@@ -26,7 +26,7 @@
 [![Unscripted](assets/images/unscripted.png)](https://rickvanderwolk.cc/unscripted/)
 
 <a id="clocks"></a>
-```h2
+```
  ______     __         ______     ______     __  __     ______
 /\  ___\   /\ \       /\  __ \   /\  ___\   /\ \/ /    /\  ___\
 \ \ \____  \ \ \____  \ \ \/\ \  \ \ \____  \ \  _"-.  \ \___  \
@@ -72,10 +72,8 @@
 - [Unix gradient](https://unixgradient.org/)
 - [Windup clock](https://rickvanderwolk.cc/wind-up-clock/)
 
-- [Grrr.li](https://grrr.li)
-
 <a id="other"></a>
-```h2
+```
  ______     ______   __  __     ______     ______
 /\  __ \   /\__  _\ /\ \_\ \   /\  ___\   /\  == \
 \ \ \/\ \  \/_/\ \/ \ \  __ \  \ \  __\   \ \  __<
@@ -103,7 +101,7 @@
 - [X marks the spot](https://rickvanderwolk.cc/x-marks-the-spot/)
 
 <a id="inspiration"></a>
-```h2
+```
  __     __   __     ______     ______   __     ______     ______     ______   __     ______     __   __
 /\ \   /\ "-.\ \   /\  ___\   /\  == \ /\ \   /\  == \   /\  __ \   /\__  _\ /\ \   /\  __ \   /\ "-.\ \
 \ \ \  \ \ \-.  \  \ \___  \  \ \  _-/ \ \ \  \ \  __<   \ \  __ \  \/_/\ \/ \ \ \  \ \ \/\ \  \ \ \-.  \

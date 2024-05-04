@@ -40,7 +40,7 @@
 - [Aviation](https://rickvanderwolk.cc/aviation/)
 - [Barcode clock](https://rickvanderwolk.cc/barcode-clock/)
 - [Binary](https://rickvanderwolk.cc/binary/)
-- [Bouncing balls](https://rickvanderwolk.cc/bouncing-ballsboun/)
+- [Bouncing balls](https://rickvanderwolk.cc/bouncing-balls/)
 - [Conflict](https://rickvanderwolk.cc/conflict/)
 - [Countdown clock](https://rickvanderwolk.cc/countdown-clock/)
 - [Decimal clock](https://rickvanderwolk.cc/decimal-clock/)

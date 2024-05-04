@@ -2,29 +2,32 @@ const backgroundColor = 'white';
 const canvasMargin = 20;
 const maxNumberOfBlocks = 1000;
 
+let currentBlockNumber = 0;
 let blocks = [];
 let currentXPosition = 0;
 let currentYPosition = 0;
-
-let fillColor;
 let size;
 
-function setup () {
+function setup() {
     initialise();
 }
 
-function windowResized () {
+function windowResized() {
     initialise();
 }
 
-function mousePressed () {
+function mousePressed() {
     initialise();
 }
 
-function initialise () {
+function initialise() {
     const cnv = createCanvas((window.innerWidth - canvasMargin), (window.innerHeight - canvasMargin));
     cnv.style('display', 'block');
-    redraw();
+    blocks = getBlocks();
+    console.log(blocks);
+    currentBlockNumber = 0;
+    frameRate(12);
+    loop();
 }
 
 function getBlocks() {
@@ -48,22 +51,14 @@ function getBlocks() {
             continue;
         }
 
-        while (
-            drawn === false
-            &&
-            triedShapes.length < maxShapes
-        ) {
+        while (drawn === false && triedShapes.length < maxShapes) {
             let shape = getRandomishShape(triedShapes);
             triedShapes.push(shape);
 
             let xSize = size;
             if (shape === 'bridge') {
                 xSize = size * 2;
-            } else if (
-                shape === 'triangle'
-                &&
-                Math.random() > 0.75
-            ) {
+            } else if (shape === 'triangle' && Math.random() > 0.75) {
                 xSize = size * 2;
             }
 
@@ -102,11 +97,7 @@ function getBlocks() {
         }
     }
 
-    /*
-        Reverse order as bridges are drawn using a full circle.
-        Rendering in normal order will display bottom half of the circle on top of the shape below.
-    */
-    return blocks.reverse();
+    return blocks;
 }
 
 function skipBlock(block, blocks) {
@@ -127,10 +118,7 @@ function skipBlock(block, blocks) {
 }
 
 function getShouldDraw() {
-    // Increase the probability the higher the structure gets
     let probability = currentYPosition / height;
-
-    // Increase probability of higher towers
     if (Math.random() > 0.5) {
         probability = (probability * 1.5);
     } else {
@@ -189,14 +177,21 @@ function getSupportingBlock(blocks, x, y, ignoreShapes, extraWideBlock) {
 function drawBridge(x, y, xSize, ySize, color) {
     fill(color);
     drawRectangle(x, y, xSize, ySize, color);
-    drawCircle(x + (xSize / 8), y + (ySize / 3), (xSize / 4) * 3, (ySize * 1.5), backgroundColor);
+    drawCircleBridge(x + (xSize / 8), y + (ySize / 3), (xSize / 4) * 3, (ySize * 1.5), backgroundColor);
 }
 
 function drawCircle(x, y, xSize, ySize, color) {
     fill(color);
     x = x + (xSize / 2);
-    y = y + (ySize / 2);
-    ellipse(x, y, xSize, ySize);
+    y = y + (ySize / 2) - 0;
+    arc(x, y, xSize, ySize, PI, TWO_PI, CHORD);
+}
+
+function drawCircleBridge(x, y, xSize, ySize, color) {
+    fill(color);
+    x = x + (xSize / 2);
+    y = y + (ySize / 2) - 5;
+    arc(x, y, (xSize - 7), (ySize - 9), PI, TWO_PI, CHORD);
 }
 
 function drawRectangle(x, y, xSize, ySize, color) {
@@ -264,10 +259,6 @@ function getRandomishColor(shape) {
 }
 
 function getRandomishShape(triedShapes) {
-    /*
-        Add some shapes multiple times to increase probability of that shape
-        and decrease the probability of the other shapes
-     */
     let shapes = [];
     if (triedShapes.includes('bridge') === false) {
         shapes.push('bridge');
@@ -296,28 +287,32 @@ function getRandomishShape(triedShapes) {
     return shapes[Math.floor(Math.random() * shapes.length)];
 }
 
-function draw() {
-    background(backgroundColor);
-    stroke(backgroundColor);
-
-    blocks = getBlocks();
-    for (let i = 0; i < blocks.length; i++) {
-        let block = blocks[i];
-        switch (block.shape) {
-            case 'bridge':
-                drawBridge(block.x, block.y, block.xSize, block.ySize, block.color);
-                break;
-            case 'semi-circle':
-                drawSemiCircle(block.x, block.y, block.xSize, block.ySize, block.color);
-                break;
-            case 'square':
-                drawSquare(block.x, block.y, block.xSize, block.ySize, block.color);
-                break;
-            case 'triangle':
-                drawTriangle(block.x, block.y, block.xSize, block.ySize, block.color);
-                break;
-        }
+function drawBlock(block) {
+    if (!block || !block.shape) {
+        return;
     }
+    switch (block.shape) {
+        case 'bridge':
+            drawBridge(block.x, block.y, block.xSize, block.ySize, block.color);
+            break;
+        case 'semi-circle':
+            drawSemiCircle(block.x, block.y, block.xSize, block.ySize, block.color);
+            break;
+        case 'square':
+            drawSquare(block.x, block.y, block.xSize, block.ySize, block.color);
+            break;
+        case 'triangle':
+            drawTriangle(block.x, block.y, block.xSize, block.ySize, block.color);
+            break;
+    }
+}
 
-    frameRate((1 / 60));
+function draw() {
+    stroke(255);
+    if (currentBlockNumber >= maxNumberOfBlocks) {
+        noLoop();
+        return;
+    }
+    drawBlock(blocks[currentBlockNumber]);
+    currentBlockNumber++;
 }

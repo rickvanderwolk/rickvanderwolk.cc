@@ -3,12 +3,21 @@ body {
     background: black;
     color: #777;
     padding-bottom: 50px;
+    text-align: center;
 }
 
 img {
     display: block;
     max-width: 95%;
     border: 1px solid #777;
+}
+
+ul {
+    list-style: none;
+}
+
+li {
+    margin-bottom: 5px;
 }
 
 pre {

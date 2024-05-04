@@ -6,9 +6,16 @@ body {
     text-align: center;
 }
 
+a {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+}
+
 img {
     display: block;
-    max-width: 95%;
+    max-width: 50%;
     border: 1px solid #777;
 }
 
@@ -22,15 +29,12 @@ li {
 
 pre {
     color: white;
+    font-size: 0.8rem;
 }
 
 pre:first-of-type {
     animation: blink 1s infinite;
     font-size: 1.2rem;
-}
-
-pre {
-    font-size: 0.8rem;
 }
 
 a:hover {
@@ -68,6 +72,11 @@ a:hover {
 @media only screen and (max-width: 768px) {
     body {
         font-size: 1.25rem;
+    }
+    img {
+        max-width: 95%;
+        left: auto;
+        right: auto;
     }
     pre:first-of-type,
     pre {

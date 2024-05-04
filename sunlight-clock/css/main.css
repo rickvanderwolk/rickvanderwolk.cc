@@ -1,0 +1,27 @@
+html,
+body {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100%;
+    width: 100%;
+    background: black;
+    color: white;
+    font-family: Verdana, Geneva, Tahoma, sans-serif;
+}
+
+canvas {
+    height: 400px;
+    max-height: 400px;
+    width: 400px;
+    max-width: 400px;
+}
+
+@media only screen and (max-width: 768px) {
+    canvas {
+        height: 200px;
+        max-height: 200px;
+        width: 200px;
+        max-width: 200px;
+    }
+}

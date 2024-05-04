@@ -15,6 +15,10 @@ pre {
     font-size: 1.2rem;
 }
 
+pre:first-of-type {
+    animation: blink 1s infinite;
+}
+
 a:hover {
     -webkit-filter: invert(100%);
     filter: invert(100%);
@@ -54,10 +58,25 @@ a:hover {
     pre {
         font-size: 0.3rem;
     }
+    pre:first-of-type {
+        padding-top: 18px;
+        padding-bottom: 3px;
+        text-align: center;
+        color: white;
+    }
     #screensaver-text {
         font-size: 24px;
     }
     #counter {
         font-size: 16px;
+    }
+}
+
+@keyframes blink {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0;
     }
 }

@@ -2,12 +2,12 @@ if (ifUserIsUsingGoogleChrome()) {
     // allow Google Chrome to search page (ctrl / cmnd F)
     document.addEventListener('visibilitychange', function(e) {
         if (document.visibilityState === 'hidden') {
-            location.reload();
+            changeLinkColors();
         }
     });
 } else {
     window.onblur = function() {
-        location.reload();
+        changeLinkColors();
     };
 }
 
@@ -35,4 +35,16 @@ function getBrowserName() {
 
 function ifUserIsUsingGoogleChrome() {
     return getBrowserName() === 'chrome';
+}
+
+function getRandomColor() {
+    const hue = Math.floor(Math.random() * 361); // 361 to include 360
+    return `hsla(${hue}, 100%, 50%, 1)`;
+}
+
+function changeLinkColors() {
+    const links = document.querySelectorAll('a');
+    links.forEach(link => {
+        link.style.color = getRandomColor();
+    });
 }

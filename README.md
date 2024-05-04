@@ -6,24 +6,9 @@
   \/_/\/_/   \/_____/   \/_____/   \/_____/   \/_____/      \/_/   \/_/   \/_____/   \/_/ /_/   \/_____/   \/____/ 
 ```
 
-- [Live](#live)
 - [Clocks](#clocks)
 - [Other](#other)
 - [Inspiration](#inspiration)
-
-<a id="live"></a>
-```
- __         __     __   __   ______    
-/\ \       /\ \   /\ \ / /  /\  ___\
-\ \ \____  \ \ \  \ \ \'/   \ \  __\
- \ \_____\  \ \_\  \ \__|    \ \_____\
-  \/_____/   \/_/   \/_/      \/_____/
-```
-
-- [Lorem ipsum blog](https://rickvanderwolk.cc/lorem-ipsum-blog/)
-[![Lorem ipsum blog](assets/images/lorem-ipsum-blog.png)](https://rickvanderwolk.cc/lorem-ipsum-blog/)
-- [Unscripted](https://www.youtube.com/watch?v=OctNFWsr9WQ)
-[![Unscripted](assets/images/unscripted.png)](https://rickvanderwolk.cc/unscripted/)
 
 <a id="clocks"></a>
 ```
@@ -94,6 +79,8 @@
 - [Hs3RwBx](https://rickvanderwolk.cc/Hs3RwBx/)
 - [Hs3RwCx](https://rickvanderwolk.cc/Hs3RwCx/)
 - [Light saver](https://rickvanderwolk.cc/light-saver/)
+- [Lorem ipsum blog](https://rickvanderwolk.cc/lorem-ipsum-blog/)
+  [![Lorem ipsum blog](assets/images/lorem-ipsum-blog.png)](https://rickvanderwolk.cc/lorem-ipsum-blog/)
 - [Messy canvas](https://rickvanderwolk.cc/messy-canvas/)
 - [Noise](https://rickvanderwolk.cc/noise/)
 - [QR code loo](https://rickvanderwolk.cc/qr-code-loop/)

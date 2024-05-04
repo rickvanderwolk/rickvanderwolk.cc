@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Tennis clock</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Tennis clock">
+    <meta name="author" content="Rick van der Wolk">
+    <script src="p5.min.js"></script>
+</head>
+<body>
+<style>
+    html,
+    body,
+    canvas {
+        margin: 0;
+        padding: 0;
+        background: black;
+    }
+</style>
+<script>
+    const advantageStateEqual = 1, advantageStateHour = 2, advantageStateMinute = 3;
+    let font;
+    let ballX, ballY, ballSize, ballVelocityX, ballVelocityY, ballVelocityMax, ballMaxAngle;
+    let paddleWidth, paddleHeight;
+    let hourPaddleX, hourPaddleY, hourPaddleVelocity, hourScore, hourSkillLevel, hourNextPaddleMargin;
+    let minutePaddleX, minutePaddleY, minutePaddleVelocity, minuteScore, minuteSkillLevel, minuteNextPaddleMargin;
+
+    function preload() {
+        font = loadFont('Digitaled.ttf');
+    }
+
+    function setup () {
+        initialise();
+    }
+
+    function windowResized () {
+        initialise();
+    }
+
+    function initialise () {
+        textFont(font);
+        createCanvas(window.innerWidth, window.innerHeight);
+        ballSize = height / 20;
+        ballMaxAngle = 75 / 180 * PI;
+        ballVelocityMax = getSpeedFactor() + (getSpeedFactor() / 2);
+        paddleWidth = ballSize / 2;
+        paddleHeight = height / 8;
+        hourScore = getCurrentHour();
+        hourNextPaddleMargin = null;
+        minuteScore = getCurrentMinute();
+        minuteNextPaddleMargin = null;
+        startGame();
+    }
+
+    function startGame() {
+        hourPaddleX = 0;
+        hourPaddleY = height / 2;
+        hourPaddleVelocity = 0;
+        minutePaddleX = width - paddleWidth;
+        minutePaddleY = height / 2;
+        minutePaddleVelocity = 0;
+        ballX = width / 2;
+        ballY = height / 2;
+        ballVelocityX = ballVelocityMax / 2.5;
+        ballVelocityY = getRandomBallVelocity();
+        updateAdvantageState();
+    }
+
+    function draw () {
+        renderDividingLine();
+        resetScoresIfNeeded();
+        renderScores();
+        updateAdvantageState();
+        setNextPaddleMarginIfNeeded();
+        moveHourPaddle();
+        moveMinutePaddle();
+        moveBall();
+    }
+
+    function setNextPaddleMarginIfNeeded () {
+        if (
+            hourNextPaddleMargin === null
+            && ballVelocityX > 0
+            && ballX > (width / 2)
+        ) {
+            hourNextPaddleMargin = getRandomPaddleMargin();
+        }
+        if (
+            minuteNextPaddleMargin === null
+            && ballVelocityX < 0
+            && ballX < (width / 2)
+        ) {
+            minuteNextPaddleMargin = getRandomPaddleMargin();
+        }
+    }
+
+    function getRandomPaddleMargin() {
+        const min = -10;
+        const max = 10;
+        return Math.floor(Math.random() * (max - min + 1)) + min;
+    }
+
+    function moveBall () {
+        ballX += ballVelocityX;
+        ballY += ballVelocityY;
+
+        // hour paddle collision
+        if (
+            (ballX - (ballSize / 2)) <= hourPaddleX + paddleWidth
+            && (ballY + (ballSize / 2)) >= hourPaddleY - getPaddleMiddle()
+            && (ballY - (ballSize / 2)) <= hourPaddleY + getPaddleMiddle()
+        ) {
+            let range = (ballY - hourPaddleY) / getPaddleMiddle();
+            let angle = range * ballMaxAngle;
+            ballVelocityX = ballVelocityMax * cos(angle);
+            ballVelocityY = ballVelocityMax * sin(angle);
+            hourNextPaddleMargin = null;
+        }
+        // minute paddle collision
+        else if (
+            (ballX + (ballSize / 2)) >= minutePaddleX
+            && (ballY + (ballSize / 2)) >= minutePaddleY - getPaddleMiddle()
+            && (ballY - (ballSize / 2)) <= minutePaddleY + getPaddleMiddle()
+        ) {
+            let range = (ballY - minutePaddleY) / getPaddleMiddle();
+            let angle = range * ballMaxAngle;
+            ballVelocityX = -ballVelocityMax * cos(angle);
+            ballVelocityY = ballVelocityMax * sin(angle);
+            minuteNextPaddleMargin = null;
+        }
+        // bottom wall collision
+        else if (ballY + (ballSize / 2) >= height) {
+            ballVelocityY = -ballVelocityY;
+            ballY = height - (ballSize / 2);
+        }
+        // top wall collision
+        else if (ballY - (ballSize / 2) <= 0) {
+            ballVelocityY = -ballVelocityY;
+            ballY = (ballSize / 2);
+        }
+        // left wall collision
+        else if (ballX - (ballSize / 2) <= 0) {
+            ballVelocityX = ballVelocityMax / 2.5;
+            ballVelocityY = getRandomBallVelocity();
+            minuteScore++;
+            freezeFrame();
+        }
+        // right wall collision
+        else if (ballX + (ballSize / 2) >= width) {
+            ballVelocityX = -ballVelocityMax / 2.5;
+            ballVelocityY = getRandomBallVelocity();
+            hourScore++;
+            freezeFrame();
+        }
+        renderBall(ballX, ballY, ballSize, ballSize);
+    }
+
+    function moveHourPaddle () {
+        hourPaddleVelocity = hourSkillLevel * (ballY - hourPaddleY);
+        if (currentAdvantageState === advantageStateMinute) {
+            if (hourPaddleVelocity < -getSpeedFactor()) {
+                hourPaddleVelocity = -getSpeedFactor();
+            }
+            if (hourPaddleVelocity > getSpeedFactor()) {
+                hourPaddleVelocity = getSpeedFactor();
+            }
+        }
+        hourPaddleY = hourPaddleY + hourPaddleVelocity;
+        if (currentAdvantageState === advantageStateHour || currentAdvantageState === advantageStateEqual) {
+            hourPaddleY = hourPaddleY + hourNextPaddleMargin;
+        }
+        if (hourPaddleY < getPaddleMiddle()) {
+            hourPaddleY = getPaddleMiddle();
+        }
+        if (hourPaddleY > height - getPaddleMiddle()) {
+            hourPaddleY = height - getPaddleMiddle();
+        }
+        renderPaddle(hourPaddleX, hourPaddleY - getPaddleMiddle(), paddleWidth, paddleHeight);
+    }
+
+    function moveMinutePaddle () {
+        minutePaddleVelocity = minuteSkillLevel * (ballY - minutePaddleY);
+        if (currentAdvantageState === advantageStateHour) {
+            if (minutePaddleVelocity < -getSpeedFactor()) {
+                minutePaddleVelocity = -getSpeedFactor();
+            }
+            if (minutePaddleVelocity > getSpeedFactor()) {
+                minutePaddleVelocity = getSpeedFactor();
+            }
+        }
+        minutePaddleY = minutePaddleY + minutePaddleVelocity;
+        if (currentAdvantageState === advantageStateMinute || currentAdvantageState === advantageStateEqual) {
+            minutePaddleY = minutePaddleY - minuteNextPaddleMargin;
+        }
+        if (minutePaddleY < getPaddleMiddle()) {
+            minutePaddleY = getPaddleMiddle();
+        } if (minutePaddleY > height - getPaddleMiddle()) {
+            minutePaddleY = height - getPaddleMiddle();
+        }
+        renderPaddle(minutePaddleX, minutePaddleY - getPaddleMiddle(), paddleWidth, paddleHeight);
+    }
+
+    function getSpeedFactor () {
+        const baseSpeedFactor = 10;
+        let timeIncreasedFactor = 0;
+        return baseSpeedFactor + (timeIncreasedFactor * baseSpeedFactor);
+    }
+
+    function getRandomBallVelocity () {
+        let randomNumber = Math.random();
+        return randomNumber < 0.5 ? -ballVelocityMax / 2.5 : ballVelocityMax / 2.5;
+    }
+
+    function getCurrentHour () {
+        let date = new Date();
+        return date.getHours();
+    }
+
+    function getCurrentMinute () {
+        let date = new Date();
+        return date.getMinutes();
+    }
+
+    function getCurrentSecond () {
+        let date = new Date();
+        return date.getSeconds();
+    }
+
+    function getPaddleMiddle () {
+        return (paddleHeight / 2);
+    }
+
+    function updateAdvantageState () {
+        if (hourScore < getCurrentHour()) {
+            setAdvantageState(advantageStateHour);
+        } else if (minuteScore < getCurrentMinute()) {
+            setAdvantageState(advantageStateMinute);
+        } else {
+            setAdvantageState(advantageStateEqual);
+        }
+    }
+
+    function setAdvantageState (state) {
+        currentAdvantageState = state;
+        let defaultHandicap = 0.1;
+        let secondsInMinute = 60;
+        let currentSecond = getCurrentSecond();
+        let handiCap = defaultHandicap - ((currentSecond / secondsInMinute) * defaultHandicap);
+        if (state === advantageStateEqual) {
+            hourSkillLevel = 1;
+            minuteSkillLevel = 1;
+        } else if (state === advantageStateHour) {
+            hourSkillLevel = 1;
+            minuteSkillLevel = handiCap;
+        } else if (state === advantageStateMinute) {
+            hourSkillLevel = handiCap;
+            minuteSkillLevel = 1;
+        }
+    }
+
+    function renderDividingLine () {
+        background(0);
+        stroke(255);
+        strokeWeight(1);
+        for (let i = 0; i < 50; i++) {
+            line(width / 2, (height / 50) * i, width / 2, (height / 100) + (height / 50) * i);
+        }
+    }
+
+    function renderPaddle(x, y, width, height) {
+        fill(255);
+        rect(x, y, width, height);
+    }
+
+    function renderBall(x, y, width, height) {
+        fill(255);
+        ellipse(x, y, width, height);
+    }
+
+    function resetScoresIfNeeded () {
+        if (hourScore > getCurrentHour()) {
+            hourScore = 0;
+            minuteScore = 0;
+            startGame();
+        }
+        if (minuteScore > getCurrentMinute()) {
+            hourScore = 0;
+            minuteScore = 0;
+            startGame();
+        }
+    }
+
+    function renderScores () {
+        let fontSize = height / 3;
+        let tmp = fontSize / 4.5;
+        textSize(fontSize);
+        text(addLeadingZeroIfNeeded(hourScore), (0.25 * width) - tmp, 0.25 * height);
+        text(addLeadingZeroIfNeeded(minuteScore), (0.75 * width) - tmp, 0.25 * height);
+    }
+
+    function addLeadingZeroIfNeeded (num) {
+        num = num.toString();
+        while (num.length < 2) num = '0' + num;
+        return num;
+    }
+
+    function freezeFrame () {
+        noLoop();
+        setTimeout(function () {
+            loop();
+            startGame();
+        }, 1500);
+    }
+</script>
+</body>
+</html>

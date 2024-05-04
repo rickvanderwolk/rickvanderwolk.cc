@@ -55,6 +55,7 @@ This is my creative coding playground.
 - [Software update clock](https://softwareupdateclock.com/)
 - [Sun position clock](https://rickvanderwolk.cc/sun-position-clock/)
 - [Sunlight clock](https://rickvanderwolk.cc/sunlight-clock/)
+- [Tennis clock](https://rickvanderwolk.cc/tennis-clock/)
 - [Terminal clock](https://rickvanderwolk.cc/terminal-clock/)
 - [Unix gradient](https://unixgradient.org/)
 - [Windup clock](https://rickvanderwolk.cc/wind-up-clock/)

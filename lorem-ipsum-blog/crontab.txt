@@ -1,0 +1,3 @@
+# 86400 seconds in a day
+
+* * * * * /usr/local/bin/php <path>/lorem-ipsum-blog/publish_post.php

@@ -25,6 +25,7 @@
 - [Aviation](https://rickvanderwolk.cc/aviation/)
 - [Barcode clock](https://rickvanderwolk.cc/barcode-clock/)
 - [Binary](https://rickvanderwolk.cc/binary/)
+- [Blur](https://rickvanderwolk.cc/blur/)
 - [Bouncing balls](https://rickvanderwolk.cc/bouncing-balls/)
 - [c41571a3](https://rickvanderwolk.cc/c41571a3/)
 - [Conflict](https://rickvanderwolk.cc/conflict/)

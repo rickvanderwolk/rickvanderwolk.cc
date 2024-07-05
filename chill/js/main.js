@@ -5,7 +5,7 @@ let previousText = null;
 update();
 setInterval(update, 1000);
 
-function update () {
+function update() {
     const text = getText();
     if (text !== previousText) {
         previousText = text;
@@ -13,75 +13,83 @@ function update () {
     }
 }
 
-function getText () {
+function getText() {
     const now = new Date();
     const closestSevenAndAHalf = Math.floor(now.getMinutes() / 7.5) * 7.5;
     const currentHour = getHourText(now.getHours());
     const nextHour = getHourText(now.getHours() + 1);
+    const isDutch = getIsDutch();
     let time = '';
 
     switch (closestSevenAndAHalf) {
         case 0:
-            time = `ongeveer ${currentHour} uur`;
+            time = isDutch ? `ongeveer ${currentHour} uur` : `about ${currentHour} o'clock`;
             break;
         case 7.5:
         case 15:
-            time = `ongeveer kwart over ${currentHour}`;
+            time = isDutch ? `ongeveer kwart over ${currentHour}` : `about a quarter past ${currentHour}`;
             break;
         case 22.5:
         case 30:
-            time = `ongeveer half ${nextHour}`;
+            time = isDutch ? `ongeveer half ${nextHour}` : `about half past ${currentHour}`;
             break;
         case 37.5:
         case 45:
-            time = `ongeveer kwart voor ${nextHour}`;
+            time = isDutch ? `ongeveer kwart voor ${nextHour}` : `about a quarter to ${nextHour}`;
             break;
         case 52.5:
-            time = `ongeveer ${nextHour} uur`;
+            time = isDutch ? `ongeveer ${nextHour} uur` : `about ${nextHour} o'clock`;
             break;
     }
 
-    return `Het is ${time}`;
+    return isDutch ? `Het is ${time}` : `It is ${time}`;
 }
 
 function getHourText(hour) {
+    const isDutch = getIsDutch();
+
     switch (parseInt(hour)) {
         case 0:
         case 12:
         case 24:
-            return 'twaalf';
+            return isDutch ? 'twaalf' : 'twelve';
         case 1:
         case 13:
-            return 'één'
+            return isDutch ? 'één' : 'one';
         case 2:
         case 14:
-            return 'twee';
+            return isDutch ? 'twee' : 'two';
         case 3:
         case 15:
-            return 'drie';
+            return isDutch ? 'drie' : 'three';
         case 4:
         case 16:
-            return 'vier';
+            return isDutch ? 'vier' : 'four';
         case 5:
         case 17:
-            return 'vijf';
+            return isDutch ? 'vijf' : 'five';
         case 6:
         case 18:
-            return 'zes';
+            return isDutch ? 'zes' : 'six';
         case 7:
         case 19:
-            return 'zeven';
+            return isDutch ? 'zeven' : 'seven';
         case 8:
         case 20:
-            return 'acht'
+            return isDutch ? 'acht' : 'eight';
         case 9:
         case 21:
-            return 'negen';
+            return isDutch ? 'negen' : 'nine';
         case 10:
         case 22:
-            return 'tien';
+            return isDutch ? 'tien' : 'ten';
         case 11:
         case 23:
-            return 'elf';
+            return isDutch ? 'elf' : 'eleven';
     }
+}
+
+function getIsDutch() {
+    const lang = navigator.language || navigator.userLanguage;
+    return lang.startsWith('nl');
 }

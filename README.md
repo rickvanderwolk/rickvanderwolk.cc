@@ -28,6 +28,7 @@
 - [Blur](https://rickvanderwolk.cc/blur/)
 - [Bouncing balls](https://rickvanderwolk.cc/bouncing-balls/)
 - [c41571a3](https://rickvanderwolk.cc/c41571a3/)
+- [Chill](https://rickvanderwolk.cc/chill/)
 - [Conflict](https://rickvanderwolk.cc/conflict/)
 - [Countdown clock](https://rickvanderwolk.cc/countdown-clock/)
 - [Decimal clock](https://rickvanderwolk.cc/decimal-clock/)

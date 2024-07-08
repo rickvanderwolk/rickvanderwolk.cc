@@ -46,6 +46,7 @@
 - [Letter clock](https://rickvanderwolk.cc/letter-clock/)
 - [Look](https://rickvanderwolk.cc/look/)
 - [Palindrome clock](https://rickvanderwolk.cc/palindrome-clock/)
+- [Panic](https://rickvanderwolk.cc/panic/)
 - [Pie charts clock](https://rickvanderwolk.cc/pie-charts-clock/)
 - [Random clock](https://rickvanderwolk.cc/random-clock/)
 - [RGB color clock](https://rickvanderwolk.cc/rgb-color-clock/)

@@ -48,6 +48,7 @@
 - [Palindrome clock](https://rickvanderwolk.cc/palindrome-clock/)
 - [Panic](https://rickvanderwolk.cc/panic/)
 - [Pie charts clock](https://rickvanderwolk.cc/pie-charts-clock/)
+- [Pixels](https://rickvanderwolk.cc/pixels/)
 - [Random clock](https://rickvanderwolk.cc/random-clock/)
 - [RGB color clock](https://rickvanderwolk.cc/rgb-color-clock/)
 - [Rows and columns](https://rickvanderwolk.cc/rows-and-columns-clock/)

@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Pixels</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Pixels">
+  <meta name="author" content="Rick van der Wolk">
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+    }
+  </style>
+</head>
+<body>
+  <script>
+    const totalMinutes = 1440;
+    let cols, rows;
+    let cellWidth, cellHeight;
+    let lastMinute = -1;
+
+    function setup() {
+      createCanvas(windowWidth, windowHeight);
+      noLoop();
+      background(255);
+      calculateGrid();
+      drawGridTillNow();
+    }
+
+    function draw() {
+      let currentMinute = minute();
+      
+      if (currentMinute !== lastMinute) {
+        drawCell(currentMinute);
+        lastMinute = currentMinute;
+      }
+
+      if (hour() == 0 && currentMinute == 0 && second() == 0) {
+        background(255);
+        drawCell(currentMinute);
+      }
+    }
+
+    function calculateGrid() {
+      let aspectRatio = width / height;
+      cols = Math.ceil(Math.sqrt(totalMinutes * aspectRatio));
+      rows = Math.ceil(totalMinutes / cols);
+      cellWidth = width / cols;
+      cellHeight = height / rows;
+    }
+
+    function drawCell(minute) {
+      let col = minute % cols;
+      let row = Math.floor(minute / cols);
+      let x = col * cellWidth;
+      let y = row * cellHeight;
+      let r = random(255);
+      let g = random(255);
+      let b = random(255);
+      fill(r, g, b);
+      noStroke();
+      rect(x, y, cellWidth, cellHeight);
+    }
+
+    function drawGridTillNow() {
+      let currentHour = hour();
+      let currentMinute = minute();
+      let totalPassedMinutes = currentHour * 60 + currentMinute;
+
+      for (let i = 0; i < totalPassedMinutes; i++) {
+        drawCell(i);
+      }
+
+      lastMinute = currentMinute;
+    }
+
+    function windowResized() {
+      resizeCanvas(windowWidth, windowHeight);
+      calculateGrid();
+      background(255);
+      drawGridTillNow();
+    }
+  </script>
+
+  <script src="https://rickvanderwolk.cc/cdn/js/p5.js/1.4.1/p5.min.js"></script>
+  <script>
+    if (typeof p5 === 'undefined') {
+      document.write(unescape("%3Cscript src='p5.min.js' type='text/javascript'%3E%3C/script%3E"));
+    }
+  </script>
+</body>
+</html>

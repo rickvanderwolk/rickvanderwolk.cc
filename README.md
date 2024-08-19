@@ -60,6 +60,7 @@
 - [Sunlight clock](https://rickvanderwolk.cc/sunlight-clock/)
 - [Tennis clock](https://rickvanderwolk.cc/tennis-clock/)
 - [Terminal clock](https://rickvanderwolk.cc/terminal-clock/)
+- [Trial clock](https://rickvanderwolk.cc/trial-clock/)
 - [Unix gradient](https://unixgradient.org/)
 - [Windup clock](https://rickvanderwolk.cc/wind-up-clock/)
 

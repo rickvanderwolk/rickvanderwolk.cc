@@ -57,6 +57,7 @@
 - [Satisfaction level 2](https://rickvanderwolk.cc/satisfaction-level-2/)
 - [Shifted](https://rickvanderwolk.cc/shifted/)
 - [Software update clock](https://softwareupdateclock.com/)
+- [Sour](https://rickvanderwolk.cc/sour/)
 - [Sun position clock](https://rickvanderwolk.cc/sun-position-clock/)
 - [Sunlight clock](https://rickvanderwolk.cc/sunlight-clock/)
 - [Tennis clock](https://rickvanderwolk.cc/tennis-clock/)

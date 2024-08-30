@@ -8,6 +8,7 @@
 
 - [Clocks](#clocks)
 - [Other](#other)
+- [Shop](#shop)
 - [Inspiration](#inspiration)
 
 <a id="clocks"></a>
@@ -95,6 +96,18 @@
 - [QR code loo](https://rickvanderwolk.cc/qr-code-loop/)
 - [Tuner](https://rickvanderwolk.cc/tuner/)
 - [X marks the spot](https://rickvanderwolk.cc/x-marks-the-spot/)
+
+<a id="shop"></a>
+```
+ ______     __  __     ______     ______  
+/\  ___\   /\ \_\ \   /\  __ \   /\  == \ 
+\ \___  \  \ \  __ \  \ \ \/\ \  \ \  _-/ 
+ \/\_____\  \ \_\ \_\  \ \_____\  \ \_\   
+  \/_____/   \/_/\/_/   \/_____/   \/_/   
+```
+
+- [Go to shop](https://www.redbubble.com/people/rickkkkk/shop?asc=u)
+  [![30 degrees](assets/images/30-degrees-v1_1.jpg)](https://www.redbubble.com/people/rickkkkk/shop?asc=u)
 
 <a id="inspiration"></a>
 ```

@@ -15,7 +15,7 @@ def find_time_for_sun_position(lat, lon, sun_alt, sun_azi):
     best_match_date = None
     smallest_diff = float('inf')
 
-    step_sizes = [1440, 360, 60, 10, 5]
+    step_sizes = [43200, 10080, 10080, 1440, 360, 60, 10, 5]
     current_date = start_date
 
     while current_date <= end_date:

@@ -15,22 +15,32 @@ def find_time_for_sun_position(lat, lon, sun_alt, sun_azi):
     best_match_date = None
     smallest_diff = float('inf')
 
+    step_sizes = [1440, 360, 60, 10, 5]
     current_date = start_date
+
     while current_date <= end_date:
         obs.date = current_date
 
-        for minute in range(0, 1440, 5):
-            obs.date += ephem.minute * minute
-            attempts += 1
-            sun = ephem.Sun(obs)
+        for step in step_sizes:
+            for minute in range(0, 1440, step):
+                obs.date = current_date + ephem.minute * minute
+                attempts += 1
+                sun = ephem.Sun(obs)
 
-            alt_diff = abs(sun.alt - sun_alt)
-            azi_diff = abs(sun.az - sun_azi)
+                alt_diff = abs(sun.alt - sun_alt)
+                azi_diff = abs(sun.az - sun_azi)
 
-            if alt_diff < ephem.degrees('0:30:00') and azi_diff < ephem.degrees('5:00:00'):
-                if alt_diff + azi_diff < smallest_diff:
-                    smallest_diff = alt_diff + azi_diff
-                    best_match_date = obs.date.datetime()
+                if alt_diff < ephem.degrees('0:30:00') and azi_diff < ephem.degrees('5:00:00'):
+                    total_diff = alt_diff + azi_diff
+                    if total_diff < smallest_diff:
+                        smallest_diff = total_diff
+                        best_match_date = obs.date.datetime()
+                        if step > 1:
+                            step = step // 2
+                            break
+
+        if best_match_date and smallest_diff < ephem.degrees('0:10:00') + ephem.degrees('1:00:00'):
+            break
 
         current_date += 1
 
@@ -53,7 +63,8 @@ result = {
     "azimuth": str(sun_azimuth),
     "latitude": latitude,
     "longitude": longitude,
-    "estimated_time": approx_time.strftime('%Y-%m-%d %H:%M:%S') if approx_time else "Not found",
+    "estimated_date": approx_time.strftime('%Y-%m-%d') if approx_time else "Not found",
+    "estimated_time": approx_time.strftime('%H:%M:%S') if approx_time else "Not found",
     "attempts": attempts,
     "elapsed_time_in_ms": round(elapsed_time_ms, 4)
 }

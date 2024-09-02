@@ -9,18 +9,32 @@ def find_time_for_sun_position(lat, lon, sun_alt, sun_azi):
     obs.lon = str(lon)
     attempts = 0
 
-    for day_offset in range(-3, 4):
-        obs.date = ephem.Date('2024/05/01') + day_offset
+    start_date = ephem.Date('2024/01/01')
+    end_date = ephem.Date('2024/12/31')
 
-        for minute in range(1440):
-            attempts += 1
+    best_match_date = None
+    smallest_diff = float('inf')
+
+    current_date = start_date
+    while current_date <= end_date:
+        obs.date = current_date
+
+        for minute in range(0, 1440, 5):
             obs.date += ephem.minute * minute
+            attempts += 1
             sun = ephem.Sun(obs)
 
-            if abs(sun.alt - sun_alt) < ephem.degrees('0:30:00') and abs(sun.az - sun_azi) < ephem.degrees('5:00:00'):
-                return obs.date.datetime(), attempts
+            alt_diff = abs(sun.alt - sun_alt)
+            azi_diff = abs(sun.az - sun_azi)
 
-    return None, attempts
+            if alt_diff < ephem.degrees('0:30:00') and azi_diff < ephem.degrees('5:00:00'):
+                if alt_diff + azi_diff < smallest_diff:
+                    smallest_diff = alt_diff + azi_diff
+                    best_match_date = obs.date.datetime()
+
+        current_date += 1
+
+    return best_match_date, attempts
 
 start_time = time.time()
 
@@ -39,7 +53,7 @@ result = {
     "azimuth": str(sun_azimuth),
     "latitude": latitude,
     "longitude": longitude,
-    "estimated_time": approx_time.strftime('%H:%M:%S') if approx_time else "Not found",
+    "estimated_time": approx_time.strftime('%Y-%m-%d %H:%M:%S') if approx_time else "Not found",
     "attempts": attempts,
     "elapsed_time_in_ms": round(elapsed_time_ms, 4)
 }

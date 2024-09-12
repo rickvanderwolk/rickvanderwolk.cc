@@ -81,6 +81,7 @@
 - [Balonne](https://rickvanderwolk.cc/balonne/)
 - [Building blocks](https://rickvanderwolk.cc/building-blocks/)
   [![Building blocks](assets/images/building-blocks.png)](https://rickvanderwolk.cc/building-blocks/)
+- [Butterfly](https://rickvanderwolk.cc/butterfly/)
 - [Calculator](https://rickvanderwolk.cc/calculator/)
 - [Copy page](https://rickvanderwolk.cc/copy-page/)
 - [Evolving square](https://rickvanderwolk.cc/evolving-square/)

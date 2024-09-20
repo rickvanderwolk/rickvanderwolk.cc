@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hide and Geek</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/dracula.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #1e1e1e;
+            color: #c5c6c7;
+        }
+        canvas {
+            border: 1px solid #45a29e;
+            background-color: #0b0c10;
+        }
+        .controls {
+            margin-top: 20px;
+        }
+        h1, h2, h3 {
+            color: #66fcf1;
+        }
+        #timer {
+            font-size: 1.2em;
+        }
+        textarea {
+            background-color: #0b0c10;
+            color: #c5c6c7;
+            border: 1px solid #45a29e;
+        }
+    </style>
+</head>
+<body>
+
+<h1>Hide and Geek</h1>
+
+<canvas id="gameCanvas" width="400" height="400"></canvas>
+<p id="timer">Timer: 30 seconden</p>
+
+<button onclick="startGame()">Start Spel</button>
+<br>
+
+<h3>Instructies:</h3>
+<p>Je kunt de volgende functies en variabelen gebruiken in je strategie:</p>
+<ul>
+    <li><strong>detectWalls():</strong> Retourneert een object met `left`, `right`, `up`, en `down` die `true` zijn als er een muur is, anders `false`.</li>
+    <li><strong>detectObstacles():</strong> Retourneert een object met `left`, `right`, `up`, en `down` die `true` zijn als er een obstakel is, anders `false`.</li>
+    <li><strong>getRemainingTime():</strong> Retourneert het aantal seconden dat nog over is.</li>
+    <li><strong>move(direction):</strong> Verplaatst de speler in de aangegeven richting (`'left'`, `'right'`, `'up'`, `'down'`).</li>
+</ul>
+
+<div class="controls">
+    <h2>Logica voor Verstopper</h2>
+    <textarea id="hiderLogic" rows="5" cols="50">
+let walls = detectWalls();
+
+if (!walls['down']) {
+    move('down');
+} else if (!walls['up']) {
+    move('up');
+}
+</textarea>
+
+    <h2>Logica voor Zoeker</h2>
+    <textarea id="seekerLogic" rows="5" cols="50">
+let walls = detectWalls();
+
+if (!walls['down']) {
+    move('down');
+} else if (!walls['up']) {
+    move('up');
+}
+</textarea>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/javascript/javascript.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/dracula.min.css"></script>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    const BLOCK_SIZE = 20;
+    const gameWidth = canvas.width;
+    const gameHeight = canvas.height;
+
+    let obstacles = [];
+    let hider = {};
+    let seeker = {};
+
+    let hideTimeRemaining = 30;
+    let seekTimeRemaining = 90;
+    let isHidingPhase = true;
+    let tickCounter = 0;
+
+    const hiderEditor = CodeMirror.fromTextArea(document.getElementById('hiderLogic'), {
+        lineNumbers: true,
+        mode: "javascript",
+        theme: "dracula"
+    });
+
+    const seekerEditor = CodeMirror.fromTextArea(document.getElementById('seekerLogic'), {
+        lineNumbers: true,
+        mode: "javascript",
+        theme: "dracula"
+    });
+
+    function resetGame() {
+        obstacles = [];
+        for (let i = 0; i < 3; i++) {
+            let width = Math.floor(Math.random() * 3 + 1) * BLOCK_SIZE;
+            let height = Math.floor(Math.random() * 3 + 1) * BLOCK_SIZE;
+            let obstacle = {
+                x: Math.floor(Math.random() * (gameWidth / BLOCK_SIZE)) * BLOCK_SIZE,
+                y: Math.floor(Math.random() * (gameHeight / BLOCK_SIZE)) * BLOCK_SIZE,
+                width: width,
+                height: height
+            };
+            obstacles.push(obstacle);
+        }
+
+        const randomCornerHider = Math.floor(Math.random() * 4);
+        switch (randomCornerHider) {
+            case 0: hider = { x: 0, y: 0 }; seeker = { x: gameWidth - BLOCK_SIZE, y: gameHeight - BLOCK_SIZE }; break;
+            case 1: hider = { x: gameWidth - BLOCK_SIZE, y: 0 }; seeker = { x: 0, y: gameHeight - BLOCK_SIZE }; break;
+            case 2: hider = { x: 0, y: gameHeight - BLOCK_SIZE }; seeker = { x: gameWidth - BLOCK_SIZE, y: 0 }; break;
+            case 3: hider = { x: gameWidth - BLOCK_SIZE, y: gameHeight - BLOCK_SIZE }; seeker = { x: 0, y: 0 }; break;
+        }
+
+        hideTimeRemaining = 30;
+        seekTimeRemaining = 90;
+        isHidingPhase = true;
+        updateGame();
+    }
+
+    function move(direction, player) {
+        const moveDelta = {
+            'left': { x: -BLOCK_SIZE, y: 0 },
+            'right': { x: BLOCK_SIZE, y: 0 },
+            'up': { x: 0, y: -BLOCK_SIZE },
+            'down': { x: 0, y: BLOCK_SIZE }
+        };
+        const playerPos = player === 'hider' ? hider : seeker;
+        const newPosition = {
+            x: playerPos.x + (moveDelta[direction]?.x || 0),
+            y: playerPos.y + (moveDelta[direction]?.y || 0)
+        };
+
+        if (!checkCollision(newPosition)) {
+            if (player === 'hider') hider = newPosition;
+            else seeker = newPosition;
+        }
+    }
+
+    function checkCollision(block) {
+        if (block.x < 0 || block.x + BLOCK_SIZE > gameWidth || block.y < 0 || block.y + BLOCK_SIZE > gameHeight) {
+            return true;
+        }
+        return obstacles.some(obstacle =>
+            block.x < obstacle.x + obstacle.width &&
+            block.x + BLOCK_SIZE > obstacle.x &&
+            block.y < obstacle.y + obstacle.height &&
+            block.y + BLOCK_SIZE > obstacle.y
+        );
+    }
+
+    function detectWalls() {
+        const player = isHidingPhase ? hider : seeker;
+        const walls = { left: false, right: false, up: false, down: false };
+        if (player.x - BLOCK_SIZE < 0) walls.left = true;
+        if (player.x + BLOCK_SIZE >= gameWidth) walls.right = true;
+        if (player.y - BLOCK_SIZE < 0) walls.up = true;
+        if (player.y + BLOCK_SIZE >= gameHeight) walls.down = true;
+        return walls;
+    }
+
+    function detectObstacles() {
+        const player = isHidingPhase ? hider : seeker;
+        const obstaclesNearby = { left: false, right: false, up: false, down: false };
+        if (checkCollision({ x: player.x - BLOCK_SIZE, y: player.y })) obstaclesNearby.left = true;
+        if (checkCollision({ x: player.x + BLOCK_SIZE, y: player.y })) obstaclesNearby.right = true;
+        if (checkCollision({ x: player.x, y: player.y - BLOCK_SIZE })) obstaclesNearby.up = true;
+        if (checkCollision({ x: player.x, y: player.y + BLOCK_SIZE })) obstaclesNearby.down = true;
+        return obstaclesNearby;
+    }
+
+    function getRemainingTime() {
+        return isHidingPhase ? hideTimeRemaining : seekTimeRemaining;
+    }
+
+    function updateGame() {
+        ctx.clearRect(0, 0, gameWidth, gameHeight);
+        drawObstacles();
+        drawBlock(hider, 'blue');
+        drawBlock(seeker, 'red');
+    }
+
+    function drawBlock(block, color) {
+        ctx.fillStyle = color;
+        ctx.fillRect(block.x, block.y, BLOCK_SIZE, BLOCK_SIZE);
+    }
+
+    function drawObstacles() {
+        ctx.fillStyle = 'gray';
+        obstacles.forEach(obstacle => {
+            ctx.fillRect(obstacle.x, obstacle.y, obstacle.width, obstacle.height);
+        });
+    }
+
+    function startGame() {
+        resetGame();
+
+        let hiderLogic, seekerLogic;
+        try {
+            hiderLogic = new Function('detectWalls', 'detectObstacles', 'getRemainingTime', 'move', hiderEditor.getValue());
+            seekerLogic = new Function('detectWalls', 'detectObstacles', 'getRemainingTime', 'move', seekerEditor.getValue());
+        } catch (error) {
+            alert('Fout in de ingevoerde logica: ' + error.message);
+            return;
+        }
+
+        let interval = setInterval(() => {
+            const timerElement = document.getElementById('timer');
+            tickCounter++;
+
+            if (isHidingPhase) {
+                hiderLogic(detectWalls, detectObstacles, getRemainingTime, direction => move(direction, 'hider'));
+                hideTimeRemaining--;
+                timerElement.textContent = `Verstoppen: ${hideTimeRemaining} seconden`;
+
+                if (hideTimeRemaining <= 0) {
+                    isHidingPhase = false;
+                    tickCounter = 0;
+                    timerElement.textContent = "Zoeken begint!";
+                }
+            } else {
+                seekerLogic(detectWalls, detectObstacles, getRemainingTime, direction => move(direction, 'seeker'));
+                seekTimeRemaining--;
+                timerElement.textContent = `Zoeken: ${seekTimeRemaining} seconden`;
+
+                if (seekTimeRemaining <= 0 || (hider.x === seeker.x && hider.y === seeker.y)) {
+                    clearInterval(interval);
+
+                    if (hider.x === seeker.x && hider.y === seeker.y) {
+                        alert('Zoeker heeft de verstopper gevonden!');
+                    } else {
+                        alert('Tijd is op! De zoeker heeft de verstopper niet gevonden.');
+                    }
+                }
+            }
+
+            updateGame();
+        }, 1000);
+    }
+</script>
+
+</body>
+</html>

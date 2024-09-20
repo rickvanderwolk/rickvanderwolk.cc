@@ -85,6 +85,7 @@
 - [Calculator](https://rickvanderwolk.cc/calculator/)
 - [Copy page](https://rickvanderwolk.cc/copy-page/)
 - [Evolving square](https://rickvanderwolk.cc/evolving-square/)
+- [Hide and geek](https://rickvanderwolk.cc/hide-and-geek/)
 - [Home page](https://rickvanderwolk.cc/home-page/)
 - [Hs3RwAx](https://rickvanderwolk.cc/Hs3RwAx/)
 - [Hs3RwBx](https://rickvanderwolk.cc/Hs3RwBx/)

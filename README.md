@@ -47,6 +47,7 @@
   [![LESe26faM4](assets/images/LESe26faM4.png)](https://rickvanderwolk.cc/LESe26faM4/)
 - [Letter clock](https://rickvanderwolk.cc/letter-clock/)
 - [Look](https://rickvanderwolk.cc/look/)
+- [One day](https://rickvanderwolk.cc/one-day/)
 - [Palindrome clock](https://rickvanderwolk.cc/palindrome-clock/)
 - [Panic](https://rickvanderwolk.cc/panic/)
 - [Pie charts clock](https://rickvanderwolk.cc/pie-charts-clock/)

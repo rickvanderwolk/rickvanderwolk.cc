@@ -9,7 +9,6 @@
 - [Clocks](#clocks)
 - [Other](#other)
 - [Shop](#shop)
-- [Inspiration](#inspiration)
 
 <a id="clocks"></a>
 ```

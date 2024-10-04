@@ -112,23 +112,3 @@
 
 - [Go to shop](https://www.redbubble.com/people/rickkkkk/shop?asc=u)
   [![30 degrees](assets/images/30-degrees-v1_1.jpg)](https://www.redbubble.com/people/rickkkkk/shop?asc=u)
-
-<a id="inspiration"></a>
-```
- __     __   __     ______     ______   __     ______     ______     ______   __     ______     __   __
-/\ \   /\ "-.\ \   /\  ___\   /\  == \ /\ \   /\  == \   /\  __ \   /\__  _\ /\ \   /\  __ \   /\ "-.\ \
-\ \ \  \ \ \-.  \  \ \___  \  \ \  _-/ \ \ \  \ \  __<   \ \  __ \  \/_/\ \/ \ \ \  \ \ \/\ \  \ \ \-.  \
- \ \_\  \ \_\\"\_\  \/\_____\  \ \_\    \ \_\  \ \_\ \_\  \ \_\ \_\    \ \_\  \ \_\  \ \_____\  \ \_\\"\_\
-  \/_/   \/_/ \/_/   \/_____/   \/_/     \/_/   \/_/ /_/   \/_/\/_/     \/_/   \/_/   \/_____/   \/_/ \/_/ 
-```
-
-- Barbare Sher - Refuse To Choose! [quotes on goodreads.com](https://www.goodreads.com/work/quotes/279246)
-- Rick Rubin - The Creative Act [quotes on goodreads.com](https://www.goodreads.com/work/quotes/96114890)
-- Lao Tzu - Toa Te Ching [quotes on goodreads.com](https://www.goodreads.com/work/quotes/100074)
-- Robert C. Martin - Clean Code [quotes on goodreads.com](https://www.goodreads.com/work/quotes/3779106)
-- Charlotte Fiell - 1000 Lights [info on goodreads.com](https://www.goodreads.com/book/show/17879332)
-- Charlotte Fiell, Peter Fiell - 1000 Chairs [info on goodreads.com](https://www.goodreads.com/book/show/1083029)
-- Mihály Csíkszentmihályi - Flow [quotes on goodreads.com](https://www.goodreads.com/work/quotes/64339)
-- Seneca - On The Shortness Of Life [quotes on goodreads.com](https://www.goodreads.com/work/quotes/1374471)
-- Avery Monsen, Jory John - All My Friends Are Dead [info on goodreads.com](https://www.goodreads.com/book/show/8044557)
-- Ben Liebrand - Grandmix [info on benliebrand.nl](https://liebrand.nl/grandmix/index.html)

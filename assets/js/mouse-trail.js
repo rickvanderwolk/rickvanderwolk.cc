@@ -9,6 +9,6 @@ if (!('ontouchstart' in window)) {
 
         setTimeout(() => {
             trail.remove();
-        }, 800);
+        }, 100);
     });
 }

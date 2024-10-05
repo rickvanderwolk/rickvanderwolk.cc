@@ -92,6 +92,25 @@ $readmeHtml = preg_replace_callback('/<img\s+([^>]*)src="([^"]+)"([^>]*)>/', fun
     <meta name="description" content="Hello world - This is my creative coding playground.">
     <meta name="author" content="Rick van der Wolk">
     <link rel="stylesheet" href="/assets/css/main.css">
+    <style>
+        .trail {
+            position: absolute;
+            width: 15px;
+            height: 15px;
+            background-color: <?php echo getRandomColor(); ?>;
+            border-radius: 50%;
+            box-shadow: 0 0 5px #000;
+            animation: fade 0.8s ease-out forwards;
+            pointer-events: none;
+        }
+
+        @keyframes fade {
+            to {
+                opacity: 0;
+                transform: scale(2);
+            }
+        }
+    </style>
 </head>
 <body>
     <div id="content">
@@ -125,6 +144,7 @@ $readmeHtml = preg_replace_callback('/<img\s+([^>]*)src="([^"]+)"([^>]*)>/', fun
 
     <script type="text/javascript" src="/assets/js/favicon.js" defer></script>
     <script type="text/javascript" src="/assets/js/onblur.js" defer></script>
+    <script type="text/javascript" src="/assets/js/mouse-trail.js" defer></script>
     <script type="text/javascript" src="/assets/js/screensaver.js" defer></script>
 </body>
 </html>

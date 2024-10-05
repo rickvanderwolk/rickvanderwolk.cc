@@ -41,7 +41,11 @@ pre:first-of-type {
     font-size: 1.2rem;
 }
 
-pre:not(:first-of-type):hover {
+pre:not(:first-of-type):nth-of-type(odd):hover {
+    transform: rotate(15deg) scale(1.2);
+}
+
+pre:not(:first-of-type):nth-of-type(even):hover {
     transform: rotate(-15deg) scale(1.2);
 }
 

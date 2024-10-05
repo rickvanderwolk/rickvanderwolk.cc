@@ -148,6 +148,17 @@ $scrollbarColorSecondaryColor = getInvertedColor($scrollbarPrimaryColor);
 </head>
 <body>
     <div id="content">
+        <marquee
+            behavior="scroll"
+            direction="left"
+            scrollamount="25"
+            onmouseover="this.stop();"
+            onmouseout="this.start();"
+            style="color: <?php echo getRandomColor(); ?>;"
+        >
+            Welcome to my homepage!
+        </marquee>
+
         <?php echo $readmeHtml; ?>
 
         <div id="counter">

@@ -128,4 +128,4 @@ Music
 Other
 
 - [ASCII art generator](https://patorjk.com/software/taag/)
-- [My RedBubble shop](https://www.redbubble.com/people/rickkkkk/shop?asc=u)
+- [RedBubble shop](https://www.redbubble.com/people/rickkkkk/shop?asc=u)

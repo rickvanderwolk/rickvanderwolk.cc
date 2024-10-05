@@ -14,6 +14,14 @@ function getRandomColor(): string
     return "hsla({$hue}, 100%, 50%, 1)";
 }
 
+function getInvertedColor(string $hsla): string
+{
+    preg_match('/hsla\((\d+),/', $hsla, $matches);
+    $hue = (int) $matches[1];
+    $invertedHue = ($hue + 180) % 360;
+    return preg_replace('/hsla\((\d+),/', "hsla({$invertedHue},", $hsla);
+}
+
 function getRandomFont(): string
 {
     $fonts = [
@@ -83,6 +91,9 @@ $readmeHtml = preg_replace_callback('/<img\s+([^>]*)src="([^"]+)"([^>]*)>/', fun
     return $matches[0];
 }, $readmeHtml);
 
+$scrollbarPrimaryColor = getRandomColor();
+$scrollbarColorSecondaryColor = getInvertedColor($scrollbarPrimaryColor);
+
 ?><!DOCTYPE html>
 <html>
 <head>
@@ -93,6 +104,29 @@ $readmeHtml = preg_replace_callback('/<img\s+([^>]*)src="([^"]+)"([^>]*)>/', fun
     <meta name="author" content="Rick van der Wolk">
     <link rel="stylesheet" href="/assets/css/main.css">
     <style>
+        ::-webkit-scrollbar {
+            width: 16px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: linear-gradient(45deg, <?php echo $scrollbarPrimaryColor; ?>, <?php echo $scrollbarColorSecondaryColor; ?>);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background-color: <?php echo $scrollbarPrimaryColor; ?>;
+            border: 3px solid <?php echo $scrollbarColorSecondaryColor; ?>;
+            border-radius: 5px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background-color: <?php echo $scrollbarPrimaryColor; ?>;
+        }
+
+        * {
+            scrollbar-color: <?php echo $scrollbarPrimaryColor; ?> <?php echo $scrollbarColorSecondaryColor; ?>;
+            scrollbar-width: thin;
+        }
+
         .trail {
             position: absolute;
             width: 15px;

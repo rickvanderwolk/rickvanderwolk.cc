@@ -33,11 +33,16 @@ li {
 pre {
     color: white;
     font-size: 0.8rem;
+    transition: transform 0.5s ease;
 }
 
 pre:first-of-type {
     animation: blink 1s infinite;
     font-size: 1.2rem;
+}
+
+pre:not(:first-of-type):hover {
+    transform: rotate(-15deg) scale(1.2);
 }
 
 a:hover {

@@ -8,7 +8,7 @@
 
 - [Clocks](#clocks)
 - [Other](#other)
-- [Shop](#shop)
+- [Links](#links)
 
 <a id="clocks"></a>
 ```
@@ -100,14 +100,32 @@
 - [Tuner](https://rickvanderwolk.cc/tuner/)
 - [X marks the spot](https://rickvanderwolk.cc/x-marks-the-spot/)
 
-<a id="shop"></a>
+<a id="links"></a>
 ```
- ______     __  __     ______     ______  
-/\  ___\   /\ \_\ \   /\  __ \   /\  == \ 
-\ \___  \  \ \  __ \  \ \ \/\ \  \ \  _-/ 
- \/\_____\  \ \_\ \_\  \ \_____\  \ \_\   
-  \/_____/   \/_/\/_/   \/_____/   \/_/   
+ __         __     __   __     __  __     ______    
+/\ \       /\ \   /\ "-.\ \   /\ \/ /    /\  ___\   
+\ \ \____  \ \ \  \ \ \-.  \  \ \  _"-.  \ \___  \  
+ \ \_____\  \ \_\  \ \_\\"\_\  \ \_\ \_\  \/\_____\ 
+  \/_____/   \/_/   \/_/ \/_/   \/_/\/_/   \/_____/ 
 ```
 
-- [Go to shop](https://www.redbubble.com/people/rickkkkk/shop?asc=u)
-  [![30 degrees](assets/images/30-degrees-v1_1.jpg)](https://www.redbubble.com/people/rickkkkk/shop?asc=u)
+Books
+
+- [1000 Chairs - Charlotte Fiell, Peter Fiell](https://www.goodreads.com/book/show/1083029)
+- [1000 Lights - Charlotte Fiell](https://www.goodreads.com/book/show/17879332)
+- [All My Friends Are Dead - Avery Monsen, Jory John](https://www.goodreads.com/book/show/8044557)
+- [Clean Code - Robert C. Martin](https://www.goodreads.com/work/quotes/3779106)
+- [Flow - Mihály Csíkszentmihályi](https://www.goodreads.com/work/quotes/64339)
+- [On The Shortness Of Life - Seneca](https://www.goodreads.com/work/quotes/1374471)
+- [Refuse To Choose! - Barbare Sher](https://www.goodreads.com/work/quotes/279246)
+- [The Creative Act - Rick Rubin](https://www.goodreads.com/work/quotes/96114890)
+- [Toa Te Ching - Lao Tzu](https://www.goodreads.com/work/quotes/100074)
+
+Music
+
+- [Grandmix - Ben Liebrand](https://liebrand.nl/grandmix/index.html)
+
+Other
+
+- [ASCII art generator](https://patorjk.com/software/taag/)
+- [My RedBubble shop](https://www.redbubble.com/people/rickkkkk/shop?asc=u)

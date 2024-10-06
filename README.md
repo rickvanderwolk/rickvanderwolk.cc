@@ -98,6 +98,7 @@
 - [Messy canvas](https://rickvanderwolk.cc/messy-canvas/)
 - [Noise](https://rickvanderwolk.cc/noise/)
 - [QR code loo](https://rickvanderwolk.cc/qr-code-loop/)
+- [Scroll race](https://rickvanderwolk.cc/scroll-race/)
 - [Tuner](https://rickvanderwolk.cc/tuner/)
 - [X marks the spot](https://rickvanderwolk.cc/x-marks-the-spot/)
 

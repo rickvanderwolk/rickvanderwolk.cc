@@ -19,7 +19,7 @@ setMode(MODE_WAIT_FOR_START);
 function setMode (mode) {
     currentMode = mode;
     if (currentMode === MODE_WAIT_FOR_START) {
-        setText('READY');
+        setText('SCROLL RACE');
         showStartButton();
     } else if (currentMode === MODE_COUNTDOWN) {
         hideStartButton();

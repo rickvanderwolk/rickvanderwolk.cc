@@ -10,6 +10,7 @@
         body {
             margin: 0;
             overflow: hidden;
+            touch-action: none;
         }
     </style>
 </head>
@@ -24,7 +25,6 @@
     let blocks = [];
     let stackedBlocks = [];
     let stackHeight = [];
-    let maxBlocks = 500;
     let blockSize = 50;
     let clockVisible = true;
 
@@ -44,6 +44,10 @@
             stackHeight[i] = height;
         }
         setInterval(addBlock, 1000);
+
+        document.addEventListener('touchmove', function(event) {
+            event.preventDefault();
+        }, { passive: false });
     }
 
     function draw() {
@@ -66,9 +70,7 @@
     }
 
     function addBlock() {
-        if (blocks.length + stackedBlocks.length < maxBlocks) {
-            blocks.push(new Block());
-        }
+        blocks.push(new Block());
     }
 
     function drawClock() {
@@ -83,8 +85,29 @@
     }
 
     function mouseMoved() {
+        handleBlockRemoval(mouseX, mouseY);
+        clockVisible = true;
+    }
+
+    function touchMoved(event) {
+        if (touches.length > 0) {
+            handleBlockRemoval(touches[0].x, touches[0].y);
+            clockVisible = true;
+            event.preventDefault();
+        }
+        return false;
+    }
+
+    function touchStarted(event) {
+        if (touches.length > 0) {
+            handleBlockRemoval(touches[0].x, touches[0].y);
+            event.preventDefault();
+        }
+    }
+
+    function handleBlockRemoval(x, y) {
         for (let i = stackedBlocks.length - 1; i >= 0; i--) {
-            let d = dist(mouseX, mouseY, stackedBlocks[i].x, stackedBlocks[i].y);
+            let d = dist(x, y, stackedBlocks[i].x, stackedBlocks[i].y);
             if (d < blockSize / 2) {
                 let columnIndex = Math.floor(stackedBlocks[i].x / blockSize);
                 stackedBlocks.splice(i, 1);
@@ -92,7 +115,6 @@
                 updateStackHeight(columnIndex);
             }
         }
-        clockVisible = true;
     }
 
     function updateStackHeight(columnIndex) {

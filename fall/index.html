@@ -25,7 +25,8 @@
     let blocks = [];
     let stackedBlocks = [];
     let stackHeight = [];
-    let blockSize = 50;
+    let blockSize;
+    let numColumns = 10;
     let clockVisible = true;
 
     let autumnColors = [
@@ -39,10 +40,8 @@
 
     function setup() {
         createCanvas(windowWidth, windowHeight);
-        let numColumns = Math.floor(width / blockSize);
-        for (let i = 0; i < numColumns; i++) {
-            stackHeight[i] = height;
-        }
+        blockSize = width / numColumns;
+        resetStackHeight();
         setInterval(addBlock, 1000);
 
         document.addEventListener('touchmove', function(event) {
@@ -127,14 +126,22 @@
         stackHeight[columnIndex] = maxY;
     }
 
+    function resetStackHeight() {
+        stackHeight = new Array(numColumns);
+        for (let i = 0; i < numColumns; i++) {
+            stackHeight[i] = height;
+        }
+    }
+
     class Block {
         constructor() {
             this.size = blockSize;
-            this.x = Math.floor(random(width / this.size)) * this.size + this.size / 2;
+            this.column = Math.floor(random(numColumns));
+            this.x = this.column * this.size + this.size / 2;
+
             this.y = random(-100, -10);
             this.speed = random(2, 5);
             this.color = random(autumnColors);
-            this.column = Math.floor(this.x / blockSize);
             this.isLanded = false;
         }
 
@@ -159,8 +166,8 @@
 
     function windowResized() {
         resizeCanvas(windowWidth, windowHeight);
-        let numColumns = Math.floor(width / blockSize);
-        stackHeight = new Array(numColumns).fill(height);
+        blockSize = width / numColumns;
+        resetStackHeight();
     }
 </script>
 </body>

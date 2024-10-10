@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Fall</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Fall">
+    <meta name="author" content="Rick van der Wolk">
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+        }
+    </style>
+</head>
+<body>
+<script src="https://rickvanderwolk.cc/cdn/js/p5.js/1.4.1/p5.min.js"></script>
+<script>
+    if (typeof p5 === 'undefined') {
+        document.write(unescape("%3Cscript src='js/p5.min.js' type='text/javascript'%3E%3C/script%3E"));
+    }
+</script>
+<script>
+    let blocks = [];
+    let stackedBlocks = [];
+    let stackHeight = [];
+    let maxBlocks = 500;
+    let blockSize = 50;
+    let clockVisible = true;
+
+    let autumnColors = [
+        '#D2691E',
+        '#FF4500',
+        '#FFD700',
+        '#8B4513',
+        '#A0522D',
+        '#FF8C00',
+    ];
+
+    function setup() {
+        createCanvas(windowWidth, windowHeight);
+        let numColumns = Math.floor(width / blockSize);
+        for (let i = 0; i < numColumns; i++) {
+            stackHeight[i] = height;
+        }
+        setInterval(addBlock, 1000);
+    }
+
+    function draw() {
+        background(255);
+
+        if (clockVisible) {
+            drawClock();
+        }
+
+        for (let i = 0; i < stackedBlocks.length; i++) {
+            stackedBlocks[i].display();
+        }
+
+        for (let i = blocks.length - 1; i >= 0; i--) {
+            blocks[i].fall();
+            blocks[i].display();
+        }
+
+        blocks = blocks.filter(block => !block.isLanded);
+    }
+
+    function addBlock() {
+        if (blocks.length + stackedBlocks.length < maxBlocks) {
+            blocks.push(new Block());
+        }
+    }
+
+    function drawClock() {
+        let h = hour();
+        let m = minute();
+        let s = second();
+
+        textAlign(CENTER, CENTER);
+        textSize(64);
+        fill(0);
+        text(nf(h, 2) + ':' + nf(m, 2) + ':' + nf(s, 2), width / 2, height / 2);
+    }
+
+    function mouseMoved() {
+        for (let i = stackedBlocks.length - 1; i >= 0; i--) {
+            let d = dist(mouseX, mouseY, stackedBlocks[i].x, stackedBlocks[i].y);
+            if (d < blockSize / 2) {
+                let columnIndex = Math.floor(stackedBlocks[i].x / blockSize);
+                stackedBlocks.splice(i, 1);
+
+                updateStackHeight(columnIndex);
+            }
+        }
+        clockVisible = true;
+    }
+
+    function updateStackHeight(columnIndex) {
+        let maxY = height;
+        for (let i = 0; i < stackedBlocks.length; i++) {
+            if (Math.floor(stackedBlocks[i].x / blockSize) === columnIndex) {
+                maxY = min(maxY, stackedBlocks[i].y - stackedBlocks[i].size / 2);
+            }
+        }
+        stackHeight[columnIndex] = maxY;
+    }
+
+    class Block {
+        constructor() {
+            this.size = blockSize;
+            this.x = Math.floor(random(width / this.size)) * this.size + this.size / 2;
+            this.y = random(-100, -10);
+            this.speed = random(2, 5);
+            this.color = random(autumnColors);
+            this.column = Math.floor(this.x / blockSize);
+            this.isLanded = false;
+        }
+
+        fall() {
+            if (this.y + this.size / 2 >= stackHeight[this.column]) {
+                this.y = stackHeight[this.column] - this.size / 2;
+                stackHeight[this.column] -= this.size;
+                stackedBlocks.push(this);
+                this.isLanded = true;
+            } else {
+                this.y += this.speed;
+            }
+        }
+
+        display() {
+            noStroke();
+            fill(this.color);
+            rectMode(CENTER);
+            rect(this.x, this.y, this.size, this.size);
+        }
+    }
+
+    function windowResized() {
+        resizeCanvas(windowWidth, windowHeight);
+        let numColumns = Math.floor(width / blockSize);
+        stackHeight = new Array(numColumns).fill(height);
+    }
+</script>
+</body>
+</html>

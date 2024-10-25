@@ -68,6 +68,7 @@
 - [Trial clock](https://rickvanderwolk.cc/trial-clock/)
 - [Unix gradient](https://unixgradient.org/)
 - [Windup clock](https://rickvanderwolk.cc/wind-up-clock/)
+- [Zoo](https://rickvanderwolk.cc/zoo/)
 
 <a id="not-clocks"></a>
 ```

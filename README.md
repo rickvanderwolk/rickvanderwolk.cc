@@ -133,3 +133,13 @@ Other
 
 - [ASCII art generator](https://patorjk.com/software/taag/)
 - [RedBubble shop](https://www.redbubble.com/people/rickkkkk/shop?asc=u)
+
+### Licensing
+
+This project’s original code is released under the CC0 1.0 Universal license.
+
+This project also includes third-party libraries:
+- **jQuery** is provided under the MIT License.
+- **p5.js** is provided under the LGPL 2.1 license.
+
+For more information, please see the `LICENSES.md` file.

@@ -5,6 +5,7 @@ require 'vendor/autoload.php';
 define('COUNTER_FILE_PATH', 'counter.txt');
 
 $readmeMarkdown = file_get_contents('README.md');
+$readmeMarkdown = preg_replace('/### Licensing[\s\S]*?(?=(### |$))/', '', $readmeMarkdown);
 $parsedown = new Parsedown();
 $readmeHtml = $parsedown->text($readmeMarkdown);
 

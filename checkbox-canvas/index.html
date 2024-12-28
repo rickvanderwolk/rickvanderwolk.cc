@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Checkbox canvas</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin: 20px;
+        }
+        .canvas {
+            display: grid;
+            grid-gap: 2px;
+            justify-content: center;
+        }
+        .canvas input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            margin: 0;
+            cursor: pointer;
+        }
+        .buttons {
+            margin: 20px;
+        }
+    </style>
+</head>
+<body>
+<h1>Checkbox canvas</h1>
+<div class="canvas" id="canvas"></div>
+<div class="buttons">
+    <button id="clearCanvas">Reset</button>
+    <button id="randomFill">Random</button>
+</div>
+<script>
+    const canvas = document.getElementById('canvas');
+    const clearButton = document.getElementById('clearCanvas');
+    const randomFillButton = document.getElementById('randomFill');
+
+    function getURLParameter(name) {
+        const params = new URLSearchParams(window.location.search);
+        return parseInt(params.get(name), 10);
+    }
+
+    const rows = getURLParameter('rows') || 8;
+    const cols = getURLParameter('cols') || 8;
+
+    function createCanvas(rows, cols) {
+        canvas.innerHTML = '';
+        canvas.style.gridTemplateColumns = `repeat(${cols}, 20px)`;
+        for (let i = 0; i < rows * cols; i++) {
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            canvas.appendChild(checkbox);
+        }
+    }
+
+    clearButton.addEventListener('click', () => {
+        const checkboxes = canvas.querySelectorAll('input[type="checkbox"]');
+        checkboxes.forEach(checkbox => checkbox.checked = false);
+    });
+
+    randomFillButton.addEventListener('click', () => {
+        const checkboxes = canvas.querySelectorAll('input[type="checkbox"]');
+        checkboxes.forEach(checkbox => checkbox.checked = Math.random() > 0.5);
+    });
+
+    createCanvas(rows, cols);
+</script>
+</body>
+</html>

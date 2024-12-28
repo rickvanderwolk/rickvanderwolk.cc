@@ -99,7 +99,7 @@
   [![Lorem ipsum blog](assets/images/lorem-ipsum-blog.png)](https://rickvanderwolk.cc/lorem-ipsum-blog/)
 - [Messy canvas](https://rickvanderwolk.cc/messy-canvas/)
 - [Noise](https://rickvanderwolk.cc/noise/)
-- [QR code loo](https://rickvanderwolk.cc/qr-code-loop/)
+- [QR code loop](https://rickvanderwolk.cc/qr-code-loop/)
 - [Scroll race](https://rickvanderwolk.cc/scroll-race/)
 - [Tuner](https://rickvanderwolk.cc/tuner/)
 - [X marks the spot](https://rickvanderwolk.cc/x-marks-the-spot/)

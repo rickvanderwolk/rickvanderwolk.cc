@@ -58,6 +58,7 @@
 - [Rows and columns](https://rickvanderwolk.cc/rows-and-columns-clock/)
 - [Satisfaction level 1](https://rickvanderwolk.cc/satisfaction-level-1/)
 - [Satisfaction level 2](https://rickvanderwolk.cc/satisfaction-level-2/)
+- [Scroll clock](https://rickvanderwolk.cc/scroll-clock/)
 - [Shifted](https://rickvanderwolk.cc/shifted/)
 - [Software update clock](https://softwareupdateclock.com/)
 - [Sour](https://rickvanderwolk.cc/sour/)

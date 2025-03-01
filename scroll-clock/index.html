@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Scroll clock">
+    <meta name="author" content="Rick van der Wolk">
+    <title>Scroll clock</title>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background: black;
+            color: white;
+            font-family: Arial, sans-serif;
+        }
+        .clock {
+            display: flex;
+            gap: 10px;
+        }
+        .column {
+            width: 80px;
+            height: 250px;
+            overflow: hidden;
+            border: 2px solid white;
+            text-align: center;
+            font-size: 24px;
+            position: relative;
+        }
+        .list {
+            transition: transform 0.5s ease-out;
+            position: relative;
+        }
+        .list div {
+            height: 50px;
+            line-height: 50px;
+            opacity: 0.5;
+            transition: opacity 0.3s ease-in-out, font-weight 0.3s ease-in-out;
+        }
+        .list .active {
+            opacity: 1;
+            font-weight: bold;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+<div class="clock">
+    <div class="column" id="hours"></div>
+    <div class="column" id="minutes"></div>
+    <div class="column" id="seconds"></div>
+</div>
+
+<script>
+    let previousTime = null;
+
+    function createList(id, max) {
+        const column = document.getElementById(id);
+        const list = document.createElement('div');
+        list.classList.add('list');
+
+        for (let i = -2; i <= max; i++) {
+            const item = document.createElement('div');
+            if (i < 0) {
+                item.textContent = '';
+            } else {
+                item.textContent = i.toString().padStart(2, '0');
+            }
+            list.appendChild(item);
+        }
+
+        column.appendChild(list);
+    }
+
+    function updateClock() {
+        const now = new Date();
+        const hours = now.getHours();
+        const minutes = now.getMinutes();
+        const seconds = now.getSeconds();
+        const time = `${hours}:${minutes}:${seconds}`;
+
+        if (previousTime === time) {
+            return;
+        }
+        previousTime = time;
+
+        updateColumn('hours', hours, 23);
+        updateColumn('minutes', minutes, 59);
+        updateColumn('seconds', seconds, 59);
+    }
+
+    function updateColumn(id, value, max) {
+        const column = document.getElementById(id).querySelector('.list');
+        const items = column.children;
+
+        for (let i = 0; i <= max + 2; i++) {
+            items[i].classList.remove('active');
+        }
+
+        items[value + 2].classList.add('active');
+
+        const centerOffset = 2 * 50;
+        column.style.transform = `translateY(-${(value + 2) * 50 - centerOffset}px)`;
+    }
+
+    createList('hours', 23);
+    createList('minutes', 59);
+    createList('seconds', 59);
+    setInterval(updateClock, 100);
+    setTimeout(updateClock, 50);
+</script>
+</body>
+</html>

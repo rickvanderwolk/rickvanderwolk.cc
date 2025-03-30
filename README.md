@@ -39,6 +39,7 @@
 - [Fizz buzz clock](https://rickvanderwolk.cc/fizz-buzz-clock/)
 - [Gate](https://rickvanderwolk.cc/gate/)
   [![Gate](assets/images/gate.png)](https://rickvanderwolk.cc/gate/)
+- [Hammer time](https://rickvanderwolk.cc/hammer-time/)
 - [HEX color clock](https://rickvanderwolk.cc/hex-color-clock/)
 - [Helicopter clock](https://rickvanderwolk.cc/helicopter-clock/)
 - [HTML title clock](https://rickvanderwolk.cc/html-title-clock/)

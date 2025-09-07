@@ -19,7 +19,7 @@ function update () {
 function getCurrentTime() {
     const now = new Date();
     const hour = now.getHours();
-    const minute = now.getMinutes();
-    const decimalMinute = (minute / 60).toFixed(2).split('.')[1];
-    return hour + ',' + decimalMinute;
+    const secondsIntoHour = now.getMinutes() * 60 + now.getSeconds() + now.getMilliseconds() / 1000;
+    const decimal = (secondsIntoHour / 3600).toFixed(2).split('.')[1];
+    return hour + ',' + decimal;
 }

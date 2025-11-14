@@ -73,7 +73,7 @@ function getFontSize (hour) {
     let base = 14;
     let margin = 1.25;
     if (window.matchMedia('(orientation: portrait)').matches) {
-        base = 1;
+        base = 8;
         margin = 1.1;
     }
     if (hour === parseInt(currentHour)) {

@@ -103,7 +103,6 @@ function updateClock() {
     const secondsRad = (secondsAngle - 90) * Math.PI / 180;
 
     // Calculate weighted position of each hand's center of mass (50% of length)
-    // More realistic: uniform mass distribution means center of mass at midpoint
     const hourX = Math.cos(hoursRad) * HOUR_LENGTH * 0.5 * HOUR_MASS;
     const hourY = Math.sin(hoursRad) * HOUR_LENGTH * 0.5 * HOUR_MASS;
 
@@ -123,7 +122,7 @@ function updateClock() {
     const cogAngle = Math.atan2(cogY, cogX) * 180 / Math.PI;
 
     // Target rotation: rotate clock so COG points down (90°)
-    targetClockRotation = cogAngle - 90;
+    targetClockRotation = 90 - cogAngle;
 
     // Normalize the rotation difference to take shortest path
     let rotationDiff = targetClockRotation - currentClockRotation;

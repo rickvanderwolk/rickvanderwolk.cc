@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Drift</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Drift">
+    <meta name="author" content="Rick van der Wolk">
+    <link rel="stylesheet" href="css/main.css">
+</head>
+<body>
+    <div id="clock-wrapper">
+        <svg id="clock" width="300" height="300" viewBox="0 0 300 300">
+            <!-- Clock face -->
+            <circle cx="150" cy="150" r="140" fill="none" stroke="#333" stroke-width="4"/>
+
+            <!-- Hour markers -->
+            <g id="hour-markers"></g>
+
+            <!-- Clock hands -->
+            <line id="hour-hand" x1="150" y1="150" x2="150" y2="90" stroke="#333" stroke-width="6" stroke-linecap="round"/>
+            <line id="minute-hand" x1="150" y1="150" x2="150" y2="70" stroke="#666" stroke-width="4" stroke-linecap="round"/>
+            <line id="second-hand" x1="150" y1="150" x2="150" y2="60" stroke="#e74c3c" stroke-width="2" stroke-linecap="round"/>
+
+            <!-- Center dot -->
+            <circle cx="150" cy="150" r="8" fill="#333"/>
+        </svg>
+    </div>
+    <script src="js/main.js"></script>
+</body>
+</html>

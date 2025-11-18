@@ -35,6 +35,7 @@
 - [d5d956e0](https://rickvanderwolk.cc/d5d956e0/)
 - [Decimal clock](https://rickvanderwolk.cc/decimal-clock/)
 - [Double](https://rickvanderwolk.cc/double/)
+- [Drift](https://rickvanderwolk.cc/drift/)
 - [e93f880a](https://rickvanderwolk.cc/e93f880a/)
 - [Fall](https://rickvanderwolk.cc/fall/)
 - [Fizz buzz clock](https://rickvanderwolk.cc/fizz-buzz-clock/)

@@ -1,0 +1,160 @@
+<html lang="en">
+<head>
+    <title>dde96683</title>
+    <meta charset="utf-8">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+    <meta name="viewport" content="user-scalable=no, width=device-width, initial-scale=1, maximum-scale=1">
+    <script src="p5.min.js"></script>
+    <script src="p5.play.js"></script>
+</head>
+<body>
+    <style>
+        html,
+        body,
+        canvas {
+            margin: 0;
+            padding: 0;
+            background: black;
+        }
+    </style>
+    <script>
+        var playerAnimation;
+        var clouds = [];
+
+        function preload () {
+            playerAnimation = loadAnimation('assets/player-snail/32bit-gastropod-scaly-foot.gif');
+        }
+
+        function setup () {
+            initialise();
+        }
+
+        function windowResized () {
+            initialise();
+        }
+
+        function initialise () {
+            createCanvas(window.innerWidth, window.innerHeight);
+        }
+
+        function draw() { 
+
+            var date = new Date();
+            var currentHour = date.getMinutes();
+            var previousHour = currentHour;
+            previousHour--;
+            if (previousHour < 0) {
+                previousHour = 59;
+            }
+            var nextHour = currentHour;
+            nextHour++;
+            if (nextHour > 59) {
+                nextHour = 0;
+            }
+
+            var floorHeight = height / 3;
+            var floorPosY = height - (floorHeight);
+
+            var second = (date.getSeconds() * 1000) + date.getMilliseconds();
+            var progress = second / 60000;
+            var tmp = (width / 2) - (progress * width)
+
+            if (date.getHours() >= 5 && date.getHours() <= 18) {
+                background(135,206,250);
+                for (var i = 0; i < clouds.length; i++) {
+                    clouds[i].move();
+                    clouds[i].display();
+                }
+            } else {
+                background(0);
+            }
+
+            strokeWeight(0);
+            stroke(255, 0, 0);
+            if (isOdd(previousHour)) {
+                fill(85,107,47);
+            } else {
+                fill(107,142,35);
+            }
+            rect(tmp - width, floorPosY, width + 1, floorHeight);
+            if (isOdd(nextHour)) {
+                fill(85,107,47);
+            } else {
+                fill(107,142,35);
+            }
+            rect(tmp + width, floorPosY, width + 1, floorHeight);
+            if (isOdd(currentHour)) {
+                fill(85,107,47);
+            } else {
+                fill(107,142,35);
+            }
+            rect(tmp, floorPosY, width + 1, floorHeight);
+
+            fill(255,215,0);
+            textSize(height / 5);
+            if (height > width) {
+                textSize(width / 5);
+            }
+            text(addLeadingZeroIfNeeded(date.getHours()) + ':' + addLeadingZeroIfNeeded(previousHour), tmp - width, height / 2);
+            text(addLeadingZeroIfNeeded(date.getHours()) + ':' + addLeadingZeroIfNeeded(nextHour), tmp + width, height / 2);
+            text(addLeadingZeroIfNeeded(date.getHours()) + ':' + addLeadingZeroIfNeeded(currentHour), tmp, height / 2);
+
+            if (height > width) {
+                scale(0.5);
+                animation(playerAnimation, width, height + (height / 5));
+            } else {
+                animation(playerAnimation, width / 2, height / 2);
+            }
+            scale(1.0);
+        }
+
+        function addLeadingZeroIfNeeded (num) {
+            num = num.toString();
+            while (num.length < 2) num = '0' + num;
+            return num;
+        }
+
+        function isOdd(num) { return num % 2;}
+
+        function Cloud(){
+            this.x = random(0, width);
+            this.y = random(0, height / 3);
+            this.size = random(24, 96);
+
+            this.setRandomHeight = function () {
+                this.y = random(0, height / 3);
+            }
+            
+            this.display = function() {
+                stroke(255);
+                strokeWeight(1);
+                fill(255);
+                ellipse(this.x, this.y, this.size, this.size);
+                ellipse(this.x+10,this.y+10,this.size,this.size);
+                ellipse(this.x+30,this.y+10,this.size,this.size);
+                ellipse(this.x+30,this.y-10,this.size,this.size);
+                ellipse(this.x+20,this.y-10,this.size,this.size);
+                ellipse(this.x+40,this.y,this.size,this.size);
+            }
+
+            this.move = function() {
+                this.x = this.x -= 1;
+                this.y = this.y + random(-1, 1);
+                
+                if(this.x < (0 - (width / 5))) {
+                    this.x = width + random(width / 5, width);
+                    this.setRandomHeight();
+                }
+            }
+        }
+
+        // Asset Attribution:
+        // Scaly Foot Gastropod sprite by RAPIDPUNCHES
+        // Licensed under CC-BY-SA 4.0
+        // Source: https://opengameart.org/content/scaly-foot-gastropod
+        // License: https://creativecommons.org/licenses/by-sa/4.0/
+    </script>
+</body>
+</html>

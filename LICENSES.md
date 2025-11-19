@@ -491,3 +491,28 @@ the Free Software Foundation.
     DAMAGES.
 
                    END OF TERMS AND CONDITIONS
+
+## p5.play.js
+
+p5.play.js is included in this project under the same GNU Lesser General Public License v2.1 (LGPL 2.1) as p5.js (see above).
+Copyright (c) 2015 Paolo Pedercini/molleindustria
+http://molleindustria.org/
+
+## Assets
+
+### Scaly Foot Gastropod Sprite
+
+The Scaly Foot Gastropod sprite (used in project dde96683) is licensed under CC-BY-SA 4.0.
+Artist: RAPIDPUNCHES
+Source: https://opengameart.org/content/scaly-foot-gastropod
+
+This work is licensed under the Creative Commons Attribution-ShareAlike 4.0 International License.
+To view a copy of this license, visit https://creativecommons.org/licenses/by-sa/4.0/
+
+You are free to:
+- Share — copy and redistribute the material in any medium or format
+- Adapt — remix, transform, and build upon the material for any purpose, even commercially
+
+Under the following terms:
+- Attribution — You must give appropriate credit, provide a link to the license, and indicate if changes were made
+- ShareAlike — If you remix, transform, or build upon the material, you must distribute your contributions under the same license as the original

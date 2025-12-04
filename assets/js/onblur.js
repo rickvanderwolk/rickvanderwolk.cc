@@ -3,11 +3,13 @@ if (ifUserIsUsingGoogleChrome()) {
     document.addEventListener('visibilitychange', function(e) {
         if (document.visibilityState === 'hidden') {
             changeLinkColors();
+            changeRowColors();
         }
     });
 } else {
     window.onblur = function() {
         changeLinkColors();
+        changeRowColors();
     };
 }
 
@@ -43,8 +45,23 @@ function getRandomColor() {
 }
 
 function changeLinkColors() {
-    const links = document.querySelectorAll('a');
+    const links = document.querySelectorAll('a:not(.row):not(.cloud-item)');
     links.forEach(link => {
         link.style.color = getRandomColor();
+    });
+}
+
+function changeRowColors() {
+    const rows = document.querySelectorAll('.row');
+    rows.forEach(row => {
+        const color = getRandomColor();
+        const header = row.querySelector('h2 > span');
+        const imageCol = row.querySelector('.image-col');
+        if (header) {
+            header.style.color = color;
+        }
+        if (imageCol) {
+            imageCol.style.borderColor = color;
+        }
     });
 }

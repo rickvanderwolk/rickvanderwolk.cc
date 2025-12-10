@@ -1,48 +1,101 @@
 {
     "title": "Hello world",
-    "subtitle": "Welcome to my creative coding playground",
     "projects": [
         {
             "title": "Vissenkom",
             "description": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.",
             "image": "assets/images/vissenkom-preview2-optimized.png",
-            "url": "https://github.com/rickvanderwolk/vissenkom",
+            "liveUrl": "",
+            "codeUrl": "https://github.com/rickvanderwolk/vissenkom",
             "tags": ["raspberry pi", "games", "fish"]
         },
         {
             "title": "Dancing cat",
             "description": "Pellentesque habitant morbi tristique senectus et netus et malesuada fames ac turpis egestas. Vestibulum tortor quam, feugiat vitae.",
             "image": "assets/images/dancing-cat-preview.png",
-            "url": "https://rickvanderwolk.com/lab/ct/index48-cute-cat.html",
+            "liveUrl": "https://rickvanderwolk.com/lab/ct/index48-cute-cat.html",
+            "codeUrl": "https://github.com/rickvanderwolk/garage-8/tree/main/dancing-cat",
             "tags": ["audio", "cat", "music", "dancing"]
         },
         {
             "title": "Music lab",
             "description": "Curabitur blandit tempus porttitor. Nullam quis risus eget urna mollis ornare vel eu leo. Donec ullamcorper nulla non metus.",
             "image": "assets/images/music-lab-preview2.png",
-            "url": "https://rickvanderwolk.com/lab/ml/",
+            "liveUrl": "https://rickvanderwolk.com/lab/ml/",
+            "codeUrl": "https://github.com/rickvanderwolk/garage-8/tree/main/music-lab",
             "tags": ["audio", "music", "lab"]
         },
         {
             "title": "Scroll race",
             "description": "Praesent commodo cursus magna, vel scelerisque nisl consectetur et. Vivamus sagittis lacus vel augue laoreet rutrum.",
             "image": "assets/images/scroll-race-preview2-optimized.png",
-            "url": "https://github.com/rickvanderwolk/scroll-race",
+            "liveUrl": "",
+            "codeUrl": "https://github.com/rickvanderwolk/scroll-race",
             "tags": ["games", "scroll"]
         },
         {
             "title": "LED matrix",
             "description": "Praesent commodo cursus magna, vel scelerisque nisl consectetur et. Vivamus sagittis lacus vel augue laoreet rutrum.",
             "image": "assets/images/led-matrix-preview.jpg",
-            "url": "https://github.com/rickvanderwolk/scroll-race",
+            "liveUrl": "",
+            "codeUrl": "https://github.com/rickvanderwolk/led-matrix",
             "tags": ["raspberry pi", "light", "matrix"]
         },
         {
             "title": "Pi radio",
             "description": "Praesent commodo cursus magna, vel scelerisque nisl consectetur et. Vivamus sagittis lacus vel augue laoreet rutrum.",
             "image": "assets/images/pi-radio-preview.png",
-            "url": "https://github.com/rickvanderwolk/scroll-race",
+            "liveUrl": "",
+            "codeUrl": "https://github.com/rickvanderwolk/pi-radio",
             "tags": ["raspberry pi", "audio", "radio", "music"]
+        },
+        {
+            "title": "8UYwZK4",
+            "description": "Praesent commodo cursus magna, vel scelerisque nisl consectetur et. Vivamus sagittis lacus vel augue laoreet rutrum.",
+            "image": "assets/images/8UYwZK4.png",
+            "liveUrl": "https://rickvanderwolk.cc/8UYwZK4/",
+            "codeUrl": "https://github.com/rickvanderwolk/rickvanderwolk.cc/tree/main/8UYwZK4",
+            "tags": ["clock", "relative"]
+        },
+        {
+            "title": "Gate",
+            "description": "Praesent commodo cursus magna, vel scelerisque nisl consectetur et. Vivamus sagittis lacus vel augue laoreet rutrum.",
+            "image": "assets/images/gate.png",
+            "liveUrl": "https://rickvanderwolk.cc/gate/",
+            "codeUrl": "https://github.com/rickvanderwolk/rickvanderwolk.cc/tree/main/gate",
+            "tags": ["clock", "gate"]
+        },
+        {
+            "title": "8UYwZK4",
+            "description": "Praesent commodo cursus magna, vel scelerisque nisl consectetur et. Vivamus sagittis lacus vel augue laoreet rutrum.",
+            "image": "assets/images/8UYwZK4.png",
+            "liveUrl": "https://rickvanderwolk.cc/8UYwZK4/",
+            "codeUrl": "https://github.com/rickvanderwolk/rickvanderwolk.cc/tree/main/8UYwZK4",
+            "tags": ["clock", "relative"]
+        },
+        {
+            "title": "Gate",
+            "description": "Praesent commodo cursus magna, vel scelerisque nisl consectetur et. Vivamus sagittis lacus vel augue laoreet rutrum.",
+            "image": "assets/images/gate.png",
+            "liveUrl": "https://rickvanderwolk.cc/gate/",
+            "codeUrl": "https://github.com/rickvanderwolk/rickvanderwolk.cc/tree/main/gate",
+            "tags": ["clock", "gate"]
+        },
+        {
+            "title": "LED sort",
+            "description": "Praesent commodo cursus magna, vel scelerisque nisl consectetur et. Vivamus sagittis lacus vel augue laoreet rutrum.",
+            "image": "assets/images/led-sort-preview-optimized.jpg",
+            "liveUrl": "https://rickvanderwolk.cc/8UYwZK4/",
+            "codeUrl": "https://github.com/rickvanderwolk/rickvanderwolk.cc/tree/main/8UYwZK4",
+            "tags": ["raspberry pi", "light"]
+        },
+        {
+            "title": "LED weather",
+            "description": "Praesent commodo cursus magna, vel scelerisque nisl consectetur et. Vivamus sagittis lacus vel augue laoreet rutrum.",
+            "image": "assets/images/led-weather-preview-optimized.jpg",
+            "liveUrl": "https://rickvanderwolk.cc/gate/",
+            "codeUrl": "https://github.com/rickvanderwolk/rickvanderwolk.cc/tree/main/gate",
+            "tags": ["raspberry pi", "led", "weather"]
         }
     ]
 }

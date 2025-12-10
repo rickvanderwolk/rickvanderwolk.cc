@@ -45,7 +45,7 @@ function getRandomColor() {
 }
 
 function changeLinkColors() {
-    const links = document.querySelectorAll('a:not(.row):not(.cloud-item)');
+    const links = document.querySelectorAll('a:not(.row):not(.cloud-item):not(.project-link)');
     links.forEach(link => {
         link.style.color = getRandomColor();
     });

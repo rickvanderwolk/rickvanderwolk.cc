@@ -116,7 +116,7 @@ body {
     color: inherit;
 }
 
-#projects .row:first-child {
+#projects .row.first-visible {
     margin-top: 3.5rem;
 }
 
@@ -180,6 +180,23 @@ body {
     transform: none;
 }
 
+.footer {
+    margin-top: 4rem;
+    margin-bottom: 2rem;
+}
+
+.footer p {
+    margin: 0 0 1rem 0;
+}
+
+.footer-links {
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+    gap: 1rem;
+}
+
 .image-col img {
     max-width: 100%;
 }
@@ -237,10 +254,6 @@ img {
 
 /* === Mobile === */
 @media only screen and (max-width: 768px) {
-    body {
-        font-size: 1.25rem;
-    }
-
     img {
         max-width: 95%;
         left: auto;
@@ -283,5 +296,9 @@ img {
 
     .image-col img {
         max-width: 100%;
+    }
+
+    .footer-links {
+        flex-direction: column;
     }
 }

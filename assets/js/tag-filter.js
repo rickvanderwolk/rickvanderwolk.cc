@@ -15,8 +15,13 @@
             var projectTags = JSON.parse(project.dataset.tags || "[]");
             var shouldShow = !tag || projectTags.indexOf(tag) !== -1;
             project.style.display = shouldShow ? "" : "none";
+            project.classList.remove("first-visible");
 
             if (shouldShow) {
+                // Mark first visible
+                if (visibleIndex === 0) {
+                    project.classList.add("first-visible");
+                }
                 // Alternate row direction based on visible index
                 if (visibleIndex % 2 === 0) {
                     project.classList.remove("row-reverse");

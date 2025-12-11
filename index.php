@@ -38,26 +38,14 @@ $trailColor = getRandomColor();
 
         <?php echo $projectsHtml; ?>
 
-        <div id="counter">
-            <?php
-            $counterText = getCounterText();
-            foreach (str_split($counterText) as $char) {
-                $font = getRandomFont();
-                $color = getRandomColor();
-                $border = getRandomBorder();
-                echo "<span style='font-family: $font; color: $color; border: $border; padding: 10px; margin: 5px;'>$char</span>";
-            }
-            ?>
+        <div class="footer">
+            <p>Still here?</p>
+            <div class="footer-links">
+                <a href="https://github.com/rickvanderwolk/rickvanderwolk.cc/blob/main/README.old.md" target="_blank" rel="noopener noreferrer" class="project-link">View source code + more (mostly clocks)</a>
+                <a href="https://github.com/rickvanderwolk/garage-8" target="_blank" rel="noopener noreferrer" class="project-link">View garage (more experiments)</a>
+                <a href="https://github.com/rickvanderwolk" target="_blank" rel="noopener noreferrer" class="project-link">View all (GitHub profile)</a>
+            </div>
         </div>
-
-        <p>
-            View source code on
-                <a
-                    href="https://github.com/rickvanderwolk/rickvanderwolk.cc"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                >GitHub</a>
-        </p>
     </div>
 
     <div id="screensaver">
@@ -70,5 +58,3 @@ $trailColor = getRandomColor();
     <script type="text/javascript" src="/assets/js/mouse-trail.js" defer></script>
 </body>
 </html>
-
-<?php updateCounter(); ?>

@@ -153,15 +153,20 @@ function buildTagCloud(array $projects, ?string $activeTag): string
 function buildProjectsHtml(array $projects, ?string $activeTag): string
 {
     $projectsHtml = '<div id="projects">';
-    $rowIndex = 0;
+    $visibleIndex = 0;
 
     foreach ($projects as $project) {
         $tagsJson = htmlspecialchars(json_encode($project['tags']), ENT_QUOTES, 'UTF-8');
-        $isHidden = $activeTag && !in_array($activeTag, $project['tags']);
-        $hiddenStyle = $isHidden ? ' style="display:none;"' : '';
+        $isVisible = !$activeTag || in_array($activeTag, $project['tags']);
+        $hiddenStyle = $isVisible ? '' : ' style="display:none;"';
 
-        $rowClass = $rowIndex % 2 === 0 ? 'row' : 'row row-reverse';
-        $rowIndex++;
+        $rowClass = $visibleIndex % 2 === 0 ? 'row' : 'row row-reverse';
+        if ($isVisible && $visibleIndex === 0) {
+            $rowClass .= ' first-visible';
+        }
+        if ($isVisible) {
+            $visibleIndex++;
+        }
         $color = getRandomColor();
         $title = stylizeHeading($project['title'], $color);
         $tagsHtml = '<span class="project-tags">' . implode(', ', $project['tags']) . '</span>';

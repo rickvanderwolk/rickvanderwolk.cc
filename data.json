@@ -107,7 +107,7 @@
             "title": "Unix gradient",
             "description": "A long-running color generator that changes every second, driven by the Unix timestamp. Based on calculations starting from the Unix epoch on January 1, 1970, it will produce unique gradients for the next 8.9 million years. Designed for both Philips Hue lights and web.",
             "image": "assets/images/unix-gradient-preview.png",
-            "liveUrl": "",
+            "liveUrl": "https://unixgradient.org/",
             "codeUrl": "https://github.com/rickvanderwolk/unix-gradient",
             "tags": [
                 "raspberry pi",

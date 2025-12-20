@@ -191,7 +191,7 @@
         }
         hourPaddleY = hourPaddleY + hourPaddleVelocity * deltaTime;
         if (currentAdvantageState === advantageStateHour || currentAdvantageState === advantageStateEqual) {
-            hourPaddleY = hourPaddleY + hourNextPaddleMargin * deltaTime;
+            hourPaddleY = hourPaddleY + hourNextPaddleMargin;
         }
         if (hourPaddleY < getPaddleMiddle()) {
             hourPaddleY = getPaddleMiddle();
@@ -214,7 +214,7 @@
         }
         minutePaddleY = minutePaddleY + minutePaddleVelocity * deltaTime;
         if (currentAdvantageState === advantageStateMinute || currentAdvantageState === advantageStateEqual) {
-            minutePaddleY = minutePaddleY - minuteNextPaddleMargin * deltaTime;
+            minutePaddleY = minutePaddleY - minuteNextPaddleMargin;
         }
         if (minutePaddleY < getPaddleMiddle()) {
             minutePaddleY = getPaddleMiddle();

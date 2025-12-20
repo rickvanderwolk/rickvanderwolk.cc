@@ -27,6 +27,7 @@
     let hourPaddleX, hourPaddleY, hourPaddleVelocity, hourScore, hourSkillLevel, hourNextPaddleMargin;
     let minutePaddleX, minutePaddleY, minutePaddleVelocity, minuteScore, minuteSkillLevel, minuteNextPaddleMargin;
     let cachedHour, cachedMinute, cachedSecond, lastTimeUpdate = 0;
+    let lastFrameTime = 0, deltaTime = 0;
 
     function preload() {
         font = loadFont('Digitaled.ttf');
@@ -43,7 +44,6 @@
     function initialise () {
         textFont(font);
         createCanvas(window.innerWidth, window.innerHeight);
-        frameRate(30);
         let date = new Date();
         cachedHour = date.getHours();
         cachedMinute = date.getMinutes();
@@ -75,6 +75,10 @@
     }
 
     function draw () {
+        let currentTime = millis();
+        deltaTime = (currentTime - lastFrameTime) / 1000;
+        lastFrameTime = currentTime;
+        if (deltaTime > 0.1) deltaTime = 0.1;
         updateCachedTime();
         renderDividingLine();
         resetScoresIfNeeded();
@@ -121,8 +125,8 @@
     }
 
     function moveBall () {
-        ballX += ballVelocityX;
-        ballY += ballVelocityY;
+        ballX += ballVelocityX * deltaTime;
+        ballY += ballVelocityY * deltaTime;
 
         // hour paddle collision
         if (
@@ -176,7 +180,7 @@
     }
 
     function moveHourPaddle () {
-        hourPaddleVelocity = hourSkillLevel * (ballY - hourPaddleY);
+        hourPaddleVelocity = hourSkillLevel * (ballY - hourPaddleY) * 30;
         if (currentAdvantageState === advantageStateMinute) {
             if (hourPaddleVelocity < -getSpeedFactor()) {
                 hourPaddleVelocity = -getSpeedFactor();
@@ -185,9 +189,9 @@
                 hourPaddleVelocity = getSpeedFactor();
             }
         }
-        hourPaddleY = hourPaddleY + hourPaddleVelocity;
+        hourPaddleY = hourPaddleY + hourPaddleVelocity * deltaTime;
         if (currentAdvantageState === advantageStateHour || currentAdvantageState === advantageStateEqual) {
-            hourPaddleY = hourPaddleY + hourNextPaddleMargin;
+            hourPaddleY = hourPaddleY + hourNextPaddleMargin * deltaTime;
         }
         if (hourPaddleY < getPaddleMiddle()) {
             hourPaddleY = getPaddleMiddle();
@@ -199,7 +203,7 @@
     }
 
     function moveMinutePaddle () {
-        minutePaddleVelocity = minuteSkillLevel * (ballY - minutePaddleY);
+        minutePaddleVelocity = minuteSkillLevel * (ballY - minutePaddleY) * 30;
         if (currentAdvantageState === advantageStateHour) {
             if (minutePaddleVelocity < -getSpeedFactor()) {
                 minutePaddleVelocity = -getSpeedFactor();
@@ -208,9 +212,9 @@
                 minutePaddleVelocity = getSpeedFactor();
             }
         }
-        minutePaddleY = minutePaddleY + minutePaddleVelocity;
+        minutePaddleY = minutePaddleY + minutePaddleVelocity * deltaTime;
         if (currentAdvantageState === advantageStateMinute || currentAdvantageState === advantageStateEqual) {
-            minutePaddleY = minutePaddleY - minuteNextPaddleMargin;
+            minutePaddleY = minutePaddleY - minuteNextPaddleMargin * deltaTime;
         }
         if (minutePaddleY < getPaddleMiddle()) {
             minutePaddleY = getPaddleMiddle();
@@ -221,7 +225,7 @@
     }
 
     function getSpeedFactor () {
-        const baseSpeedFactor = 20;
+        const baseSpeedFactor = 600;
         let timeIncreasedFactor = 0;
         return baseSpeedFactor + (timeIncreasedFactor * baseSpeedFactor);
     }

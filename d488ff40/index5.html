@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Radar Clock</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background: linear-gradient(180deg, #0c1445, #0a2a4a, #0c3b5e);
+        }
+        .chart-container {
+            width: 500px;
+            height: 500px;
+            filter: drop-shadow(0 0 30px rgba(64, 224, 208, 0.3));
+        }
+    </style>
+</head>
+<body>
+    <div class="chart-container">
+        <canvas id="radarClock"></canvas>
+    </div>
+
+    <script>
+        const ctx = document.getElementById('radarClock').getContext('2d');
+
+        const clock = new Chart(ctx, {
+            type: 'radar',
+            data: {
+                labels: ['12', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11'],
+                datasets: [
+                    {
+                        label: 'Hours',
+                        data: Array(12).fill(0),
+                        backgroundColor: 'rgba(255, 50, 100, 0.35)',
+                        borderColor: '#ff3264',
+                        borderWidth: 3,
+                        pointBackgroundColor: '#ff3264',
+                        pointRadius: 5
+                    },
+                    {
+                        label: 'Minutes',
+                        data: Array(12).fill(0),
+                        backgroundColor: 'rgba(50, 255, 150, 0.3)',
+                        borderColor: '#32ff96',
+                        borderWidth: 2,
+                        pointBackgroundColor: '#32ff96',
+                        pointRadius: 4
+                    },
+                    {
+                        label: 'Seconds',
+                        data: Array(12).fill(0),
+                        backgroundColor: 'rgba(255, 220, 50, 0.25)',
+                        borderColor: '#ffdc32',
+                        borderWidth: 2,
+                        pointBackgroundColor: '#ffdc32',
+                        pointRadius: 3
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                animation: {
+                    duration: 150
+                },
+                plugins: {
+                    legend: {
+                        labels: { color: '#fff' }
+                    },
+                    tooltip: { enabled: false }
+                },
+                scales: {
+                    r: {
+                        min: 0,
+                        max: 100,
+                        ticks: {
+                            display: false
+                        },
+                        grid: {
+                            color: 'rgba(255,255,255,0.15)'
+                        },
+                        angleLines: {
+                            color: 'rgba(255,255,255,0.15)'
+                        },
+                        pointLabels: {
+                            color: '#fff',
+                            font: { size: 14, weight: 'bold' }
+                        }
+                    }
+                }
+            }
+        });
+
+        function updateClock() {
+            const now = new Date();
+            const hours = now.getHours() % 12;
+            const minutes = now.getMinutes();
+            const seconds = now.getSeconds();
+
+            // Hours: spike at current hour position
+            const hourData = Array(12).fill(10);
+            hourData[hours] = 100;
+            hourData[(hours + 11) % 12] = 40;
+            hourData[(hours + 1) % 12] = 40;
+
+            // Minutes: mapped to 12 positions (each = 5 min)
+            const minutePos = Math.floor(minutes / 5);
+            const minuteData = Array(12).fill(10);
+            minuteData[minutePos] = 80;
+            minuteData[(minutePos + 11) % 12] = 30;
+            minuteData[(minutePos + 1) % 12] = 30;
+
+            // Seconds: mapped to 12 positions (each = 5 sec)
+            const secondPos = Math.floor(seconds / 5);
+            const secondData = Array(12).fill(5);
+            secondData[secondPos] = 60;
+
+            clock.data.datasets[0].data = hourData;
+            clock.data.datasets[1].data = minuteData;
+            clock.data.datasets[2].data = secondData;
+
+            clock.update();
+        }
+
+        updateClock();
+        setInterval(updateClock, 1000);
+    </script>
+</body>
+</html>

@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bar Klok</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 40px;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(180deg, #0c1445, #0a2a4a, #0c3b5e);
+        }
+        .chart-box {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 200px;
+            height: 400px;
+            filter: drop-shadow(0 0 20px rgba(64, 224, 208, 0.3));
+        }
+        .chart-container {
+            width: 100%;
+            height: 350px;
+        }
+        .label {
+            color: #fff;
+            font-size: 18px;
+            font-weight: bold;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="chart-box">
+        <div class="chart-container">
+            <canvas id="hourChart"></canvas>
+        </div>
+        <div class="label">Hours</div>
+    </div>
+
+    <div class="chart-box">
+        <div class="chart-container">
+            <canvas id="minuteChart"></canvas>
+        </div>
+        <div class="label">Minutes</div>
+    </div>
+
+    <div class="chart-box">
+        <div class="chart-container">
+            <canvas id="secondChart"></canvas>
+        </div>
+        <div class="label">Seconds</div>
+    </div>
+
+    <script>
+        function createChart(ctx, color, borderColor, max) {
+            return new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: [''],
+                    datasets: [{
+                        data: [0],
+                        backgroundColor: color,
+                        borderColor: borderColor,
+                        borderWidth: 2,
+                        borderRadius: 8,
+                        barThickness: 80
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: {
+                        duration: 200,
+                        easing: 'easeOutQuart'
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: { enabled: false }
+                    },
+                    scales: {
+                        x: {
+                            display: false
+                        },
+                        y: {
+                            min: 0,
+                            max: max,
+                            grid: { color: 'rgba(255,255,255,0.1)' },
+                            ticks: {
+                                color: '#fff',
+                                stepSize: max / 4
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        const hourChart = createChart(
+            document.getElementById('hourChart'),
+            'rgba(30, 144, 255, 0.8)',
+            '#1e90ff',
+            24
+        );
+
+        const minuteChart = createChart(
+            document.getElementById('minuteChart'),
+            'rgba(64, 224, 208, 0.8)',
+            '#40e0d0',
+            60
+        );
+
+        const secondChart = createChart(
+            document.getElementById('secondChart'),
+            'rgba(127, 255, 212, 0.8)',
+            '#7fffd4',
+            60
+        );
+
+        function updateClock() {
+            const now = new Date();
+            const hours = now.getHours();
+            const minutes = now.getMinutes();
+            const seconds = now.getSeconds();
+
+            hourChart.data.datasets[0].data = [hours];
+            minuteChart.data.datasets[0].data = [minutes];
+            secondChart.data.datasets[0].data = [seconds];
+
+            hourChart.update();
+            minuteChart.update();
+            secondChart.update();
+        }
+
+        updateClock();
+        setInterval(updateClock, 1000);
+    </script>
+</body>
+</html>

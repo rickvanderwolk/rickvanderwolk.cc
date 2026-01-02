@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bubble Klok</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background: linear-gradient(180deg, #0c1445, #0a2a4a, #0c3b5e);
+            overflow: hidden;
+        }
+        .chart-container {
+            width: 95vw;
+            height: 90vh;
+        }
+    </style>
+</head>
+<body>
+    <div class="chart-container">
+        <canvas id="bubbleClock"></canvas>
+    </div>
+
+    <script>
+        const ctx = document.getElementById('bubbleClock').getContext('2d');
+
+        function createBubblePool(count, xCenter, xSpread, hue) {
+            const bubbles = [];
+            for (let i = 0; i < count; i++) {
+                bubbles.push({
+                    x: xCenter + (Math.random() - 0.5) * xSpread,
+                    y: 110 + Math.random() * 50, // Start onder scherm
+                    baseX: xCenter,
+                    xSpread: xSpread,
+                    r: 3 + Math.random() * 4,
+                    speed: 0.4 + Math.random() * 0.4,
+                    wobblePhase: Math.random() * Math.PI * 2,
+                    wobbleSpeed: 0.001 + Math.random() * 0.002,
+                    hue: hue + Math.random() * 15,
+                    visible: false
+                });
+            }
+            return bubbles;
+        }
+
+        const hourPool = createBubblePool(12, 20, 12, 210);
+        const minutePool = createBubblePool(60, 50, 20, 175);
+        const secondPool = createBubblePool(60, 80, 12, 155);
+
+        function updatePool(pool, targetCount) {
+            // Tel ALLE actieve bubbles (ook die nog onderweg zijn naar scherm)
+            const activeBubbles = pool.filter(b => b.visible);
+            let activeCount = activeBubbles.length;
+
+            // Als te veel actieve bubbles, verwijder er een paar
+            if (activeCount > targetCount) {
+                const toRemove = activeCount - targetCount;
+                activeBubbles
+                    .sort((a, b) => a.y - b.y) // Hoogste eerst
+                    .slice(0, toRemove)
+                    .forEach(b => {
+                        b.visible = false;
+                        b.y = 105 + Math.random() * 20;
+                    });
+            }
+
+            pool.forEach(b => {
+                if (b.visible) {
+                    b.y -= b.speed;
+                    b.x = b.baseX + Math.sin(Date.now() * b.wobbleSpeed + b.wobblePhase) * (b.xSpread / 2);
+
+                    if (b.y < -5) {
+                        b.visible = false;
+                        b.y = 105 + Math.random() * 20;
+                        b.x = b.baseX + (Math.random() - 0.5) * b.xSpread;
+                    }
+                }
+            });
+
+            // Spawn alleen als we onder target zitten
+            activeCount = pool.filter(b => b.visible).length;
+            if (activeCount < targetCount) {
+                for (let b of pool) {
+                    if (!b.visible && activeCount < targetCount) {
+                        b.visible = true;
+                        b.y = 102;
+                        b.x = b.baseX + (Math.random() - 0.5) * b.xSpread;
+                        activeCount++;
+                    }
+                }
+            }
+        }
+
+        function getVisibleBubbles(pool, alphaBase) {
+            return pool
+                .filter(b => b.visible && b.y >= 0 && b.y <= 100)
+                .map(b => ({
+                    x: b.x,
+                    y: b.y,
+                    r: b.r,
+                    hue: b.hue,
+                    alpha: alphaBase
+                }));
+        }
+
+        const clock = new Chart(ctx, {
+            type: 'bubble',
+            data: {
+                datasets: [{
+                    data: [],
+                    backgroundColor: [],
+                    borderColor: [],
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: { enabled: false }
+                },
+                scales: {
+                    x: { min: 0, max: 100, display: false },
+                    y: { min: 0, max: 100, display: false, reverse: true }
+                }
+            }
+        });
+
+        function animate() {
+            const now = new Date();
+            const hours = now.getHours() % 12; // 0-11
+            const minutes = now.getMinutes();
+            const seconds = now.getSeconds();
+
+            updatePool(hourPool, hours);
+            updatePool(minutePool, minutes);
+            updatePool(secondPool, seconds);
+
+            const allBubbles = [
+                ...getVisibleBubbles(hourPool, 0.85),
+                ...getVisibleBubbles(minutePool, 0.7),
+                ...getVisibleBubbles(secondPool, 0.75)
+            ];
+
+            clock.data.datasets[0].data = allBubbles.map(b => ({ x: b.x, y: b.y, r: b.r }));
+            clock.data.datasets[0].backgroundColor = allBubbles.map(b =>
+                `hsla(${b.hue}, 80%, 55%, ${b.alpha})`
+            );
+            clock.data.datasets[0].borderColor = allBubbles.map(b =>
+                `hsla(${b.hue}, 80%, 70%, ${b.alpha + 0.1})`
+            );
+
+            clock.update('none');
+            requestAnimationFrame(animate);
+        }
+
+        animate();
+    </script>
+</body>
+</html>

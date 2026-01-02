@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Analoge Klok</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background: linear-gradient(180deg, #0c1445, #0a2a4a, #0c3b5e);
+        }
+        .clock-container {
+            position: relative;
+            width: 420px;
+            height: 420px;
+            filter: drop-shadow(0 0 45px rgba(64, 224, 208, 0.35));
+        }
+    </style>
+</head>
+<body>
+    <div class="clock-container">
+        <canvas id="clock"></canvas>
+    </div>
+
+    <script>
+        const ctx = document.getElementById('clock').getContext('2d');
+
+        function getClockData() {
+            const now = new Date();
+            const hours = now.getHours() % 12;
+            const minutes = now.getMinutes();
+            const seconds = now.getSeconds();
+
+            // Offset: segment 15 staat op 12 uur
+            const hourIndex = (hours + 3) % 12;
+            const minuteIndex = (minutes + 15) % 60;
+            const secondIndex = (seconds + 15) % 60;
+
+            // Uren - diep oceaanblauw
+            const hourData = Array(12).fill(1);
+            const hourColors = Array(12).fill('rgba(255, 255, 255, 0.06)');
+            hourColors[hourIndex] = '#1e90ff';
+            hourColors[(hourIndex + 1) % 12] = 'rgba(30, 144, 255, 0.35)';
+            hourColors[(hourIndex + 11) % 12] = 'rgba(30, 144, 255, 0.35)';
+
+            // Minuten - turquoise
+            const minuteData = Array(60).fill(1);
+            const minuteColors = Array(60).fill('rgba(255, 255, 255, 0.03)');
+            minuteColors[minuteIndex] = '#40e0d0';
+            minuteColors[(minuteIndex + 1) % 60] = 'rgba(64, 224, 208, 0.45)';
+            minuteColors[(minuteIndex + 59) % 60] = 'rgba(64, 224, 208, 0.45)';
+
+            // Seconden met trail effect - aqua/zeeschuim
+            const secondData = Array(60).fill(1);
+            const secondColors = Array(60).fill('rgba(255, 255, 255, 0.015)');
+            secondColors[secondIndex] = '#7fffd4';
+            for (let i = 1; i <= 6; i++) {
+                const trailIndex = (secondIndex + 60 - i) % 60;
+                secondColors[trailIndex] = `rgba(127, 255, 212, ${0.55 - i * 0.08})`;
+            }
+
+            return { hourData, hourColors, minuteData, minuteColors, secondData, secondColors };
+        }
+
+        const initialData = getClockData();
+
+        const clock = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                datasets: [
+                    {
+                        data: initialData.hourData,
+                        backgroundColor: initialData.hourColors,
+                        borderWidth: 0,
+                        weight: 4,
+                        spacing: 2
+                    },
+                    {
+                        data: initialData.minuteData,
+                        backgroundColor: initialData.minuteColors,
+                        borderWidth: 0,
+                        weight: 2,
+                        spacing: 1
+                    },
+                    {
+                        data: initialData.secondData,
+                        backgroundColor: initialData.secondColors,
+                        borderWidth: 0,
+                        weight: 1,
+                        spacing: 1
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                cutout: '45%',
+                rotation: -90,
+                animation: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: { enabled: false }
+                }
+            }
+        });
+
+        function updateClock() {
+            const data = getClockData();
+            clock.data.datasets[0].backgroundColor = data.hourColors;
+            clock.data.datasets[1].backgroundColor = data.minuteColors;
+            clock.data.datasets[2].backgroundColor = data.secondColors;
+            clock.update('none');
+        }
+
+        updateClock();
+        setInterval(updateClock, 1000);
+    </script>
+</body>
+</html>

@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test offset</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div style="width:400px;height:400px;">
+        <canvas id="test"></canvas>
+    </div>
+    <p id="info"></p>
+    <script>
+        // Toon huidige tijd en waar de segmenten staan
+        const now = new Date();
+        const seconds = now.getSeconds();
+
+        document.getElementById('info').innerHTML =
+            `Huidige seconde: ${seconds}<br>Groene segment moet exact bovenaan staan (12 uur positie)`;
+
+        const colors = Array(60).fill('rgba(100,100,100,0.2)');
+
+        // Markeer elke 15 seconden positie
+        colors[0] = 'rgba(255,255,255,0.5)';   // 0 sec
+        colors[15] = 'rgba(255,255,255,0.5)';  // 15 sec
+        colors[30] = 'rgba(255,255,255,0.5)';  // 30 sec
+        colors[45] = 'rgba(255,255,255,0.5)';  // 45 sec
+
+        // Huidige seconde in groen - ZONDER offset
+        colors[seconds] = '#16c79a';
+
+        new Chart(document.getElementById('test'), {
+            type: 'doughnut',
+            data: {
+                datasets: [{
+                    data: Array(60).fill(1),
+                    backgroundColor: colors
+                }]
+            },
+            options: {
+                rotation: -90,
+                plugins: {
+                    legend: { display: false }
+                }
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Polar Clock</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background: radial-gradient(ellipse at center, #1a1a3e 0%, #0a0a1f 100%);
+        }
+        .chart-container {
+            width: 550px;
+            height: 550px;
+            filter: drop-shadow(0 0 60px rgba(120, 100, 255, 0.4));
+        }
+    </style>
+</head>
+<body>
+    <div class="chart-container">
+        <canvas id="polarClock"></canvas>
+    </div>
+
+    <script>
+        const ctx = document.getElementById('polarClock').getContext('2d');
+
+        // Smooth interpolatie waardes
+        let currentData = Array(12).fill(2);
+        let targetData = Array(12).fill(2);
+
+        const clock = new Chart(ctx, {
+            type: 'polarArea',
+            data: {
+                labels: ['12', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11'],
+                datasets: [{
+                    data: currentData,
+                    backgroundColor: Array(12).fill('rgba(255,255,255,0.05)'),
+                    borderColor: 'rgba(255,255,255,0.15)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                animation: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: { enabled: false }
+                },
+                scales: {
+                    r: {
+                        min: 0,
+                        max: 12,
+                        ticks: { display: false },
+                        grid: {
+                            color: 'rgba(255,255,255,0.08)',
+                            circular: true
+                        },
+                        angleLines: {
+                            color: 'rgba(255,255,255,0.08)'
+                        },
+                        pointLabels: {
+                            color: 'rgba(255,255,255,0.6)',
+                            font: { size: 14 }
+                        }
+                    }
+                }
+            }
+        });
+
+        function lerp(start, end, factor) {
+            return start + (end - start) * factor;
+        }
+
+        function getTargetValues() {
+            const now = new Date();
+            const hours = now.getHours() % 12;
+            const minutes = now.getMinutes();
+            const seconds = now.getSeconds();
+            const ms = now.getMilliseconds();
+
+            // Smooth second position (0-11.99)
+            const smoothSecond = (seconds + ms / 1000) / 5;
+            const secondPos = Math.floor(smoothSecond) % 12;
+            const secondFade = smoothSecond % 1;
+
+            // Minute position
+            const minutePos = Math.floor(minutes / 5);
+
+            const data = Array(12).fill(1.5);
+            const colors = Array(12).fill('rgba(100, 100, 150, 0.15)');
+
+            // Seconds trail - geel/oranje
+            for (let i = 0; i < 3; i++) {
+                const pos = (secondPos - i + 12) % 12;
+                const intensity = 1 - (i * 0.3) - (secondFade * 0.2);
+                if (intensity > 0) {
+                    colors[pos] = `rgba(255, ${180 + i * 20}, 50, ${intensity * 0.6})`;
+                    data[pos] = Math.max(data[pos], 4 - i);
+                }
+            }
+
+            // Minutes - groen/cyan
+            colors[minutePos] = 'rgba(50, 230, 180, 0.85)';
+            data[minutePos] = Math.max(data[minutePos], 8);
+            // Glow neighbors
+            colors[(minutePos + 1) % 12] = colors[(minutePos + 1) % 12].includes('255')
+                ? colors[(minutePos + 1) % 12]
+                : 'rgba(50, 230, 180, 0.25)';
+            colors[(minutePos + 11) % 12] = colors[(minutePos + 11) % 12].includes('255')
+                ? colors[(minutePos + 11) % 12]
+                : 'rgba(50, 230, 180, 0.25)';
+            data[(minutePos + 1) % 12] = Math.max(data[(minutePos + 1) % 12], 3);
+            data[(minutePos + 11) % 12] = Math.max(data[(minutePos + 11) % 12], 3);
+
+            // Hours - magenta/roze (largest, overwrites)
+            colors[hours] = 'rgba(255, 80, 180, 0.95)';
+            data[hours] = 12;
+            colors[(hours + 1) % 12] = 'rgba(255, 80, 180, 0.3)';
+            colors[(hours + 11) % 12] = 'rgba(255, 80, 180, 0.3)';
+            data[(hours + 1) % 12] = Math.max(data[(hours + 1) % 12], 5);
+            data[(hours + 11) % 12] = Math.max(data[(hours + 11) % 12], 5);
+
+            return { data, colors };
+        }
+
+        function animate() {
+            const target = getTargetValues();
+            targetData = target.data;
+
+            // Smooth interpolatie
+            for (let i = 0; i < 12; i++) {
+                currentData[i] = lerp(currentData[i], targetData[i], 0.15);
+            }
+
+            clock.data.datasets[0].data = currentData;
+            clock.data.datasets[0].backgroundColor = target.colors;
+            clock.update();
+
+            requestAnimationFrame(animate);
+        }
+
+        animate();
+    </script>
+</body>
+</html>

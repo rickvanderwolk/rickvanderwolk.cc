@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Simple One - HTML Inspector Experience</title>
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #0a0a0a;
+    }
+  </style>
+</head>
+<body>
+  <div id="t"></div>
+  <script>
+    const t = document.getElementById('t');
+
+    function update() {
+      const now = new Date();
+      const h = now.getHours();
+      const m = now.getMinutes();
+      const s = now.getSeconds();
+
+      t.style.cssText = `
+        --h: ${h};
+        --m: ${m};
+        --s: ${s};
+        width: ${h * 5}px;
+        height: ${m * 2}px;
+        background: hsl(${s * 6}, 60%, 50%);
+      `;
+    }
+
+    update();
+    setInterval(update, 1000);
+  </script>
+</body>
+</html>

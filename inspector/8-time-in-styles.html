@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Time In Styles - HTML Inspector Experience</title>
+</head>
+<body>
+  <p style="position:fixed;bottom:20px;left:20px;color:#333;font-family:monospace;font-size:12px;">
+    Open Inspector → Selecteer &lt;body&gt; → Lees de tijd in de styles!
+  </p>
+
+  <script>
+    function update() {
+      const now = new Date();
+      const h = now.getHours();
+      const m = now.getMinutes();
+      const s = now.getSeconds();
+      const ms = now.getMilliseconds();
+
+      // Time as various CSS values
+      const styles = {
+        // RGB: hours, minutes, seconds scaled to 0-255
+        background: `rgb(${Math.floor(h * 10.6)}, ${Math.floor(m * 4.25)}, ${Math.floor(s * 4.25)})`,
+
+        // Font size = seconds
+        fontSize: `${s + 10}px`,
+
+        // Letter spacing = minutes / 10
+        letterSpacing: `${m / 10}px`,
+
+        // Word spacing = hours
+        wordSpacing: `${h}px`,
+
+        // Line height = 1.{seconds}
+        lineHeight: `1.${s.toString().padStart(2, '0')}`,
+
+        // Border = time as widths
+        borderTop: `${h}px solid hsl(${h * 15}, 70%, 50%)`,
+        borderRight: `${m}px solid hsl(${m * 6}, 70%, 50%)`,
+        borderBottom: `${s}px solid hsl(${s * 6}, 70%, 50%)`,
+        borderLeft: `${Math.floor(ms / 100)}px solid white`,
+
+        // Opacity based on seconds
+        opacity: `0.${(50 + s).toString()}`,
+
+        // Padding = H:M:S
+        paddingTop: `${h}px`,
+        paddingRight: `${m}px`,
+        paddingBottom: `${s}px`,
+        paddingLeft: `${Math.floor(ms / 10)}px`,
+
+        // Margin encodes time too
+        marginTop: `${h}px`,
+        marginLeft: `${m}px`,
+
+        // Text indent = minutes
+        textIndent: `${m}px`,
+
+        // Outline = seconds
+        outline: `${Math.floor(s / 6)}px dotted hsl(${s * 6}, 80%, 60%)`,
+
+        // Box shadow with time-based offset
+        boxShadow: `${h}px ${m}px ${s}px rgba(255, 255, 255, 0.3)`,
+
+        // Text shadow
+        textShadow: `${Math.floor(s / 10)}px ${Math.floor(m / 10)}px ${Math.floor(h / 5)}px currentColor`,
+
+        // Min dimensions encode time
+        minWidth: `${h * 10 + m}px`,
+        minHeight: `${m * 10 + s}px`,
+
+        color: `hsl(${s * 6}, 70%, 70%)`,
+        fontFamily: 'monospace',
+      };
+
+      // Apply all styles
+      Object.assign(document.body.style, styles);
+
+      // Data attributes with readable time
+      document.body.setAttribute('data-time',
+        `${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`
+      );
+      document.body.setAttribute('data-hours', h);
+      document.body.setAttribute('data-minutes', m);
+      document.body.setAttribute('data-seconds', s);
+      document.body.setAttribute('data-ms', ms);
+
+      // Hints
+      document.body.setAttribute('data-hint-rgb', `rgb(H×10, M×4, S×4)`);
+      document.body.setAttribute('data-hint-font-size', `${s}+10 = seconds`);
+      document.body.setAttribute('data-hint-padding', `top:H right:M bottom:S left:ms/10`);
+      document.body.setAttribute('data-hint-border', `top:Hpx right:Mpx bottom:Spx`);
+    }
+
+    update();
+    setInterval(update, 50);
+  </script>
+</body>
+</html>

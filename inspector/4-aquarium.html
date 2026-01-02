@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aquarium - HTML Inspector Experience</title>
+  <style>
+    body {
+      margin: 0;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #0a0a0a;
+      font-family: monospace;
+    }
+    .instructions {
+      text-align: center;
+      color: #444;
+    }
+    kbd {
+      background: #222;
+      padding: 4px 8px;
+      border-radius: 4px;
+      border: 1px solid #333;
+      color: #666;
+    }
+    #tank { position: absolute; opacity: 0; pointer-events: none; }
+  </style>
+</head>
+<body>
+  <div class="instructions">
+    <p>Open de HTML Inspector om het aquarium te zien</p>
+    <p><kbd>F12</kbd> → Elements → kijk naar <code>&lt;div id="tank"&gt;</code></p>
+  </div>
+
+  <div id="tank"></div>
+
+  <script>
+    const WIDTH = 50;
+    const HEIGHT = 15;
+
+    const FISH_TYPES = [
+      { emoji: '🐟', speed: 1.5 },
+      { emoji: '🐠', speed: 1.2 },
+      { emoji: '🐡', speed: 0.8 },
+      { emoji: '🦈', speed: 2.0 },
+      { emoji: '🐙', speed: 0.5 },
+      { emoji: '🦑', speed: 0.7 },
+    ];
+
+    class Fish {
+      constructor() {
+        const type = FISH_TYPES[Math.floor(Math.random() * FISH_TYPES.length)];
+        this.emoji = type.emoji;
+        this.speed = type.speed * (0.8 + Math.random() * 0.4);
+        this.x = Math.random() * WIDTH;
+        this.y = Math.floor(Math.random() * HEIGHT);
+        this.dir = Math.random() < 0.5 ? 1 : -1;
+        this.name = this.randomName();
+      }
+
+      randomName() {
+        const names = ['Nemo', 'Dory', 'Bubbles', 'Gill', 'Bloat', 'Peach', 'Jacques', 'Gurgle', 'Deb', 'Bruce', 'Anchor', 'Chum', 'Nigel', 'Crush', 'Squirt', 'Marlin', 'Coral'];
+        return names[Math.floor(Math.random() * names.length)];
+      }
+
+      update() {
+        this.x += this.speed * this.dir;
+
+        // Bounce at edges
+        if (this.x >= WIDTH - 2) {
+          this.x = WIDTH - 2;
+          this.dir = -1;
+        } else if (this.x <= 0) {
+          this.x = 0;
+          this.dir = 1;
+        }
+
+        // Occasionally change depth
+        if (Math.random() < 0.02) {
+          this.y += Math.random() < 0.5 ? -1 : 1;
+          this.y = Math.max(0, Math.min(HEIGHT - 1, this.y));
+        }
+      }
+    }
+
+    class Bubble {
+      constructor() {
+        this.x = Math.floor(Math.random() * WIDTH);
+        this.y = HEIGHT - 1;
+        this.speed = 0.3 + Math.random() * 0.3;
+        this.char = Math.random() < 0.5 ? '°' : '○';
+      }
+
+      update() {
+        this.y -= this.speed;
+        // Wobble
+        if (Math.random() < 0.3) {
+          this.x += Math.random() < 0.5 ? -1 : 1;
+        }
+      }
+
+      isDead() {
+        return this.y < 0;
+      }
+    }
+
+    class Aquarium {
+      constructor() {
+        this.tank = document.getElementById('tank');
+        this.fish = [];
+        this.bubbles = [];
+        this.frame = 0;
+
+        // Add some fish
+        for (let i = 0; i < 6; i++) {
+          this.fish.push(new Fish());
+        }
+
+        this.render();
+        setInterval(() => this.tick(), 150);
+      }
+
+      tick() {
+        this.frame++;
+
+        // Update fish
+        this.fish.forEach(f => f.update());
+
+        // Update bubbles
+        this.bubbles.forEach(b => b.update());
+        this.bubbles = this.bubbles.filter(b => !b.isDead());
+
+        // Spawn bubbles
+        if (Math.random() < 0.1) {
+          this.bubbles.push(new Bubble());
+        }
+
+        this.render();
+      }
+
+      render() {
+        let html = `<div data-aquarium="🐚 Aquarium 🐚" data-frame="${this.frame}"></div>\n`;
+        html += `<hr data-═══════════════════════════════════════════════════>\n`;
+
+        // Fish list
+        this.fish.forEach((f, i) => {
+          const dir = f.dir === 1 ? '→' : '←';
+          const depth = f.y < 5 ? 'surface' : f.y < 10 ? 'middle' : 'deep';
+          html += `<div data-fish="${f.emoji}" data-name="${f.name}" data-x="${Math.floor(f.x)}" data-dir="${dir}" data-depth="${depth}"></div>\n`;
+        });
+
+        html += `<hr data-───────────────────────────────────────────────────>\n`;
+
+        // Bubbles
+        const bubbleCount = this.bubbles.length;
+        if (bubbleCount > 0) {
+          const bubbleChars = this.bubbles.map(b => b.char).join(' ');
+          html += `<div data-bubbles="${bubbleCount}" data-rising="${bubbleChars}"></div>\n`;
+        }
+
+        html += `<hr data-───────────────────────────────────────────────────>\n`;
+
+        // ASCII view
+        const grid = Array(HEIGHT).fill(null).map(() => Array(WIDTH).fill('~'));
+
+        // Place bubbles
+        this.bubbles.forEach(b => {
+          const x = Math.floor(b.x);
+          const y = Math.floor(b.y);
+          if (x >= 0 && x < WIDTH && y >= 0 && y < HEIGHT) {
+            grid[y][x] = b.char;
+          }
+        });
+
+        // Place fish (on top)
+        this.fish.forEach(f => {
+          const x = Math.floor(f.x);
+          if (x >= 0 && x < WIDTH && f.y >= 0 && f.y < HEIGHT) {
+            const fishChar = f.dir === 1 ? '>' : '<';
+            grid[f.y][x] = fishChar;
+          }
+        });
+
+        // Render grid
+        grid.forEach((row, y) => {
+          html += `<div data-depth="${y.toString().padStart(2,'0')}">${row.join('')}</div>\n`;
+        });
+
+        html += `<hr data-═══════════════════════════════════════════════════>`;
+
+        this.tank.innerHTML = html;
+      }
+    }
+
+    new Aquarium();
+  </script>
+</body>
+</html>

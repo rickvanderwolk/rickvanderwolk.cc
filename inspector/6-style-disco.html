@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Style Disco - HTML Inspector Experience</title>
+  <style>
+    body {
+      margin: 0;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #0a0a0a;
+      font-family: monospace;
+    }
+    .instructions {
+      text-align: center;
+      color: #444;
+    }
+    kbd {
+      background: #222;
+      padding: 4px 8px;
+      border-radius: 4px;
+      border: 1px solid #333;
+      color: #666;
+    }
+    #disco { position: absolute; top: -9999px; }
+  </style>
+</head>
+<body>
+  <div class="instructions">
+    <p>Open de HTML Inspector</p>
+    <p><kbd>F12</kbd> → Elements → bekijk de <code>style=""</code> attributen</p>
+    <p style="color:#555; margin-top:20px;">Zie de RGB waardes en transforms live veranderen!</p>
+  </div>
+
+  <div id="disco"></div>
+
+  <script>
+    const container = document.getElementById('disco');
+    let frame = 0;
+
+    function hslToRgb(h, s, l) {
+      h /= 360; s /= 100; l /= 100;
+      let r, g, b;
+      if (s === 0) { r = g = b = l; }
+      else {
+        const hue2rgb = (p, q, t) => {
+          if (t < 0) t += 1;
+          if (t > 1) t -= 1;
+          if (t < 1/6) return p + (q - p) * 6 * t;
+          if (t < 1/2) return q;
+          if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+          return p;
+        };
+        const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+        const p = 2 * l - q;
+        r = hue2rgb(p, q, h + 1/3);
+        g = hue2rgb(p, q, h);
+        b = hue2rgb(p, q, h - 1/3);
+      }
+      return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
+    }
+
+    function update() {
+      frame++;
+      const t = frame * 0.02;
+
+      // Rainbow cycle
+      const hue1 = (frame * 2) % 360;
+      const hue2 = (frame * 3 + 120) % 360;
+      const hue3 = (frame * 1.5 + 240) % 360;
+
+      const [r1, g1, b1] = hslToRgb(hue1, 80, 50);
+      const [r2, g2, b2] = hslToRgb(hue2, 80, 50);
+      const [r3, g3, b3] = hslToRgb(hue3, 80, 50);
+
+      // Transforms
+      const rotate = Math.floor(frame * 2) % 360;
+      const scale = (Math.sin(t) + 1.5).toFixed(2);
+      const skewX = Math.floor(Math.sin(t * 1.3) * 20);
+      const translateX = Math.floor(Math.sin(t * 0.7) * 50);
+
+      // Opacity pulse
+      const opacity = ((Math.sin(t * 2) + 1) / 2 * 0.7 + 0.3).toFixed(2);
+
+      container.innerHTML = `
+<div data-disco="🪩 STYLE DISCO 🪩" data-frame="${frame}"></div>
+<hr data-════════════════════════════════════════════════>
+
+<div data-name="rainbow-1" style="background: rgb(${r1}, ${g1}, ${b1}); width: 50px; height: 20px;"></div>
+<div data-name="rainbow-2" style="background: rgb(${r2}, ${g2}, ${b2}); width: 50px; height: 20px;"></div>
+<div data-name="rainbow-3" style="background: rgb(${r3}, ${g3}, ${b3}); width: 50px; height: 20px;"></div>
+
+<hr data-────────────────────────────────────────────────>
+
+<div data-name="spinner" style="transform: rotate(${rotate}deg); width: 30px; height: 30px; background: white;"></div>
+<div data-name="pulser" style="transform: scale(${scale}); width: 30px; height: 30px; background: cyan;"></div>
+<div data-name="skewer" style="transform: skewX(${skewX}deg); width: 30px; height: 30px; background: yellow;"></div>
+<div data-name="slider" style="transform: translateX(${translateX}px); width: 30px; height: 30px; background: lime;"></div>
+
+<hr data-────────────────────────────────────────────────>
+
+<div data-name="fader" style="opacity: ${opacity}; background: white; width: 50px; height: 20px;"></div>
+<div data-name="combo" style="background: rgb(${r1}, ${g1}, ${b1}); transform: rotate(${rotate}deg) scale(${scale}); opacity: ${opacity}; width: 40px; height: 40px;"></div>
+
+<hr data-────────────────────────────────────────────────>
+
+<div data-name="gradient" style="background: linear-gradient(${rotate}deg, rgb(${r1},${g1},${b1}), rgb(${r2},${g2},${b2})); width: 100px; height: 30px;"></div>
+<div data-name="shadow" style="box-shadow: ${Math.floor(Math.sin(t)*10)}px ${Math.floor(Math.cos(t)*10)}px 20px rgb(${r1},${g1},${b1}); width: 50px; height: 50px; background: #222;"></div>
+
+<hr data-════════════════════════════════════════════════>
+`;
+    }
+
+    update();
+    setInterval(update, 50);
+  </script>
+</body>
+</html>

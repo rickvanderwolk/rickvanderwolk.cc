@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Minimal Time - HTML Inspector Experience</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      background: #0a0a0a;
+    }
+    .hint {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
+      color: #222;
+      font-family: monospace;
+      font-size: 11px;
+    }
+  </style>
+</head>
+<body>
+  <div class="hint">tijd zit in de vormen</div>
+  <div id="uur"></div>
+  <div id="minuut"></div>
+  <div id="seconde"></div>
+
+  <script>
+    const uur = document.getElementById('uur');
+    const minuut = document.getElementById('minuut');
+    const seconde = document.getElementById('seconde');
+
+    function update() {
+      const now = new Date();
+      const h = now.getHours();
+      const m = now.getMinutes();
+      const s = now.getSeconds();
+
+      uur.style.cssText = `
+        --uur: ${h};
+        width: ${h * 4}px;
+        height: ${h * 4}px;
+        background: hsl(220, 60%, 50%);
+        border-radius: ${h}px;
+      `;
+
+      minuut.style.cssText = `
+        --minuut: ${m};
+        width: ${m * 2}px;
+        height: ${m * 2}px;
+        border: ${Math.max(1, m / 6)}px solid hsl(150, 60%, 50%);
+        border-radius: 50%;
+      `;
+
+      seconde.style.cssText = `
+        --seconde: ${s};
+        width: 4px;
+        height: ${s * 2}px;
+        background: hsl(${s * 6}, 70%, 60%);
+      `;
+    }
+
+    update();
+    setInterval(update, 1000);
+  </script>
+</body>
+</html>

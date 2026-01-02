@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>One Element Time - HTML Inspector Experience</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #0a0a0a;
+    }
+    .hint {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
+      color: #222;
+      font-family: monospace;
+      font-size: 11px;
+    }
+  </style>
+</head>
+<body>
+  <div class="hint">1 element, alle tijd</div>
+  <div id="clock"></div>
+
+  <script>
+    const clock = document.getElementById('clock');
+
+    function update() {
+      const now = new Date();
+      const h = now.getHours();
+      const m = now.getMinutes();
+      const s = now.getSeconds();
+
+      clock.style.cssText = `
+        --uur: ${h};
+        --minuut: ${m};
+        --seconde: ${s};
+
+        width: ${80 + h * 2}px;
+        height: ${80 + h * 2}px;
+
+        border-radius: ${h}px ${m}px ${s}px ${60 - s}px;
+
+        border-top: ${Math.max(1, h / 3)}px solid hsl(220, 70%, 60%);
+        border-right: ${Math.max(1, m / 6)}px solid hsl(150, 70%, 60%);
+        border-bottom: ${Math.max(1, s / 6)}px solid hsl(${s * 6}, 70%, 60%);
+        border-left: 1px solid #333;
+
+        background: linear-gradient(
+          ${s * 6}deg,
+          hsl(220, 40%, ${15 + h}%) 0%,
+          hsl(150, 40%, ${15 + m/2}%) 100%
+        );
+
+        box-shadow:
+          ${h}px 0 0 hsl(220, 70%, 50%),
+          0 ${m}px 0 hsl(150, 70%, 50%),
+          -${s}px 0 0 hsl(${s * 6}, 70%, 50%);
+      `;
+    }
+
+    update();
+    setInterval(update, 1000);
+  </script>
+</body>
+</html>

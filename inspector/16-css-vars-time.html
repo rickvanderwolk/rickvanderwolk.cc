@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CSS Vars Time - HTML Inspector Experience</title>
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #0a0a0a;
+    }
+    #t {
+      --h: 0;
+      --m: 0;
+      --s: 0;
+
+      width: calc(var(--h) * 5px);
+      height: calc(var(--m) * 2px);
+      border-radius: calc(var(--s) * 1px);
+      background: hsl(calc(var(--s) * 6), 60%, 50%);
+      border: calc(var(--h) / 6 * 1px) solid hsl(calc(var(--m) * 6), 70%, 70%);
+    }
+  </style>
+</head>
+<body>
+  <div id="t"></div>
+  <script>
+    const t = document.getElementById('t');
+
+    function update() {
+      const now = new Date();
+      t.style.setProperty('--h', now.getHours());
+      t.style.setProperty('--m', now.getMinutes());
+      t.style.setProperty('--s', now.getSeconds());
+    }
+
+    update();
+    setInterval(update, 1000);
+  </script>
+</body>
+</html>

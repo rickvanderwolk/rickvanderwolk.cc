@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hidden Time - HTML Inspector Experience</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #111;
+      font-family: monospace;
+    }
+    .hint {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
+      color: #333;
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="hint">De tijd zit verstopt in de styles...</div>
+
+  <div id="box"></div>
+
+  <script>
+    const box = document.getElementById('box');
+
+    function update() {
+      const now = new Date();
+      const h = now.getHours();
+      const m = now.getMinutes();
+      const s = now.getSeconds();
+
+      // Visual box where dimensions ARE the time
+      box.style.cssText = `
+        width: ${h * 10}px;
+        height: ${m * 4}px;
+        background: rgb(${h * 10}, ${m * 4}, ${s * 4});
+        border-radius: ${s}px;
+        border: ${Math.floor(h / 3)}px solid rgb(${s * 4}, ${m * 4}, ${h * 10});
+      `;
+    }
+
+    update();
+    setInterval(update, 1000);
+  </script>
+</body>
+</html>

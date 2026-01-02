@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lava Lamp - HTML Inspector Experience</title>
+  <style>
+    body {
+      margin: 0;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #0a0a0a;
+      color: #333;
+      font-family: monospace;
+      font-size: 14px;
+    }
+    .instructions {
+      text-align: center;
+      color: #444;
+    }
+    .instructions kbd {
+      background: #222;
+      padding: 4px 8px;
+      border-radius: 4px;
+      border: 1px solid #333;
+      color: #666;
+    }
+  </style>
+</head>
+<body>
+  <div class="instructions">
+    <p>Open de HTML Inspector om de lava lamp te zien</p>
+    <p><kbd>F12</kbd> of <kbd>Cmd+Option+I</kbd> → Elements tab</p>
+    <p style="color: #333; margin-top: 20px;">Tip: Option+klik op ▶ om alles te openen</p>
+  </div>
+
+  <!--
+
+  ═══════════════════════════════════════════════════════════════
+  ║                                                             ║
+  ║                     L A V A   L A M P                       ║
+  ║                                                             ║
+  ║            Open deze comment om de lamp te zien!            ║
+  ║                                                             ║
+  ═══════════════════════════════════════════════════════════════
+
+  -->
+
+  <div id="lamp"></div>
+
+  <script>
+    const LAMP_HEIGHT = 30;
+    const LAMP_WIDTH = 20;
+
+    class Blob {
+      constructor(y, size) {
+        this.id = Math.random().toString(36).substr(2, 4);
+        this.y = y;
+        this.size = size || 2;
+        this.velocity = Math.random() * 0.4 + 0.1;
+        this.direction = y < LAMP_HEIGHT / 2 ? 1 : -1;
+        this.x = Math.floor(Math.random() * (LAMP_WIDTH - 4)) + 2;
+      }
+
+      update() {
+        this.y += this.velocity * this.direction;
+
+        // Bounce
+        if (this.y >= LAMP_HEIGHT - 2) {
+          this.y = LAMP_HEIGHT - 2;
+          this.direction = -1;
+          this.velocity = Math.random() * 0.3 + 0.1;
+          if (Math.random() < 0.3) this.size = Math.min(4, this.size + 1);
+        } else if (this.y <= 1) {
+          this.y = 1;
+          this.direction = 1;
+          this.velocity = Math.random() * 0.3 + 0.1;
+          if (Math.random() < 0.3) this.size = Math.max(1, this.size - 1);
+        }
+
+        // Wobble x
+        if (Math.random() < 0.1) {
+          this.x += Math.random() < 0.5 ? -1 : 1;
+          this.x = Math.max(2, Math.min(LAMP_WIDTH - 3, this.x));
+        }
+      }
+    }
+
+    class LavaLamp {
+      constructor() {
+        this.lamp = document.getElementById('lamp');
+        this.blobs = [
+          new Blob(5, 2),
+          new Blob(12, 3),
+          new Blob(20, 2),
+          new Blob(25, 1),
+        ];
+        this.frame = 0;
+        this.render();
+        setInterval(() => this.tick(), 200);
+      }
+
+      tick() {
+        this.frame++;
+        this.blobs.forEach(b => b.update());
+
+        // Random spawn/despawn
+        if (this.blobs.length < 3 && Math.random() < 0.05) {
+          this.blobs.push(new Blob(Math.random() * LAMP_HEIGHT, 1));
+        }
+        if (this.blobs.length > 6 && Math.random() < 0.1) {
+          this.blobs.pop();
+        }
+
+        this.render();
+      }
+
+      render() {
+        // Build the lamp as ASCII in a single comment block
+        let grid = [];
+        for (let row = 0; row < LAMP_HEIGHT; row++) {
+          grid[row] = Array(LAMP_WIDTH).fill(' ');
+          grid[row][0] = '║';
+          grid[row][LAMP_WIDTH - 1] = '║';
+        }
+
+        // Draw blobs
+        this.blobs.forEach((blob, i) => {
+          const row = Math.floor(blob.y);
+          const char = blob.direction === -1 ? '●' : '○';
+
+          for (let dy = 0; dy < blob.size; dy++) {
+            for (let dx = 0; dx < blob.size; dx++) {
+              const r = row + dy;
+              const c = blob.x + dx;
+              if (r >= 0 && r < LAMP_HEIGHT && c > 0 && c < LAMP_WIDTH - 1) {
+                grid[r][c] = char;
+              }
+            }
+          }
+        });
+
+        // Build output
+        const top = '╔' + '═'.repeat(LAMP_WIDTH - 2) + '╗';
+        const bot = '╚' + '═'.repeat(LAMP_WIDTH - 2) + '╝';
+        const info = `Frame: ${this.frame} | Blobs: ${this.blobs.length}`;
+
+        let ascii = `\n\n`;
+        ascii += `    LAVA LAMP\n`;
+        ascii += `    ${info}\n\n`;
+        ascii += `    ${top}\n`;
+        grid.forEach(row => {
+          ascii += `    ${row.join('')}\n`;
+        });
+        ascii += `    ${bot}\n\n`;
+
+        // Blob details
+        ascii += `    BLOB STATUS:\n`;
+        this.blobs.forEach((b, i) => {
+          const dir = b.direction === -1 ? '↑ rising' : '↓ falling';
+          const heat = b.y > 20 ? 'HOT' : b.y > 10 ? 'warm' : 'cool';
+          ascii += `    [${i + 1}] y:${Math.floor(b.y).toString().padStart(2)} size:${b.size} ${dir} (${heat})\n`;
+        });
+
+        ascii += `\n`;
+
+        // Update DOM with single comment
+        this.lamp.innerHTML = `<!--${ascii}-->`;
+      }
+    }
+
+    new LavaLamp();
+  </script>
+</body>
+</html>

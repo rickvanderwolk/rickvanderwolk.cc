@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Creative Time - HTML Inspector Experience</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #0a0a0a;
+    }
+    .hint {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
+      color: #333;
+      font-family: monospace;
+      font-size: 12px;
+    }
+    #clock::before {
+      content: var(--face);
+      font-size: 80px;
+    }
+  </style>
+</head>
+<body>
+  <div class="hint">Inspecteer... de tijd zit overal verstopt</div>
+  <div id="clock"></div>
+
+  <script>
+    const clock = document.getElementById('clock');
+    const faces = ['😐', '😑', '😶', '🙂', '😊', '😌'];
+
+    function update() {
+      const now = new Date();
+      const h = now.getHours();
+      const m = now.getMinutes();
+      const s = now.getSeconds();
+      const time = `${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
+
+      // z-index is de tijd als getal: 143247 = 14:32:47
+      const zIndex = h * 10000 + m * 100 + s;
+
+      // cursor hint
+      const cursors = ['wait', 'progress', 'default'];
+      const cursor = cursors[s % 3];
+
+      // face changes per 10 sec
+      const face = faces[Math.floor(s / 10)];
+
+      // animation-duration is minuten
+      // transition-delay is seconden
+      // font-size is het uur (soort van)
+
+      clock.style.cssText = `
+        /* === DE TIJD === */
+        --tijd: "${time}";
+        --uur: ${h};
+        --minuut: ${m};
+        --seconde: ${s};
+
+        /* === VERSTOPT === */
+        z-index: ${zIndex};
+        font-family: "${time}", "Clock", monospace;
+        animation: tick ${m}s infinite;
+        transition: all ${s}ms ease-in-out;
+
+        /* === VISUEEL === */
+        --face: "${face}";
+        filter: hue-rotate(${s * 6}deg);
+        cursor: ${cursor};
+
+        /* === NERDY === */
+        tab-size: ${h};
+        orphans: ${m};
+        widows: ${s};
+        counter-reset: uur ${h} minuut ${m} seconde ${s};
+
+        /* === LAYOUT === */
+        padding: ${h}px ${m}px ${s}px;
+        outline: ${Math.floor(s/10)}px solid hsl(${s * 6}, 70%, 50%);
+        outline-offset: ${m}px;
+      `;
+    }
+
+    update();
+    setInterval(update, 1000);
+  </script>
+</body>
+</html>

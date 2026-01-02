@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Breathing Box - HTML Inspector Experience</title>
+  <style>
+    body {
+      margin: 0;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #0a0a0a;
+      font-family: monospace;
+    }
+    .instructions {
+      text-align: center;
+      color: #444;
+    }
+    kbd {
+      background: #222;
+      padding: 4px 8px;
+      border-radius: 4px;
+      border: 1px solid #333;
+      color: #666;
+    }
+    code {
+      color: #666;
+    }
+    #boxes { position: absolute; top: -9999px; }
+  </style>
+</head>
+<body>
+  <div class="instructions">
+    <p>Open de HTML Inspector</p>
+    <p><kbd>F12</kbd> → Elements → selecteer een box</p>
+    <p>Bekijk de <code>Computed</code> tab of <code>Styles</code></p>
+    <p style="color:#555; margin-top:20px;">De box model visual verandert live!</p>
+  </div>
+
+  <div id="boxes"></div>
+
+  <script>
+    const container = document.getElementById('boxes');
+    let frame = 0;
+
+    // Breathing patterns
+    function breath(t, speed, min, max) {
+      const range = max - min;
+      return Math.floor(min + (Math.sin(t * speed) + 1) / 2 * range);
+    }
+
+    // Heartbeat pattern
+    function heartbeat(t) {
+      const cycle = t % 100;
+      if (cycle < 10) return 80;
+      if (cycle < 20) return 40;
+      if (cycle < 30) return 90;
+      if (cycle < 40) return 30;
+      return 20;
+    }
+
+    function update() {
+      frame++;
+      const t = frame * 0.05;
+
+      // Calculate dynamic values
+      const padding1 = breath(t, 1, 10, 60);
+      const margin1 = breath(t, 0.7, 5, 40);
+      const border1 = breath(t, 1.5, 1, 15);
+
+      const padding2 = breath(t + 2, 0.8, 15, 50);
+      const margin2 = breath(t + 2, 1.2, 10, 35);
+
+      const heartPadding = heartbeat(frame);
+
+      const wave1 = breath(t, 2, 5, 30);
+      const wave2 = breath(t + 0.5, 2, 5, 30);
+      const wave3 = breath(t + 1, 2, 5, 30);
+      const wave4 = breath(t + 1.5, 2, 5, 30);
+
+      container.innerHTML = `
+<div id="breather"
+     data-info="SELECT ME → Check Computed tab"
+     style="padding: ${padding1}px; margin: ${margin1}px; border: ${border1}px solid orange; width: 50px; height: 50px; background: #222;">
+</div>
+
+<div id="heartbeat"
+     data-info="♥ HEARTBEAT - Watch the rhythm"
+     data-bpm="72"
+     style="padding: ${heartPadding}px; margin: 20px; border: 3px solid red; width: 30px; height: 30px; background: #300;">
+</div>
+
+<div id="wave"
+     data-info="~ WAVE ~ Different sides animate"
+     style="padding-top: ${wave1}px; padding-right: ${wave2}px; padding-bottom: ${wave3}px; padding-left: ${wave4}px; margin: 15px; border: 2px solid cyan; width: 40px; height: 40px; background: #022;">
+</div>
+
+<div id="sync"
+     data-info="SYNC - Padding follows margin"
+     style="padding: ${padding2}px; margin: ${margin2}px; border: 5px solid lime; width: 30px; height: 30px; background: #020;">
+</div>
+
+<div id="chaos"
+     data-info="CHAOS - All properties animate"
+     style="padding: ${breath(t, 1.3, 5, 40)}px ${breath(t, 0.9, 10, 50)}px ${breath(t, 1.1, 8, 35)}px ${breath(t, 1.4, 12, 45)}px; margin: ${breath(t, 0.6, 5, 25)}px; border: ${breath(t, 2, 1, 10)}px solid magenta; border-radius: ${breath(t, 0.5, 0, 50)}px; width: ${breath(t, 0.4, 20, 80)}px; height: ${breath(t, 0.4, 20, 80)}px; background: #202;">
+</div>
+
+<hr>
+<div data-frame="${frame}" data-tip="Click element → Styles/Computed → Watch box model diagram"></div>
+`;
+    }
+
+    update();
+    setInterval(update, 50);
+  </script>
+</body>
+</html>

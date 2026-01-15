@@ -1,0 +1,123 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html,
+body {
+    width: 100%;
+    height: 100%;
+    background: #111;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+#container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 60px;
+}
+
+#box {
+    position: relative;
+    width: 240px;
+    height: 240px;
+}
+
+.side {
+    position: absolute;
+    background: #333;
+}
+
+.side::after {
+    content: '';
+    position: absolute;
+    background: #fff;
+}
+
+.side.top,
+.side.bottom {
+    width: 100%;
+    height: 2px;
+}
+
+.side.left,
+.side.right {
+    width: 2px;
+    height: 100%;
+}
+
+.side.top {
+    top: 0;
+    left: 0;
+}
+
+.side.bottom {
+    bottom: 0;
+    right: 0;
+}
+
+.side.left {
+    bottom: 0;
+    left: 0;
+}
+
+.side.right {
+    top: 0;
+    right: 0;
+}
+
+.side.top::after,
+.side.bottom::after {
+    height: 100%;
+    width: 0%;
+}
+
+.side.left::after,
+.side.right::after {
+    width: 100%;
+    height: 0%;
+}
+
+.side.top::after {
+    left: 0;
+}
+
+.side.bottom::after {
+    right: 0;
+}
+
+.side.right::after {
+    top: 0;
+}
+
+.side.left::after {
+    bottom: 0;
+}
+
+#label {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 0.85rem;
+    font-weight: 300;
+    color: #666;
+    text-transform: lowercase;
+    letter-spacing: 0.5em;
+}
+
+@media (max-width: 480px) {
+    #box {
+        width: 180px;
+        height: 180px;
+    }
+
+    #label {
+        font-size: 0.75rem;
+    }
+
+    #container {
+        gap: 50px;
+    }
+}

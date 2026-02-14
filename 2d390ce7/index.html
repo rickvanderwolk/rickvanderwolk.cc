@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>2d390ce7</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="2d390ce7">
+    <meta name="author" content="Rick van der Wolk">
+    <link rel="stylesheet" href="css/main.css">
+</head>
+<body>
+    <svg xmlns="http://www.w3.org/2000/svg" class="hidden">
+        <defs>
+            <filter id="goo" color-interpolation-filters="sRGB">
+                <feGaussianBlur id="goo-blur" in="SourceGraphic" stdDeviation="20" result="blur" />
+                <feColorMatrix in="blur" type="matrix"
+                    values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 18 -9" />
+            </filter>
+        </defs>
+    </svg>
+    <canvas id="canvas"></canvas>
+    <script src="js/main.js"></script>
+</body>
+</html>

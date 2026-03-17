@@ -1,0 +1,60 @@
+html,
+body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    width: 100%;
+}
+
+body {
+    background: rgb(65, 150, 226) radial-gradient(farthest-corner at 50% 50%, rgba(255, 255, 255, 0.225) 0%, rgb(65, 150, 226) 80%);
+    color: white;
+    font-family: Verdana, Geneva, Tahoma, sans-serif;
+    text-align: center;
+}
+
+#clock-wrapper {
+    margin-left: auto;
+    margin-right: auto;
+    height: 100%;
+    width: 90%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#spinner {
+    height: 8em;
+    margin-bottom: 30px;
+    filter: invert(100%);
+    animation: spin-animation 3.5s infinite;
+    animation-timing-function: linear;
+    display: inline-block;
+}
+
+#hour-indicator {
+    margin-top: 0;
+    margin-bottom: 0;
+}
+
+#minute-and-second-indicator {
+    margin-top: 10px;
+    font-weight: normal;
+}
+
+@keyframes spin-animation {
+    0% {
+        transform: rotate(0deg);
+    }
+
+    100% {
+        transform: rotate(360deg);
+    }
+}
+
+@media screen and (max-height: 400px) {
+    #spinner {
+        margin-top: 30px;
+        margin-bottom: 35px;
+    }
+}

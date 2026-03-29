@@ -7,6 +7,7 @@ function setup() {
     createCanvas(710, 400);
     stroke(255);
     angleMode(DEGREES);
+    frameRate(30);
 
     let radius = min(width, height) / 2;
     secondsRadius = radius * 0.71;

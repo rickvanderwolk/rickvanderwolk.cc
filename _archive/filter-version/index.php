@@ -3,7 +3,10 @@
 require_once 'functions.php';
 
 $data = json_decode(file_get_contents('data.json'), true);
-$projectsHtml = buildProjectsHtml($data['projects']);
+$activeTag = isset($_GET['tag']) ? $_GET['tag'] : null;
+
+$tagCloudHtml = buildTagCloud($data['projects'], $activeTag);
+$projectsHtml = buildProjectsHtml($data['projects'], $activeTag);
 
 
 $scrollbarPrimaryColor = getRandomColor();
@@ -31,6 +34,8 @@ $trailColor = getRandomColor();
     <div id="content">
         <h1><?php echo stylizeTitle($data['title']); ?></h1>
 
+        <?php echo $tagCloudHtml; ?>
+
         <?php echo $projectsHtml; ?>
 
         <div class="footer">
@@ -45,6 +50,8 @@ $trailColor = getRandomColor();
         <div id="screensaver-text">rickvanderwolk.cc</div>
     </div>
 
+    <script type="text/javascript" src="/assets/js/word-cloud.js" defer></script>
+    <script type="text/javascript" src="/assets/js/tag-filter.js" defer></script>
     <script type="text/javascript" src="/assets/js/onblur.js" defer></script>
     <script type="text/javascript" src="/assets/js/mouse-trail.js" defer></script>
 </body>

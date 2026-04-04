@@ -14,7 +14,6 @@ function setup() {
     createCanvas(750, 500);
     stroke(255);
     angleMode(DEGREES);
-    frameRate(30);
     textFont('Arial');
 
     let radius = min(200, 200);

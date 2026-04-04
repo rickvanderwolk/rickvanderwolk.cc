@@ -8,7 +8,6 @@ function setup() {
     adjustClockDimensions();
     stroke(255);
     angleMode(DEGREES);
-    frameRate(30);
 }
 function draw() {
     background(255);

@@ -8,7 +8,6 @@ let randomAngleOffset;
 function setup() {
     createCanvas(windowWidth, windowHeight);
     angleMode(DEGREES);
-    frameRate(30);
 
     let radius = min(width, height) / 2;
     secondsRadius = radius * 0.71;

@@ -16,7 +16,6 @@
         margin: 0;
         padding: 0;
         background: black;
-        overflow: hidden;
     }
 </style>
 <script>
@@ -26,8 +25,6 @@
     let paddleWidth, paddleHeight;
     let hourPaddleX, hourPaddleY, hourPaddleVelocity, hourScore, hourSkillLevel, hourNextPaddleMargin;
     let minutePaddleX, minutePaddleY, minutePaddleVelocity, minuteScore, minuteSkillLevel, minuteNextPaddleMargin;
-    let cachedHour, cachedMinute, cachedSecond, lastTimeUpdate = 0;
-    let lastFrameTime = 0, deltaTime = 0;
 
     function preload() {
         font = loadFont('Digitaled.ttf');
@@ -44,10 +41,6 @@
     function initialise () {
         textFont(font);
         createCanvas(window.innerWidth, window.innerHeight);
-        let date = new Date();
-        cachedHour = date.getHours();
-        cachedMinute = date.getMinutes();
-        cachedSecond = date.getSeconds();
         ballSize = height / 20;
         ballMaxAngle = 75 / 180 * PI;
         ballVelocityMax = getSpeedFactor() + (getSpeedFactor() / 2);
@@ -75,11 +68,6 @@
     }
 
     function draw () {
-        let currentTime = millis();
-        deltaTime = (currentTime - lastFrameTime) / 1000;
-        lastFrameTime = currentTime;
-        if (deltaTime > 0.1) deltaTime = 0.1;
-        updateCachedTime();
         renderDividingLine();
         resetScoresIfNeeded();
         renderScores();
@@ -88,17 +76,6 @@
         moveHourPaddle();
         moveMinutePaddle();
         moveBall();
-    }
-
-    function updateCachedTime () {
-        let now = millis();
-        if (now - lastTimeUpdate > 1000) {
-            let date = new Date();
-            cachedHour = date.getHours();
-            cachedMinute = date.getMinutes();
-            cachedSecond = date.getSeconds();
-            lastTimeUpdate = now;
-        }
     }
 
     function setNextPaddleMarginIfNeeded () {
@@ -125,8 +102,8 @@
     }
 
     function moveBall () {
-        ballX += ballVelocityX * deltaTime;
-        ballY += ballVelocityY * deltaTime;
+        ballX += ballVelocityX;
+        ballY += ballVelocityY;
 
         // hour paddle collision
         if (
@@ -180,7 +157,7 @@
     }
 
     function moveHourPaddle () {
-        hourPaddleVelocity = hourSkillLevel * (ballY - hourPaddleY) * 30;
+        hourPaddleVelocity = hourSkillLevel * (ballY - hourPaddleY);
         if (currentAdvantageState === advantageStateMinute) {
             if (hourPaddleVelocity < -getSpeedFactor()) {
                 hourPaddleVelocity = -getSpeedFactor();
@@ -189,7 +166,7 @@
                 hourPaddleVelocity = getSpeedFactor();
             }
         }
-        hourPaddleY = hourPaddleY + hourPaddleVelocity * deltaTime;
+        hourPaddleY = hourPaddleY + hourPaddleVelocity;
         if (currentAdvantageState === advantageStateHour || currentAdvantageState === advantageStateEqual) {
             hourPaddleY = hourPaddleY + hourNextPaddleMargin;
         }
@@ -203,7 +180,7 @@
     }
 
     function moveMinutePaddle () {
-        minutePaddleVelocity = minuteSkillLevel * (ballY - minutePaddleY) * 30;
+        minutePaddleVelocity = minuteSkillLevel * (ballY - minutePaddleY);
         if (currentAdvantageState === advantageStateHour) {
             if (minutePaddleVelocity < -getSpeedFactor()) {
                 minutePaddleVelocity = -getSpeedFactor();
@@ -212,7 +189,7 @@
                 minutePaddleVelocity = getSpeedFactor();
             }
         }
-        minutePaddleY = minutePaddleY + minutePaddleVelocity * deltaTime;
+        minutePaddleY = minutePaddleY + minutePaddleVelocity;
         if (currentAdvantageState === advantageStateMinute || currentAdvantageState === advantageStateEqual) {
             minutePaddleY = minutePaddleY - minuteNextPaddleMargin;
         }
@@ -225,7 +202,7 @@
     }
 
     function getSpeedFactor () {
-        const baseSpeedFactor = 600;
+        const baseSpeedFactor = 10;
         let timeIncreasedFactor = 0;
         return baseSpeedFactor + (timeIncreasedFactor * baseSpeedFactor);
     }
@@ -236,15 +213,18 @@
     }
 
     function getCurrentHour () {
-        return cachedHour;
+        let date = new Date();
+        return date.getHours();
     }
 
     function getCurrentMinute () {
-        return cachedMinute;
+        let date = new Date();
+        return date.getMinutes();
     }
 
     function getCurrentSecond () {
-        return cachedSecond;
+        let date = new Date();
+        return date.getSeconds();
     }
 
     function getPaddleMiddle () {
@@ -283,9 +263,9 @@
         background(0);
         stroke(255);
         strokeWeight(1);
-        drawingContext.setLineDash([height / 100, height / 100]);
-        line(width / 2, 0, width / 2, height);
-        drawingContext.setLineDash([]);
+        for (let i = 0; i < 50; i++) {
+            line(width / 2, (height / 50) * i, width / 2, (height / 100) + (height / 50) * i);
+        }
     }
 
     function renderPaddle(x, y, width, height) {

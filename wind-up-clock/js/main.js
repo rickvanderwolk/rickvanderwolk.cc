@@ -13,7 +13,6 @@ let previousRealTimestamp = null;
 function setup() {
     const canvas = createCanvas(400, 450);
     stroke(255);
-    frameRate(30);
 
     let radius = min(width, height) / 2;
     secondsRadius = radius * 0.71;

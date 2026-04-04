@@ -1,0 +1,77 @@
+{
+    "title": "Hello world",
+    "projects": [
+        {
+            "title": "Vissenkom",
+            "description": "Een virtuele vissenkom die je fysieke aanwezigheid vereist.",
+            "image": "assets/images/vissenkom-preview.png",
+            "liveUrl": "",
+            "codeUrl": "https://github.com/rickvanderwolk/vissenkom",
+            "tags": [
+                "games"
+            ]
+        },
+        {
+            "title": "Soundscape",
+            "description": "What does a drawing sound like?",
+            "image": "assets/images/soundscape-preview.png",
+            "liveUrl": "https://rickvanderwolk.com/lab/sc/",
+            "codeUrl": "https://github.com/rickvanderwolk/soundscape",
+            "tags": [
+                "audio"
+            ]
+        },
+        {
+            "title": "Pitchure",
+            "description": "Microphone as a paintbrush.",
+            "image": "assets/images/pitchure-preview.png",
+            "liveUrl": "https://rickvanderwolk.github.io/pitchure/",
+            "codeUrl": "https://github.com/rickvanderwolk/pitchure",
+            "tags": [
+                "audio"
+            ]
+        },
+        {
+            "title": "LED matrix",
+            "description": "A Python (Raspberry Pi) project to control an 8x8 LED matrix with various visualization modes. Display a clock, sorting algorithms, color battles, remote control via ntfy.sh, and more.",
+            "image": "assets/images/led-matrix-preview.jpg",
+            "liveUrl": "",
+            "codeUrl": "https://github.com/rickvanderwolk/led-matrix",
+            "tags": [
+                "light"
+            ]
+        },
+        {
+            "title": "8UYwZK4",
+            "description": "...",
+            "image": "assets/images/8UYwZK4.png",
+            "liveUrl": "https://rickvanderwolk.cc/8UYwZK4/",
+            "codeUrl": "https://github.com/rickvanderwolk/rickvanderwolk.cc/tree/main/8UYwZK4",
+            "tags": [
+                "time"
+            ]
+        },
+        {
+            "title": "Unix gradient",
+            "description": "A long-running color generator that changes every second, driven by the Unix timestamp. Based on calculations starting from the Unix epoch on January 1, 1970, it will produce unique gradients for the next 8.9 million years. Designed for both Philips Hue lights and web.",
+            "image": "assets/images/unix-gradient-preview.png",
+            "liveUrl": "https://unixgradient.org/",
+            "codeUrl": "https://github.com/rickvanderwolk/unix-gradient",
+            "tags": [
+                "light",
+                "time"
+            ]
+        },
+        {
+            "title": "Audio only game",
+            "description": "Close your eyes and play.",
+            "image": "",
+            "liveUrl": "https://rickvanderwolk.github.io/audio-only-game/",
+            "codeUrl": "https://github.com/rickvanderwolk/audio-only-game",
+            "tags": [
+                "audio",
+                "games"
+            ]
+        }
+    ]
+}

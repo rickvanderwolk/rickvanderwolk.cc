@@ -15,7 +15,7 @@
             "title": "Soundscape",
             "description": "What does a drawing sound like?",
             "image": "assets/images/soundscape-preview.png",
-            "liveUrl": "https://rickvanderwolk.com/lab/sc/",
+            "liveUrl": "https://rickvanderwolk.github.io/soundscape/",
             "codeUrl": "https://github.com/rickvanderwolk/soundscape",
             "tags": [
                 "audio"

@@ -63,11 +63,11 @@
             ]
         },
         {
-            "title": "Audio only game",
-            "description": "Close your eyes and play.",
+            "title": "No video game",
+            "description": "A video game without video.",
             "image": "",
-            "liveUrl": "https://rickvanderwolk.github.io/audio-only-game/",
-            "codeUrl": "https://github.com/rickvanderwolk/audio-only-game",
+            "liveUrl": "https://rickvanderwolk.github.io/no-video-game/",
+            "codeUrl": "https://github.com/rickvanderwolk/no-video-game",
             "tags": [
                 "audio",
                 "games"

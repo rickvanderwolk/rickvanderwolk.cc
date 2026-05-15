@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Piano clock</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Piano clock">
+    <meta name="author" content="Rick van der Wolk">
+    <link rel="stylesheet" href="css/main.css">
+</head>
+<body>
+    <div id="stage">
+        <div class="piano-row" data-unit="h">
+            <span class="label">H</span>
+            <div class="piano" id="hours-piano"></div>
+        </div>
+        <div class="piano-row" data-unit="m">
+            <span class="label">M</span>
+            <div class="piano" id="minutes-piano"></div>
+        </div>
+        <div class="piano-row" data-unit="s">
+            <span class="label">S</span>
+            <div class="piano" id="seconds-piano"></div>
+        </div>
+    </div>
+    <button id="start" type="button" aria-label="Start">&#9654;</button>
+    <script src="js/main.js"></script>
+</body>
+</html>

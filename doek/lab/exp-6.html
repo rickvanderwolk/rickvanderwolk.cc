@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="p5.min.js"></script>
+<script>
+// doek v7 — v6, maar EXTREMER. Meer schilderij, minder brei.
+//
+// Alle compositie-knoppen verder open:
+//   • hardere vormranden (sterker gesharpend macro-veld)
+//   • veel meer rustige/lege ruimte rond de massa's (sterkere focus)
+//   • fors licht-tegen-donker (chiaroscuro)
+//   • feller verzadigd onderwerp tegen doffe omgeving
+//   • grovere, langere, zichtbaardere gebaarde streken
+//
+// Nog steeds: puur additief, harmonieus van familie, uren-traag (één reis).
+
+// SPEED: 1 = echt traag (uren). Hoog zetten (bv. 2000) om de reis snel te zien.
+const SPEED      = 1;
+const TIME_SCALE = 0.0000005 * SPEED;
+
+let hueBase;
+
+function setup() {
+  pixelDensity(1);
+  createCanvas(windowWidth, windowHeight);
+  frameRate(30); // 30 fps: kalmer oppervlak + halve belasting (Pi-vriendelijk)
+  colorMode(HSL, 360, 100, 100, 1);
+  noStroke();
+  hueBase = random(360);
+  background(hueBase, 20, 24); // diepe getinte ondergrond -> licht springt eruit
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  background(hueBase, 20, 24);
+}
+
+const lerp1 = (a, b, t) => a + (b - a) * t;
+const sharpen = (v, k) => constrain((v - 0.5) * k + 0.5, 0, 1);
+
+function draw() {
+  const t = millis() * TIME_SCALE;
+  const drift = (k, seed) => noise(seed, t * k);
+
+  // --- GLOBALE STEMMINGS-ENVELOP --------------------------------------------
+  const hueCenter = (hueBase + t * 16) % 360;
+  const hueSpread = lerp1(40, 200, drift(0.40, 11));
+  const satLevel  = lerp1(30, 85,  drift(0.50, 23)); // hogere top -> meer punch
+  const lightCtr  = lerp1(44, 60,  drift(0.30, 37));
+  const contrast  = lerp1(16, 46,  drift(0.55, 51));
+  const strokeSz  = lerp1(1.1, 3.8, drift(0.45, 67)); // grover
+  const density   = Math.round(lerp1(8, 18, drift(0.60, 83)));
+  const flowTurns = lerp1(1, 2.6,  drift(0.30, 97));
+  const flowFreq  = lerp1(0.0010, 0.0024, drift(0.30, 113));
+  const aspect    = lerp1(1.6, 7.0, drift(0.50, 131)); // meer gebaar
+  const structAmt = lerp1(0, 0.75, drift(0.40, 149));
+  const structFreq= lerp1(0.0008, 0.004, drift(0.25, 167));
+
+  const tHue = t * 0.15, tLum = t * 0.12, tStruct = t * 0.10, tFlow = t * 0.10, tComp = t * 0.10;
+
+  for (let i = 0; i < density; i++) {
+    const x = random(width);
+    const y = random(height);
+
+    // MACRO-COMPOSITIE — harder gesharpend -> gedefinieerde massa's met randen
+    const m = sharpen(noise(x * 0.0007 + 200, y * 0.0007 + 200, tComp), 3.4);
+
+    // sterke focus: rond de massa's veel rust/leegte (ondergrond schemert door)
+    const ridge = 1 - Math.abs(noise(x * structFreq, y * structFreq, tStruct) - 0.5) * 2;
+    const struct = (1 - structAmt) + structAmt * Math.pow(ridge, 3);
+    const comp = 0.06 + 0.94 * Math.pow(m, 2.4);
+    if (random() > comp * struct) continue;
+
+    const a = noise(x * flowFreq, y * flowFreq, tFlow) * TWO_PI * flowTurns;
+
+    // KLEUR
+    const zoneBig  = noise(x * 0.0012, y * 0.0012, tHue);
+    const zoneFine = noise(x * 0.0040 + 5, y * 0.0040 + 5, tHue * 0.7);
+    const zone = zoneBig * 0.7 + zoneFine * 0.3;
+    const h = (hueCenter + (zone - 0.5) * hueSpread + 360) % 360;
+    // verzadiging sterk door compositie gestuurd: fel onderwerp, dove omgeving
+    const s = constrain(satLevel * (0.3 + 1.0 * m) +
+                        (noise(x * 0.0022 + 10, y * 0.0022 + 10, tHue * 0.5) - 0.5) * 22, 0, 100);
+
+    // LICHT/DONKER — fors chiaroscuro: lichtend onderwerp tegen donker
+    const lumZone = noise(x * 0.0011 + 50, y * 0.0011 + 50, tLum);
+    const lum  = (m - 0.5) * 64 + (lumZone - 0.5) * 18;
+    const fine = (noise(x * 0.0040 + 20, y * 0.0040 + 20) - 0.5) * contrast;
+    const l = constrain(lightCtr + lum + fine, 2, 97);
+
+    // grove gebaarde streek
+    const sz  = strokeSz * random(9, 28);
+    const len = sz * Math.sqrt(aspect);
+    const wid = sz / Math.sqrt(aspect);
+
+    push();
+    translate(x, y);
+    rotate(a);
+    fill(h, s, l, 0.16);
+    ellipse(0, 0, len, wid);
+    // sterk lichtaccent -> duidelijke toets / impasto
+    fill(h, s, constrain(l + 18, 0, 98), 0.11);
+    ellipse(len * 0.20, 0, wid * 0.9, wid * 0.7);
+    pop();
+  }
+}
+</script>
+</body>
+</html>

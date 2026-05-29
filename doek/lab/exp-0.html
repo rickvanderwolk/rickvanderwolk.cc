@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="p5.min.js"></script>
+<script>
+// doek — een digitaal schilderij dat stilstaat maar langzaam verandert.
+// De painting wordt klein berekend en uitvergroot: dat smelt alles tot
+// brede, schilderachtige kleurvelden. De tijd loopt heel traag, dus elk
+// gebied migreert onmerkbaar van het ene pigment naar het andere.
+
+let buf;                 // kleine offscreen buffer (de eigenlijke schildering)
+const BH = 90;           // bufferhoogte in pixels (klein = zacht)
+let BW;                  // bufferbreedte (afhankelijk van schermratio)
+let grain;               // doek-textuur overlay (1x gemaakt, hergebruikt)
+
+const TIME_SCALE = 0.000018; // hoe traag de tijd loopt
+
+// palet: een ring van pigmenten waar de velden langzaam doorheen draaien
+const PIGMENTS = [
+  { h: 18,  s: 55, l: 55 }, // warme klei
+  { h: 205, s: 40, l: 45 }, // schemerblauw
+  { h: 45,  s: 50, l: 62 }, // oker
+  { h: 330, s: 30, l: 50 }, // gedempt rozenrood
+  { h: 150, s: 30, l: 40 }, // diepe salie
+];
+
+function fade(t) { return t * t * t * (t * (t * 6 - 15) + 10); }
+function lerp1(a, b, t) { return a + (b - a) * t; }
+
+function setup() {
+  pixelDensity(1);
+  createCanvas(windowWidth, windowHeight);
+  frameRate(30); // 30 fps: kalmer oppervlak + halve belasting (Pi-vriendelijk)
+  sizeBuffer();
+  buildGrain();
+  noiseDetail(4, 0.5);     // p5's eigen Perlin als flow field
+  colorMode(RGB, 255);
+}
+
+function sizeBuffer() {
+  BW = max(8, round(BH * (width / height)));
+  buf = createGraphics(BW, BH);
+  buf.pixelDensity(1);
+  buf.colorMode(HSL, 360, 100, 100);
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  sizeBuffer();
+}
+
+// HSL -> RGB met kortste-pad hue interpolatie tussen twee pigmenten
+function blendPigment(a, b, m) {
+  let dh = b.h - a.h;
+  if (dh > 180) dh -= 360; else if (dh < -180) dh += 360;
+  return {
+    h: a.h + dh * m,
+    s: lerp1(a.s, b.s, m),
+    l: lerp1(a.l, b.l, m),
+  };
+}
+
+function draw() {
+  const t = millis() * TIME_SCALE;
+
+  // langzame drift van het hele veld
+  const driftX = sin(t * 0.7) * 1.5;
+  const driftY = cos(t * 0.5) * 1.5;
+  const cycle = t * 0.6; // welke pigmenten domineren
+
+  buf.loadPixels();
+  const d = buf.pixels;
+  let i = 0;
+  for (let y = 0; y < BH; y++) {
+    const ny = y / BH;
+    for (let x = 0; x < BW; x++) {
+      const nx = x / BW;
+
+      // twee gelaagde flow fields: de ene vervormt de andere -> organisch
+      const wx = noise(nx * 2.2 + driftX, ny * 2.2 + driftY) - 0.5;
+      const wy = noise(nx * 2.2 + 5.2 - driftY, ny * 2.2 + 1.7 + driftX) - 0.5;
+      const f = noise(nx * 3.0 + wx * 2.6 + sin(cycle) + 10,
+                      ny * 3.0 + wy * 2.6 + cos(cycle) + 10);
+
+      // plek in de pigment-ring
+      const ringPos = f * PIGMENTS.length + cycle;
+      const idx = Math.floor(ringPos);
+      const frac = fade(ringPos - idx);
+      const a = PIGMENTS[((idx % 5) + 5) % 5];
+      const b = PIGMENTS[(((idx + 1) % 5) + 5) % 5];
+      const col = blendPigment(a, b, frac);
+
+      // zacht licht zodat het oogt als verf die het licht vangt
+      const shade = noise(nx * 4.5 + 30, ny * 4.5 + 30) - 0.5;
+      const l = constrain(col.l + shade * 24, 5, 92);
+
+      const c = buf.color(col.h, col.s, l);
+      d[i++] = red(c); d[i++] = green(c); d[i++] = blue(c); d[i++] = 255;
+    }
+  }
+  buf.updatePixels();
+
+  // kleine buffer over het scherm uitrekken -> zachte wassingen
+  image(buf, 0, 0, width, height);
+
+  // doek-grain + vignet voor een fysiek, geschilderd gevoel
+  push();
+  blendMode(OVERLAY);
+  image(grain, 0, 0, width, height);
+  pop();
+  drawVignette();
+}
+
+function buildGrain() {
+  const g = createGraphics(160, 160);
+  g.pixelDensity(1);
+  g.loadPixels();
+  const p = g.pixels;
+  for (let k = 0; k < p.length; k += 4) {
+    const n = (random() * 255) | 0;
+    p[k] = p[k + 1] = p[k + 2] = n;
+    p[k + 3] = 14; // heel subtiel
+  }
+  g.updatePixels();
+  grain = g;
+}
+
+function drawVignette() {
+  const cx = width / 2, cy = height / 2;
+  const r = Math.hypot(width, height) * 0.6;
+  const ctx = drawingContext;
+  const vg = ctx.createRadialGradient(cx, cy, r * 0.35, cx, cy, r);
+  vg.addColorStop(0, "rgba(0,0,0,0)");
+  vg.addColorStop(1, "rgba(0,0,0,0.32)");
+  ctx.fillStyle = vg;
+  ctx.fillRect(0, 0, width, height);
+}
+</script>
+</body>
+</html>

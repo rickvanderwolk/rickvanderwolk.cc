@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  /* vignet als statische overlay — mag NIET op het canvas zelf, want dat
+     stapelt zich op (canvas wordt nooit gewist) en zou alles zwart maken */
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 45%, rgba(0,0,0,0.38) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="p5.min.js"></script>
+<script>
+// doek v2 — een impressionistisch doek dat zichzelf blijft schilderen.
+//
+// Andere insteek dan v1: niet elke pixel uitrekenen, maar penseelstreken
+// stapelen op een canvas dat NOOIT gewist wordt. Elke streek is bijna
+// doorzichtig en lijkt op wat eronder zit, dus het beeld oogt stil. Maar
+// het flow-field (richting) en het kleurveld (tint) draaien heel traag
+// rond, waardoor verse streken langzaam afwijken en het oude beeld over
+// minuten onmerkbaar wordt overschilderd.
+
+const TIME_SCALE     = 0.00004; // hoe traag alles draait
+const STROKES_FRAME  = 12;      // penseelstreken per frame
+const STROKE_ALPHA   = 0.085;   // bijna doorzichtig -> traag opbouwen
+
+let hueBase; // willekeurige grondtoon per reload -> elke keer andere sfeer
+
+function setup() {
+  pixelDensity(1);
+  createCanvas(windowWidth, windowHeight);
+  frameRate(30); // 30 fps: kalmer oppervlak + halve belasting (Pi-vriendelijk)
+  colorMode(HSL, 360, 100, 100, 1);
+  noStroke();
+  hueBase = random(360);
+  primeGround(); // het doek krijgt eerst een getinte ondergrond
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  primeGround();
+}
+
+// een geschilderde ondergrond i.p.v. zwart starten
+function primeGround() {
+  background(hueBase, 28, 20);
+}
+
+// RICHTING: traag roterend flow-field. Streken lijnen zo uit tot
+// samenhangende wervelingen i.p.v. willekeurige krasjes.
+function flowAngle(x, y, t) {
+  return noise(x * 0.0016, y * 0.0016, t * 0.08) * TWO_PI * 2;
+}
+
+// KLEUR: grote, langzaam driftende tint-zones. Anders dan v1's vaste
+// pigment-ring is dit een doorlopend kleurveld dat over het doek wandelt.
+function strokeColor(x, y, t) {
+  const zone = noise(x * 0.0012, y * 0.0012, t * 0.05); // grote vlekken 0..1
+  const h = (hueBase + zone * 120 + t * 9) % 360;        // drift door de tijd
+  const s = 42 + noise(x * 0.002 + 10, y * 0.002 + 10) * 26;
+  const l = 34 + noise(x * 0.002 + 20, y * 0.002 + 20, t * 0.05) * 36;
+  return color(h, s, l, STROKE_ALPHA);
+}
+
+function draw() {
+  const t = millis() * TIME_SCALE;
+
+  for (let i = 0; i < STROKES_FRAME; i++) {
+    const x = random(width);
+    const y = random(height);
+    const a = flowAngle(x, y, t);
+    const c = strokeColor(x, y, t);
+
+    const len = random(16, 42);
+    const wid = random(5, 11);
+
+    push();
+    translate(x, y);
+    rotate(a);
+    fill(c);
+    // langwerpige zachte streek; overlap maakt 'm vanzelf veervormig
+    ellipse(0, 0, len, wid);
+    // klein lichtaccent aan de kop -> impasto-gevoel
+    fill(hue(c), saturation(c), constrain(lightness(c) + 14, 0, 96), STROKE_ALPHA * 0.7);
+    ellipse(len * 0.18, 0, wid * 0.9, wid * 0.7);
+    pop();
+  }
+}
+</script>
+</body>
+</html>

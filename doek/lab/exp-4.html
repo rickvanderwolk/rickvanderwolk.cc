@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 48%, rgba(0,0,0,0.32) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="p5.min.js"></script>
+<script>
+// doek v5 — het beste van v3 en v4.
+//
+//  • DIEPTE van v4: grote licht/schaduw-velden geven het doek ruimte.
+//  • KALMTE van v3: de compositie herschikt heel traag — bijna stil.
+//  • KLEUR van v3 (of rijker): een brede, gedempte kleurwaaier over het doek,
+//    plus een fijnere kleur-octaaf, voor veel afwisseling BINNEN het doek
+//    zonder de harmonie te verliezen.
+//
+// Nog steeds puur additief: alleen streken, nooit een globale fill.
+// Eén doorgaande, niet-terugkerende evolutie die er uren over doet.
+
+// SPEED: 1 = echt traag (uren). Hoog zetten (bv. 300) om de reis snel te zien.
+const SPEED      = 1;
+const TIME_SCALE = 0.0000005 * SPEED;
+
+let hueBase;
+
+function setup() {
+  pixelDensity(1);
+  createCanvas(windowWidth, windowHeight);
+  frameRate(30); // 30 fps: kalmer oppervlak + halve belasting (Pi-vriendelijk)
+  colorMode(HSL, 360, 100, 100, 1);
+  noStroke();
+  hueBase = random(360);
+  background(hueBase, 14, 46); // getinte ondergrond, daarna alleen nog streken
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  background(hueBase, 14, 46);
+}
+
+const lerp1 = (a, b, t) => a + (b - a) * t;
+
+function draw() {
+  const t = millis() * TIME_SCALE;
+  const drift = (k, seed) => noise(seed, t * k); // gladde, niet-terugkerende 0..1 wandeling
+
+  // --- GLOBALE STEMMINGS-ENVELOP (traag; bewaakt de harmonie) ---------------
+  const hueCenter = (hueBase + t * 16) % 360;            // palet reist langzaam rond
+  const hueSpread = lerp1(40, 210, drift(0.40, 11));     // BREED: veel kleur binnen het doek
+  const satLevel  = lerp1(18, 66,  drift(0.50, 23));     // dof <-> fel (gedempt -> harmonieus)
+  const lightCtr  = lerp1(42, 58,  drift(0.30, 37));     // smal globaal niveau (diepte komt van het lichtveld)
+  const contrast  = lerp1(10, 30,  drift(0.55, 51));     // fijne licht-textuur
+  const strokeSz  = lerp1(0.7, 2.4, drift(0.45, 67));    // fijn <-> grof
+  const density   = Math.round(lerp1(6, 13, drift(0.60, 83)));
+  const flowTurns = lerp1(1, 2.8,  drift(0.30, 97));     // laminair <-> wervelend
+  const flowFreq  = lerp1(0.0010, 0.0024, drift(0.30, 113));
+  const aspect    = lerp1(1.0, 4.5, drift(0.50, 131));   // ronde stip <-> lange veeg
+  const structAmt = lerp1(0, 0.75, drift(0.40, 149));    // egaal <-> sterk gestructureerd
+  const structFreq= lerp1(0.0008, 0.004, drift(0.25, 167)); // grote vlakken <-> fijn netwerk
+
+  // --- LOKALE COMPOSITIE die ZEER TRAAG reorganiseert (kalmte van v3) --------
+  // veel lagere tempo's dan v4: de zones en het licht schuiven bijna onmerkbaar
+  const tHue = t * 0.15, tLum = t * 0.12, tStruct = t * 0.10, tFlow = t * 0.10;
+
+  for (let i = 0; i < density; i++) {
+    const x = random(width);
+    const y = random(height);
+
+    // structuur (aderen/netwerken) die heel traag opkomt en wegtrekt
+    const ridge = 1 - Math.abs(noise(x * structFreq, y * structFreq, tStruct) - 0.5) * 2;
+    const accept = (1 - structAmt) + structAmt * Math.pow(ridge, 3);
+    if (random() > accept) continue;
+
+    // richting uit het langzaam wervelende flow-field
+    const a = noise(x * flowFreq, y * flowFreq, tFlow) * TWO_PI * flowTurns;
+
+    // KLEUR: brede kleurregio's + een fijnere octaaf -> rijke afwisseling
+    // binnen het doek, maar binnen de gedempte, harmonieuze familie
+    const zoneBig  = noise(x * 0.0012, y * 0.0012, tHue);
+    const zoneFine = noise(x * 0.0040 + 5, y * 0.0040 + 5, tHue * 0.7);
+    const zone = zoneBig * 0.7 + zoneFine * 0.3;
+    const h = (hueCenter + (zone - 0.5) * hueSpread + 360) % 360;
+    const s = constrain(satLevel + (noise(x * 0.0022 + 10, y * 0.0022 + 10, tHue * 0.5) - 0.5) * 28, 0, 100);
+
+    // LICHT/SCHADUW (diepte van v4): grote, heel traag migrerende velden
+    const lumZone = noise(x * 0.0009 + 50, y * 0.0009 + 50, tLum);
+    const lum  = (lumZone - 0.5) * 32;                             // ±16 licht/schaduw
+    const fine = (noise(x * 0.0038 + 20, y * 0.0038 + 20) - 0.5) * contrast; // fijne textuur
+    const l = constrain(lightCtr + lum + fine, 4, 95);
+
+    // streek-vorm: aspect rekt 'm uit (oppervlak ~gelijk), stip <-> veeg
+    const sz  = strokeSz * random(10, 30);
+    const len = sz * Math.sqrt(aspect);
+    const wid = sz / Math.sqrt(aspect);
+
+    push();
+    translate(x, y);
+    rotate(a);
+    fill(h, s, l, 0.09);
+    ellipse(0, 0, len, wid);
+    // klein lichtaccent -> impasto
+    fill(h, s, constrain(l + 14, 0, 98), 0.06);
+    ellipse(len * 0.18, 0, wid * 0.9, wid * 0.7);
+    pop();
+  }
+}
+</script>
+</body>
+</html>

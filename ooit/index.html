@@ -166,6 +166,10 @@ function solvesWithin(m, seconds) {
 let level = 1, mazeMs = 0, seed = (Math.random() * 0xffffffff) >>> 0;
 let maze, u, originX, originY;       // u = pixels per grid-eenheid (alleen tekenen)
 let ball, colorIndex = 0;
+let prevX = 0, prevY = 0;            // balpositie van de vorige tik (voor interpolatie)
+let lastHud = '';
+const mazeCanvas = document.createElement('canvas');   // statisch doolhof, 1x getekend
+const mctx = mazeCanvas.getContext('2d');
 
 // kies cols/rows zodat het doolhof het scherm vult met vierkante cellen
 function dims() {
@@ -201,6 +205,8 @@ function startLevel() {
   colorIndex = 0;
   ball = freshBall();
   ball.color = PALETTE[0];
+  prevX = ball.x; prevY = ball.y;
+  paintMaze();
 }
 function nextLevel() {
   level++; mazeMs = 0; seed = (Math.random() * 0xffffffff) >>> 0;
@@ -212,12 +218,15 @@ function flipColor() {
 }
 
 // --- tekenen -----------------------------------------------------------------
-function draw() {
-  ctx.fillStyle = '#000';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+// Het doolhof is statisch: 1x naar een aparte canvas, daarna alleen nog blitten.
+function paintMaze() {
+  mazeCanvas.width = canvas.width;
+  mazeCanvas.height = canvas.height;
+  mctx.fillStyle = '#000';
+  mctx.fillRect(0, 0, mazeCanvas.width, mazeCanvas.height);
 
   // muren: dunne, donkere grijze lijnen (geclampt -> nooit buiten beeld)
-  ctx.fillStyle = LINE;
+  mctx.fillStyle = LINE;
   for (let gy = 0; gy < maze.H; gy++)
     for (let gx = 0; gx < maze.W; gx++)
       if (maze.wall[gy][gx]) {
@@ -226,27 +235,31 @@ function draw() {
         let h = Math.max(1, (gy % 2 ? PASS : WALL) * u);
         if (x < 0) { w += x; x = 0; }
         if (y < 0) { h += y; y = 0; }
-        if (x + w > canvas.width)  w = canvas.width  - x;
-        if (y + h > canvas.height) h = canvas.height - y;
-        if (w > 0 && h > 0) ctx.fillRect(x, y, w, h);
+        if (x + w > mazeCanvas.width)  w = mazeCanvas.width  - x;
+        if (y + h > mazeCanvas.height) h = mazeCanvas.height - y;
+        if (w > 0 && h > 0) mctx.fillRect(x, y, w, h);
       }
 
   // uitgang: finish-vlag in dezelfde lijnkleur, subtiel (checker tegen zwart)
   const ex = originX + cellCenter(maze.exitCell[0]) * u;
   const ey = originY + cellCenter(maze.exitCell[1]) * u;
   const fsz = PASS * 0.72 * u, n = 4, cs = fsz / n;
-  ctx.fillStyle = LINE;
+  mctx.fillStyle = LINE;
   for (let i = 0; i < n; i++)
     for (let j = 0; j < n; j++)
-      if ((i + j) % 2) ctx.fillRect(ex - fsz / 2 + i * cs, ey - fsz / 2 + j * cs, cs + 0.5, cs + 0.5);
+      if ((i + j) % 2) mctx.fillRect(ex - fsz / 2 + i * cs, ey - fsz / 2 + j * cs, cs + 0.5, cs + 0.5);
+}
 
-  // de bal: vlakke cirkel op exacte botsradius -> raakt de muren echt
+// elke frame: doolhof blitten + bal op geïnterpoleerde tussenpositie tekenen
+function draw(rx, ry) {
+  ctx.drawImage(mazeCanvas, 0, 0);
   ctx.fillStyle = ball.color;
   ctx.beginPath();
-  ctx.arc(originX + ball.x * u, originY + ball.y * u, BALL_R * u, 0, Math.PI * 2);
+  ctx.arc(originX + rx * u, originY + ry * u, BALL_R * u, 0, Math.PI * 2);
   ctx.fill();
 
-  hud.textContent = 'level ' + level + '   ' + fmt(mazeMs);
+  const txt = 'level ' + level + '   ' + fmt(mazeMs);
+  if (txt !== lastHud) { hud.textContent = txt; lastHud = txt; }
 }
 function fmt(ms) {
   let s = Math.floor(ms / 1000);
@@ -268,10 +281,13 @@ function frame(now) {
   mazeMs += realDt * 1000;                  // HUD telt echte kijktijd
   acc += realDt;
   while (acc >= FIXED) {                     // fysica in vaste stapjes
+    prevX = ball.x; prevY = ball.y;          // bewaar vorige tik voor interpolatie
     if (tick(maze, ball, flipColor)) { nextLevel(); acc = 0; break; }
     acc -= FIXED;
   }
-  draw();
+  // teken de bal op de fractie tussen vorige en huidige tik -> vloeiend beeld
+  const alpha = acc / FIXED;
+  draw(prevX + (ball.x - prevX) * alpha, prevY + (ball.y - prevY) * alpha);
   requestAnimationFrame(frame);
 }
 

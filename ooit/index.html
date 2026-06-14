@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="nl">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
@@ -21,33 +21,32 @@
 <canvas id="c"></canvas>
 <div id="hud"></div>
 <script>
-// Ooit
+// Ooit ("someday")
 // ----------------------------------------------------------------------------
-// Een bal in de geest van het klassieke DVD-logo: hij stuurt niet, hij botst
-// alleen. Het scherm is een doolhof; ergens ligt de uitgang (het verste punt).
-// De bal moet die per ongeluk binnen rollen -- er wordt NIET gezocht of slim
-// genavigeerd. Lukt het, dan volgt een groter doolhof (level omhoog).
+// A ball in the spirit of the classic DVD logo: it never steers, it only
+// bounces. The screen is a maze; somewhere sits the exit (the farthest point).
+// The ball has to roll into it by accident -- there is NO pathfinding, no smart
+// navigation. If it makes it, a bigger maze follows (level up).
 //
-// 100% ZUIVER & DETERMINISTISCH
-// De bounce is perfect: kaatsen, verder niets. Geen willekeurig duwtje, geen
-// anti-vastloop, geen trucs. En net als een echte DVD-speler rekent dit op een
-// VASTE klok (fixed timestep): elke tik beweegt de bal een vast stapje,
-// onafhankelijk van je scherm of framerate. Daardoor is de baan bit-voor-bit
-// reproduceerbaar -- hetzelfde doolhof heeft altijd exact hetzelfde lot. Net
-// als het echte logo dat bijna nooit precies de hoek raakt, kan deze bal een
-// doolhof soms NOOIT uitkomen: de baan is periodiek en raakt de uitgang
-// gewoon niet. Dat is geen bug, dat is het mooie -- je kunt uren kijken.
-// Loopt-ie vast, dan loopt-ie vast. Hoe hoger het level, hoe zeldzamer de
-// uitgang valt. Niets wordt bewaard: refresh = nieuwe start op level 1.
+// 100% PURE & DETERMINISTIC
+// The bounce is perfect: reflect, nothing else. No random nudge, no anti-stuck,
+// no tricks. And like a real DVD player it runs on a FIXED clock (fixed
+// timestep): every tick moves the ball a fixed step, independent of your screen
+// or framerate. That makes the path bit-for-bit reproducible -- the same maze
+// always shares the same fate. Just like the real logo that almost never hits
+// the corner exactly, this ball may NEVER escape a maze: its orbit is periodic
+// and simply doesn't cross the exit. That's not a bug, that's the beauty -- you
+// can watch for hours. If it gets stuck, it gets stuck. The higher the level,
+// the rarer the exit falls. Nothing is saved: refresh = fresh start at level 1.
 
-// Geometrie in grid-eenheden: gangen PASS breed, muren WALL (dun -> lijnen).
-// De hele fysica rekent in deze eenheden; pixels komen pas bij het tekenen.
+// Geometry in grid units: corridors are PASS wide, walls WALL (thin -> lines).
+// All physics runs in these units; pixels only come in when drawing.
 const WALL = 0.12, PASS = 2, PERIOD = WALL + PASS;
-const BALL_R = 0.55;          // botsradius in grid-eenheden (gang is 2)
-const SPEED  = 1.5;           // grid-eenheden per seconde -- bewust traag
-const FIXED  = 1 / 120;       // vaste tijdstap (s) -- de "klok" van het apparaat
-const SHORT_CELLS = (lvl) => lvl + 1;   // cellen in de korte schermzijde (level 1 = mini)
-const LINE = '#303030';                 // subtiel donkergrijs: muren + finish
+const BALL_R = 0.55;          // collision radius in grid units (corridor is 2)
+const SPEED  = 1.5;           // grid units per second -- deliberately slow
+const FIXED  = 1 / 120;       // fixed timestep (s) -- the device's "clock"
+const SHORT_CELLS = (lvl) => lvl + 1;   // cells along the short screen side (level 1 = tiny)
+const LINE = '#303030';                 // subtle dark grey: walls + finish
 
 const PALETTE = ['#ff3b30','#ff9500','#ffe600','#34c759','#00c8e0',
                  '#3a48d6','#9b30d0','#ff2d9b','#ffffff'];
@@ -66,17 +65,17 @@ function mulberry32(seed) {
   };
 }
 
-// gridlijn-index <-> grid-eenheid (gangen=PASS, muren=WALL, begint met muur)
+// grid-line index <-> grid unit (corridors=PASS, walls=WALL, starts with a wall)
 function offOf(i) { return Math.ceil(i / 2) * WALL + Math.floor(i / 2) * PASS; }
-function spanFor(k) { return (k + 1) * WALL + k * PASS; }   // offOf(2k+1): k cellen
+function spanFor(k) { return (k + 1) * WALL + k * PASS; }   // offOf(2k+1): k cells
 function indexAt(g) {
   if (g < 0) return -1;
   const kk = Math.floor(g / PERIOD), rem = g - kk * PERIOD;
   return rem < WALL ? 2 * kk : 2 * kk + 1;
 }
-function cellCenter(c) { return offOf(2 * c + 1) + PASS / 2; }   // grid-eenheden
+function cellCenter(c) { return offOf(2 * c + 1) + PASS / 2; }   // grid units
 
-// --- doolhof-generatie (recursive backtracker, perfect maze) ----------------
+// --- maze generation (recursive backtracker, perfect maze) ------------------
 function buildMaze(cols, rows, seed) {
   const W = 2 * cols + 1, H = 2 * rows + 1;
   const wall = [];
@@ -106,7 +105,7 @@ function buildMaze(cols, rows, seed) {
     stack.push([nx, ny]);
   }
 
-  // uitgang = cel het VERSTE van de start (echte eind), via BFS
+  // exit = the cell FARTHEST from the start (the real end), via BFS
   const seen = {}; seen['0,0'] = 0;
   const q = [[0, 0, 0]];
   let far = [0, 0], fd = 0;
@@ -125,23 +124,23 @@ function buildMaze(cols, rows, seed) {
   return { cols, rows, W, H, wall, startCell: [0, 0], exitCell: far };
 }
 
-// --- collisie & stap (alles in grid-eenheden; geen toeval) ------------------
-// Werkt op een meegegeven doolhof, zodat we vooraf kunnen testen of een seed
-// uitkomt (level 1) met exact dezelfde wiskunde als live.
+// --- collision & step (everything in grid units; no randomness) -------------
+// Operates on a given maze so we can pre-test whether a seed escapes (level 1)
+// using the exact same math as live.
 function wallHitAt(m, px, py) {
   const gx = indexAt(px), gy = indexAt(py);
   if (gx < 0 || gy < 0 || gx >= m.W || gy >= m.H) return true;
   return m.wall[gy][gx];
 }
 function circleHitsWall(m, x, y) {
-  const r = BALL_R, dg = r * 0.7071;   // alle sample-punten op de botsradius
+  const r = BALL_R, dg = r * 0.7071;   // all sample points sit on the collision radius
   const pts = [[-dg,-dg],[dg,-dg],[-dg,dg],[dg,dg],[-r,0],[r,0],[0,-r],[0,r]];
   for (const [dx, dy] of pts) if (wallHitAt(m, x + dx, y + dy)) return true;
   return false;
 }
-// één vaste tik fysica; geeft true als de uitgang geraakt is.
-// onBounce (optioneel) wordt bij elke kaats aangeroepen -- puur cosmetisch,
-// raakt de fysica niet, zodat de vooraf-check exact gelijk blijft aan live.
+// one fixed physics tick; returns true when the exit is reached.
+// onBounce (optional) is called on every bounce -- purely cosmetic, it does not
+// affect the physics, so the pre-test stays exactly equal to live.
 function tick(m, b, onBounce) {
   const nx = b.x + b.vx * FIXED;
   if (circleHitsWall(m, nx, b.y)) { b.vx = -b.vx; if (onBounce) onBounce(); } else b.x = nx;
@@ -154,7 +153,7 @@ function freshBall() {
   const s = cellCenter(0);
   return { x: s, y: s, vx: Math.cos(Math.PI / 4) * SPEED, vy: Math.sin(Math.PI / 4) * SPEED };
 }
-// lost dit doolhof binnen 'seconds' op? (exact dezelfde tik als live)
+// does this maze get solved within 'seconds'? (exact same tick as live)
 function solvesWithin(m, seconds) {
   const b = freshBall();
   const ticks = Math.ceil(seconds / FIXED);
@@ -162,16 +161,16 @@ function solvesWithin(m, seconds) {
   return false;
 }
 
-// --- toestand (alleen deze sessie; refresh = nieuwe start op level 1) --------
-let level = 1, mazeMs = 0, seed = (Math.random() * 0xffffffff) >>> 0;
-let maze, u, originX, originY;       // u = pixels per grid-eenheid (alleen tekenen)
+// --- state (this session only; refresh = fresh start at level 1) ------------
+let level = 1, mazeMs = 0, totalMs = 0, seed = (Math.random() * 0xffffffff) >>> 0;
+let maze, u, originX, originY;       // u = pixels per grid unit (drawing only)
 let ball, colorIndex = 0;
-let prevX = 0, prevY = 0;            // balpositie van de vorige tik (voor interpolatie)
+let prevX = 0, prevY = 0;            // ball position of the previous tick (for interpolation)
 let lastHud = '';
-const mazeCanvas = document.createElement('canvas');   // statisch doolhof, 1x getekend
+const mazeCanvas = document.createElement('canvas');   // static maze, drawn once
 const mctx = mazeCanvas.getContext('2d');
 
-// kies cols/rows zodat het doolhof het scherm vult met vierkante cellen
+// pick cols/rows so the maze fills the screen with square cells
 function dims() {
   const N = Math.max(2, SHORT_CELLS(level));
   const landscape = canvas.width >= canvas.height;
@@ -190,12 +189,12 @@ function layout() {
 function startLevel() {
   const d = dims();
   if (level === 1) {
-    // level 1 moet het idee meteen tonen: kies een seed die snel uitkomt
+    // level 1 must show the idea right away: pick a seed that escapes quickly
     let s, m;
     for (let t = 0; t < 80; t++) {
       s = (Math.random() * 0xffffffff) >>> 0;
       m = buildMaze(d.cols, d.rows, s);
-      if (solvesWithin(m, 60)) break;     // lost binnen ~1 min op
+      if (solvesWithin(m, 60)) break;     // escapes within ~1 min
     }
     seed = s; maze = m;
   } else {
@@ -217,15 +216,15 @@ function flipColor() {
   ball.color = PALETTE[colorIndex];
 }
 
-// --- tekenen -----------------------------------------------------------------
-// Het doolhof is statisch: 1x naar een aparte canvas, daarna alleen nog blitten.
+// --- drawing -----------------------------------------------------------------
+// The maze is static: drawn once to its own canvas, then only blitted.
 function paintMaze() {
   mazeCanvas.width = canvas.width;
   mazeCanvas.height = canvas.height;
   mctx.fillStyle = '#000';
   mctx.fillRect(0, 0, mazeCanvas.width, mazeCanvas.height);
 
-  // muren: dunne, donkere grijze lijnen (geclampt -> nooit buiten beeld)
+  // walls: thin, dark grey lines (clamped -> never drawn off-screen)
   mctx.fillStyle = LINE;
   for (let gy = 0; gy < maze.H; gy++)
     for (let gx = 0; gx < maze.W; gx++)
@@ -240,7 +239,7 @@ function paintMaze() {
         if (w > 0 && h > 0) mctx.fillRect(x, y, w, h);
       }
 
-  // uitgang: finish-vlag in dezelfde lijnkleur, subtiel (checker tegen zwart)
+  // exit: finish flag in the same line colour, subtle (checker against black)
   const ex = originX + cellCenter(maze.exitCell[0]) * u;
   const ey = originY + cellCenter(maze.exitCell[1]) * u;
   const fsz = PASS * 0.72 * u, n = 4, cs = fsz / n;
@@ -250,7 +249,7 @@ function paintMaze() {
       if ((i + j) % 2) mctx.fillRect(ex - fsz / 2 + i * cs, ey - fsz / 2 + j * cs, cs + 0.5, cs + 0.5);
 }
 
-// elke frame: doolhof blitten + bal op geïnterpoleerde tussenpositie tekenen
+// each frame: blit the maze + draw the ball at its interpolated in-between position
 function draw(rx, ry) {
   ctx.drawImage(mazeCanvas, 0, 0);
   ctx.fillStyle = ball.color;
@@ -258,7 +257,7 @@ function draw(rx, ry) {
   ctx.arc(originX + rx * u, originY + ry * u, BALL_R * u, 0, Math.PI * 2);
   ctx.fill();
 
-  const txt = 'level ' + level + '   ' + fmt(mazeMs);
+  const txt = 'level ' + level + '   ' + fmt(mazeMs) + '   ·   total ' + fmt(totalMs);
   if (txt !== lastHud) { hud.textContent = txt; lastHud = txt; }
 }
 function fmt(ms) {
@@ -266,26 +265,27 @@ function fmt(ms) {
   const d = Math.floor(s / 86400); s -= d * 86400;
   const h = Math.floor(s / 3600);  s -= h * 3600;
   const m = Math.floor(s / 60);    s -= m * 60;
-  if (d) return d + 'd ' + h + 'u ' + m + 'm';
-  if (h) return h + 'u ' + m + 'm';
+  if (d) return d + 'd ' + h + 'h ' + m + 'm';
+  if (h) return h + 'h ' + m + 'm';
   if (m) return m + 'm ' + s + 's';
   return s + 's';
 }
 
-// --- loop: vaste klok ontkoppeld van het framerate --------------------------
+// --- loop: fixed clock decoupled from the framerate -------------------------
 let last = performance.now(), acc = 0;
 function frame(now) {
   let realDt = (now - last) / 1000;
   last = now;
-  if (realDt > 0.25) realDt = 0.25;        // na tab-switch: geen tijdsprong
-  mazeMs += realDt * 1000;                  // HUD telt echte kijktijd
+  if (realDt > 0.25) realDt = 0.25;        // after a tab-switch: no time jump
+  mazeMs += realDt * 1000;                  // time on the current level
+  totalMs += realDt * 1000;                 // total watch time this session
   acc += realDt;
-  while (acc >= FIXED) {                     // fysica in vaste stapjes
-    prevX = ball.x; prevY = ball.y;          // bewaar vorige tik voor interpolatie
+  while (acc >= FIXED) {                     // physics in fixed steps
+    prevX = ball.x; prevY = ball.y;          // keep previous tick for interpolation
     if (tick(maze, ball, flipColor)) { nextLevel(); acc = 0; break; }
     acc -= FIXED;
   }
-  // teken de bal op de fractie tussen vorige en huidige tik -> vloeiend beeld
+  // draw the ball at the fraction between previous and current tick -> smooth
   const alpha = acc / FIXED;
   draw(prevX + (ball.x - prevX) * alpha, prevY + (ball.y - prevY) * alpha);
   requestAnimationFrame(frame);
@@ -294,7 +294,7 @@ function frame(now) {
 window.addEventListener('resize', () => {
   canvas.width = window.innerWidth;
   canvas.height = window.innerHeight;
-  startLevel();                 // herbouw dit level passend op het nieuwe scherm
+  startLevel();                 // rebuild this level to fit the new screen
 });
 
 canvas.width = window.innerWidth;

@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Golven &middot; platformer</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #04040a; overflow: hidden; }
+  canvas { display: block; position: fixed; inset: 0; touch-action: none; }
+  .ui {
+    position: fixed; z-index: 2; pointer-events: none; user-select: none;
+    font: 12px/1.5 "Courier New", ui-monospace, monospace; color: #d6e6ff;
+    letter-spacing: 0.14em; text-transform: lowercase;
+  }
+  #hud { right: 14px; bottom: 14px; opacity: 0.75; text-align: right; }
+  #hint { left: 14px; bottom: 14px; opacity: 0.5; }
+  #score {
+    left: 0; right: 0; top: 8%; text-align: center;
+    font: 700 46px/1 "Courier New", ui-monospace, monospace;
+    color: rgba(228,242,255,0.85); letter-spacing: 0.12em;
+    text-shadow: 0 0 22px rgba(120,200,255,0.5); will-change: transform; transform: scale(1);
+  }
+  #notes {
+    left: 0; right: 0; top: calc(8% + 54px); text-align: center;
+    font: 13px/1 "Courier New", ui-monospace, monospace; letter-spacing: 0.2em;
+    color: rgba(170,235,255,0.75); text-shadow: 0 0 12px rgba(120,200,255,0.4); min-height: 13px;
+  }
+  .overlay {
+    position: fixed; inset: 0; z-index: 3; display: flex; align-items: center; justify-content: center;
+    flex-direction: column; gap: 14px; text-align: center; cursor: pointer;
+    background: radial-gradient(120% 80% at 50% 55%, rgba(20,18,55,0.35), rgba(4,4,10,0.9));
+    color: #eaf2ff; font: 14px/1.6 "Courier New", ui-monospace, monospace; letter-spacing: 0.16em; text-transform: lowercase;
+  }
+  .overlay h1 { font-size: 28px; font-weight: 400; letter-spacing: 0.36em; margin: 0; color: #fff; }
+  .overlay small { opacity: 0.55; max-width: 30em; }
+  .overlay .pulse { opacity: 0.85; animation: bob 1.6s ease-in-out infinite; }
+  .overlay .big { font-size: 22px; letter-spacing: 0.2em; color: #aee3ff; opacity: 0.95; }
+  @keyframes bob { 0%,100%{ transform: translateY(0); opacity:.5 } 50%{ transform: translateY(-4px); opacity:.95 } }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="score" class="ui">0</div>
+<div id="notes" class="ui"></div>
+<div id="hud" class="ui"></div>
+<div id="hint" class="ui">jump: space / &uarr; / tap</div>
+
+<div id="start" class="overlay">
+  <h1>golven</h1>
+  <small>the world is built from the music &middot; the bass shapes the hills, the melody floats as light, the drums hit the screen</small>
+  <small>jump the pink walls, leap the chasms, grab the notes</small>
+  <div class="pulse">tap or press space &middot; sound on</div>
+</div>
+<div id="over" class="overlay hidden">
+  <div class="big">game over</div>
+  <small id="overScore"></small>
+  <div class="pulse">tap or press space to run again</div>
+</div>
+
+<script>
+// Golven -- platformer (worked-out variant)
+// ----------------------------------------------------------------------------
+// One-button survival runner whose WORLD is generated from real, generated
+// music -- and, unlike the first cut, every voice you HEAR you also SEE:
+//
+//   bass  -> the rolling hills (terrain height follows the bassline)
+//   lead  -> a glowing melodic contour of note-orbs you can grab for bonus
+//   bell  -> high sparkles / collectible high notes
+//   kick  -> camera thump + a ground shock-ring at your feet
+//   snare -> a bright screen flash
+//   hats  -> twinkles in the sky
+//   pad   -> a slow colour wash over the whole sky
+//
+// High lead tones raise pink WALLS you must clear; musical rests open CHASMS
+// you must leap. Land on a wall's face or fall in a gap -> game over. Endless;
+// every run is a fresh piece of music, so a fresh landscape.
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const scoreEl = document.getElementById('score');
+const notesEl = document.getElementById('notes');
+const hud = document.getElementById('hud');
+const startEl = document.getElementById('start');
+const overEl = document.getElementById('over');
+const overScoreEl = document.getElementById('overScore');
+
+// --- tunables ---------------------------------------------------------------
+const BPM = 96;
+const beatDur = 60 / BPM;
+const ROOT = 220;
+const semi = (s) => ROOT * Math.pow(2, s / 12);
+const SCALE = [0, 2, 4, 7, 9, 12, 14];      // major pentatonic, two octaves
+const scaleFreq = SCALE.map(semi);
+
+// layout / physics (recomputed on resize; lengths scale with screen height so
+// jump arcs look the same everywhere, while air-TIME stays screen-independent)
+let W, H, playerX, groundBaseY, UNIT, G, V0, BEAT_PX, pxPerSec, futureSec;
+const COYOTE = 0.09, JUMP_BUF = 0.12, MAX_ELEV_U = 1.0;   // hill height in UNITs
+
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// --- music + level model ----------------------------------------------------
+let SEED = (Math.random() * 0xffffffff) >>> 0;
+let notes = [];          // generated audio events (also drive level + visuals)
+let orbs = [];           // collectible note-orbs (the visible melody)
+const feat = [];         // per-beat feature: { type, h, elevU }
+let genBeat = 0;
+let melodyLane = 3;
+let elevState = 0;       // smoothed terrain elevation (in UNITs), eased per beat
+
+function pushNote(n) { n.scheduled = false; n.vis = false; notes.push(n); }
+
+// one beat of music -- a bright, driving major groove. The lead's PITCH shapes
+// the walls/gaps; the bass pattern shapes the hills.
+function genMusicBeat(beat) {
+  const t = t0 + beat * beatDur;
+  const bar = beat % 4;
+  const rng = mulberry32(SEED ^ Math.imul(beat + 1, 2654435761));
+
+  // drums
+  if (bar === 0 || bar === 2) pushNote({ start: t, dur: 0.2, amp: 1.0, voice: 'kick', freq: 120 });
+  if (bar === 1 || bar === 3) pushNote({ start: t, dur: 0.2, amp: 0.7, voice: 'snare', freq: 0 });
+  if (rng() < 0.4) pushNote({ start: t + 0.5 * beatDur, dur: 0.16, amp: 0.6, voice: 'kick', freq: 120 });
+  for (const s of [0, 0.5]) pushNote({ start: t + s * beatDur, dur: 0.05, amp: 0.22, voice: 'hat', freq: 0 });
+
+  // arpeggiated bass -- eighth notes cycling root / fifth / octave
+  [0, 0.5].forEach((s, i) => {
+    const semis = [0, 7, 12, 7][(beat * 2 + i) % 4];
+    pushNote({ start: t + s * beatDur, dur: beatDur * 0.45, amp: 0.42, voice: 'bass', freq: 55 * Math.pow(2, semis / 12) });
+  });
+
+  // bright stab chord on each bar's downbeat
+  if (bar === 0) [0, 4, 7].forEach(d => pushNote({ start: t, dur: beatDur * 1.5, amp: 0.12, voice: 'pad', freq: 220 * Math.pow(2, d / 12) }));
+
+  // lead -- random walk over the scale; sometimes the whole beat rests
+  const restBeat = beat >= 6 && rng() < 0.16;
+  if (!restBeat) {
+    const subs = rng() < 0.5 ? [0, 0.5] : [0, 0.25, 0.75];
+    for (const s of subs) {
+      if (s > 0 && rng() < 0.4) continue;
+      melodyLane = Math.max(0, Math.min(SCALE.length - 1, melodyLane + [-2, -1, -1, 0, 1, 1, 2][(rng() * 7) | 0]));
+      const n = { start: t + s * beatDur, dur: 0.3, amp: 0.5, voice: 'lead', freq: scaleFreq[melodyLane], lane: melodyLane };
+      pushNote(n); addOrb(n);
+    }
+    if (rng() < 0.25) {
+      const L = 4 + ((rng() * 3) | 0);
+      const n = { start: t + 0.5 * beatDur, dur: 0.4, amp: 0.4, voice: 'bell', freq: scaleFreq[L] * 2, lane: L };
+      pushNote(n); addOrb(n);
+    }
+  }
+}
+
+// a collectible at the note's pitch height -- together they trace the melody
+function addOrb(n) {
+  const o = { t: n.start, lane: n.lane, bell: n.voice === 'bell', collected: false, pulse: 0 };
+  n.orb = o; orbs.push(o);
+}
+
+// average lead pitch of a beat (drives the wall/gap feature)
+function beatInfo(beat) {
+  const a = t0 + beat * beatDur, b = a + beatDur;
+  let sum = 0, count = 0, bell = false;
+  for (const n of notes) {
+    if (n.start < a - 1e-6 || n.start >= b) continue;
+    if (n.voice === 'lead') { sum += n.lane; count++; }
+    else if (n.voice === 'bell') bell = true;
+  }
+  return { has: count > 0 || bell, lane: count ? sum / count : 6, bell };
+}
+
+// terrain target from the bass pattern -- higher bass note -> higher hill
+function bassElev(beat) {
+  let s = 0;
+  for (let i = 0; i < 2; i++) s += [0, 7, 12, 7][(beat * 2 + i) % 4];
+  return (s / 24) * MAX_ELEV_U;                 // avg semis 0..12 -> 0..MAX_ELEV_U
+}
+
+// the level's logic: HIGH notes raise a wall (taller the higher), LOW notes
+// open a gap, the middle stays runnable. Difficulty creeps up with distance.
+function genFeature(beat) {
+  let type = 'flat', h = 0;
+  // ease the hills toward the bass target; hazards sit on flat ground for fairness
+  elevState += (bassElev(beat) - elevState) * 0.45;
+  let elevU = elevState;
+
+  if (beat >= 6) {
+    const prev = feat[beat - 1] ? feat[beat - 1].type : 'flat';
+    if (prev === 'gap' || prev === 'wall') {
+      type = 'flat';                              // always a safe landing after a hazard
+    } else {
+      const info = beatInfo(beat);
+      const ramp = Math.min(0.22, beat * 0.0009); // very gentle difficulty creep
+      if (info.has) {
+        if (info.bell || info.lane >= 5) {        // high tones -> wall
+          type = 'wall';
+          h = (info.bell ? 2.4 : info.lane >= 6 ? 2.0 : 1.4) + ramp;
+        } else if (info.lane <= 1) {              // low tones -> gap
+          type = 'gap';
+        }
+      }
+    }
+  }
+  if (type !== 'flat') elevU = feat[beat - 1] ? feat[beat - 1].elevU : elevU; // flatten under hazards
+  feat[beat] = { type, h, elevU };
+}
+
+function ensure(uptoBeat) {
+  while (genBeat <= uptoBeat) { genMusicBeat(genBeat); genFeature(genBeat); genBeat++; }
+}
+const featAt = (b) => feat[b] || { type: 'flat', h: 0, elevU: 0 };
+const elevOf = (b) => featAt(b).elevU * UNIT;
+
+// smooth (smoothstep) terrain elevation at a fractional beat
+function elevAt(fb) {
+  const i = Math.floor(fb), frac = fb - i, t = frac * frac * (3 - 2 * frac);
+  return elevOf(i) + (elevOf(i + 1) - elevOf(i)) * t;
+}
+// fractional beat under a given screen x at songTime
+const beatAtX = (x, songTime) => songTime / beatDur + (x - playerX) / BEAT_PX;
+const slotLeftX = (b, songTime) => playerX + (b * beatDur - songTime) * pxPerSec;
+
+// --- audio ------------------------------------------------------------------
+let audio, master, noiseBuffer, t0 = 0;
+
+function initAudio() {
+  audio = new (window.AudioContext || window.webkitAudioContext)();
+  master = audio.createGain(); master.gain.value = 0.9;
+  noiseBuffer = audio.createBuffer(1, Math.floor(audio.sampleRate * 0.5), audio.sampleRate);
+  const ch = noiseBuffer.getChannelData(0);
+  for (let i = 0; i < ch.length; i++) ch[i] = Math.random() * 2 - 1;
+  const comp = audio.createDynamicsCompressor();
+  const delay = audio.createDelay(1.0); delay.delayTime.value = beatDur * 0.75;
+  const fb = audio.createGain(); fb.gain.value = 0.28;
+  const wet = audio.createGain(); wet.gain.value = 0.22;
+  delay.connect(fb); fb.connect(delay); delay.connect(wet); wet.connect(comp);
+  master.connect(comp); master.connect(delay); comp.connect(audio.destination);
+}
+
+function playNoise(n) {
+  const src = audio.createBufferSource(); src.buffer = noiseBuffer;
+  const f = audio.createBiquadFilter(), g = audio.createGain();
+  if (n.voice === 'hat') { f.type = 'highpass'; f.frequency.value = 7000; }
+  else { f.type = 'bandpass'; f.frequency.value = 1800; f.Q.value = 0.7; }
+  g.gain.setValueAtTime(n.amp, n.start);
+  g.gain.exponentialRampToValueAtTime(0.0006, n.start + n.dur);
+  src.connect(f); f.connect(g); g.connect(master);
+  if (n.voice === 'snare') {
+    const o = audio.createOscillator(); o.type = 'triangle'; o.frequency.value = 180;
+    const g2 = audio.createGain(); g2.gain.setValueAtTime(n.amp * 0.5, n.start);
+    g2.gain.exponentialRampToValueAtTime(0.0006, n.start + 0.12);
+    o.connect(g2); g2.connect(master); o.start(n.start); o.stop(n.start + 0.14);
+  }
+  src.start(n.start); src.stop(n.start + n.dur + 0.02);
+}
+
+function playNote(n) {
+  if (n.voice === 'hat' || n.voice === 'snare') { playNoise(n); return; }
+  const g = audio.createGain(); g.connect(master);
+  const a = n.start, atk = Math.min(0.02, n.dur * 0.3);
+  g.gain.setValueAtTime(0.0001, a);
+  g.gain.exponentialRampToValueAtTime(n.amp, a + atk);
+  g.gain.exponentialRampToValueAtTime(0.0008, a + n.dur);
+  if (n.voice === 'kick') {
+    const o = audio.createOscillator(); o.type = 'sine';
+    o.frequency.setValueAtTime(120, a); o.frequency.exponentialRampToValueAtTime(45, a + 0.12);
+    o.connect(g); o.start(a); o.stop(a + n.dur + 0.02); return;
+  }
+  const o = audio.createOscillator();
+  o.type = n.voice === 'pad' ? 'sawtooth' : n.voice === 'bass' ? 'triangle' : n.voice === 'bell' ? 'sine' : 'square';
+  o.frequency.value = n.freq;
+  if (n.voice === 'pad' || n.voice === 'lead') {
+    const lp = audio.createBiquadFilter(); lp.type = 'lowpass';
+    lp.frequency.value = n.voice === 'pad' ? 900 : 2600; o.connect(lp); lp.connect(g);
+  } else o.connect(g);
+  o.start(a); o.stop(a + n.dur + 0.05);
+}
+
+function audioTick() {
+  if (state !== 'play') return;   // dead/start: stop scheduling -> music stops (echo tail rings out)
+  const now = audio.currentTime, songTime = now - t0;
+  ensure(Math.floor((songTime + futureSec) / beatDur) + 2);
+  for (const n of notes) if (!n.scheduled && n.start <= now + 0.18) { playNote(n); n.scheduled = true; }
+  if (notes.length > 600) {
+    const cut = now - 1.5;
+    notes = notes.filter(n => n.start + n.dur > cut);
+  }
+  if (orbs.length > 400) { const cut = songTime - 1.5; orbs = orbs.filter(o => o.t > cut); }
+}
+
+// --- game state -------------------------------------------------------------
+let state = 'start';     // 'start' | 'play' | 'dead'
+let py = 0, vy = 0, grounded = false, coyote = 0, jumpBuf = 0, jumpHeld = false;
+let score = 0, best = 0, picked = 0, bestPicked = 0, scorePulse = 0, prevSong = 0, runRot = 0;
+let playerGroundY = 0, squash = 0, freezeSong = 0;
+const trail = [];
+
+// --- visual effects ---------------------------------------------------------
+let shake = 0, camY = 0, flash = 0, wash = 0, washHue = 280;
+const parts = [];        // {x,y,vx,vy,life,max,r,col,kind}
+const stars = [];        // parallax sky stars {x,y,z,tw}
+
+function seedStars() {
+  stars.length = 0;
+  for (let i = 0; i < 70; i++) stars.push({ x: Math.random(), y: Math.random() * 0.7, z: 0.2 + Math.random() * 0.8, tw: Math.random() });
+}
+function spawnRing(x, y, col) { parts.push({ x, y, vx: 0, vy: 0, life: 0, max: 0.5, r: UNIT * 0.2, col, kind: 'ring' }); }
+function spawnDust(x, y, n) {
+  for (let i = 0; i < n; i++) parts.push({ x, y, vx: (Math.random() - 0.5) * UNIT * 3, vy: -Math.random() * UNIT * 2, life: 0, max: 0.4 + Math.random() * 0.3, r: UNIT * (0.04 + Math.random() * 0.05), col: 'rgba(160,220,255,', kind: 'dust' });
+}
+function spawnSpark(x, y, col) {
+  for (let i = 0; i < 8; i++) { const a = Math.random() * 6.28, s = UNIT * (1 + Math.random() * 3); parts.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 0, max: 0.5, r: UNIT * 0.05, col, kind: 'spark' }); }
+}
+
+// turn the music we're hearing right now into things we see
+function triggerVisuals(songTime) {
+  for (const n of notes) {
+    if (n.vis || n.start > songTime) continue;
+    n.vis = true;
+    if (n.start < songTime - 0.25) continue;          // skip stale on catch-up
+    switch (n.voice) {
+      case 'kick':  shake = Math.max(shake, UNIT * 0.5); camY += UNIT * 0.5;
+                    spawnRing(playerX, playerGroundY, 'rgba(120,230,255,'); break;
+      case 'snare': flash = Math.max(flash, 0.32);
+                    spawnRing(playerX, playerGroundY, 'rgba(255,150,230,'); break;
+      case 'hat':   for (let i = 0; i < 3; i++) { const s = stars[(Math.random() * stars.length) | 0]; if (s) s.tw = 1; } break;
+      case 'bass':  spawnDust(playerX + (Math.random() - 0.5) * UNIT, playerGroundY, 1); break;
+      case 'bell':  if (n.orb) spawnSpark(playerX + (n.start - songTime) * pxPerSec, playerGroundY - (0.6 + n.lane * 0.28) * UNIT, 'rgba(255,240,180,'); break;
+      case 'pad':   wash = 0.7; washHue = 250 + (n.freq % 90); break;
+      case 'lead':  if (n.orb) n.orb.pulse = 1; break;
+    }
+  }
+}
+
+function startRun() {
+  SEED = (Math.imul(SEED, 1664525) + 1013904223) >>> 0;   // fresh level each run
+  notes = []; orbs = []; feat.length = 0; genBeat = 0; melodyLane = 3; elevState = 0;
+  t0 = audio.currentTime + 0.05;
+  ensure(Math.floor(futureSec / beatDur) + 4);
+  py = groundBaseY; vy = 0; grounded = true; coyote = COYOTE; jumpBuf = 0;
+  score = 0; picked = 0; prevSong = 0; runRot = 0; squash = 0;
+  shake = camY = flash = 0; wash = 0; trail.length = 0; parts.length = 0;
+  seedStars();
+  state = 'play';
+  startEl.classList.add('hidden'); overEl.classList.add('hidden');
+  if (master) master.gain.setTargetAtTime(0.9, audio.currentTime, 0.1);
+}
+
+function die() {
+  if (state !== 'play') return;
+  state = 'dead';
+  best = Math.max(best, score); bestPicked = Math.max(bestPicked, picked);
+  overScoreEl.textContent = `score ${score} · notes ${picked}   best ${best}`;
+  overEl.classList.remove('hidden');
+  freezeSong = audio.currentTime - t0;            // freeze the world where we died
+  shake = UNIT * 1.2; flash = 0.5;
+}
+
+function requestJump() {
+  if (state === 'start' || state === 'dead') { startRun(); return; }
+  jumpBuf = JUMP_BUF; jumpHeld = true;
+}
+function releaseJump() { jumpHeld = false; if (vy < 0) vy *= 0.45; }   // variable jump height
+
+// --- update -----------------------------------------------------------------
+function update(songTime) {
+  let dt = songTime - prevSong; prevSong = songTime;
+  if (dt <= 0 || dt > 0.05) dt = Math.min(Math.max(dt, 0), 0.05);
+
+  vy += G * dt;
+  py += vy * dt;
+
+  const hw = UNIT * 0.16;
+  const fbp = songTime / beatDur, b0 = Math.floor(fbp), fracp = fbp - b0;
+  playerGroundY = groundBaseY - elevAt(fbp);                  // rolling terrain under player
+  // floor is missing only when our CENTRE is over the hole -> a clean leap never false-triggers
+  const fp = featAt(b0);
+  let overGap = fp.type === 'gap' && fracp > 0.14 && fracp < 0.86;
+  let groundLevel = playerGroundY, hit = false;
+
+  // walls are real objects with width -> still need to scan neighbouring slots
+  for (let b = b0 - 1; b <= b0 + 1; b++) {
+    const f = featAt(b);
+    if (f.type !== 'wall') continue;
+    const left = slotLeftX(b, songTime);
+    const wl = left + BEAT_PX * 0.30, wr = left + BEAT_PX * 0.70;
+    const top = (groundBaseY - elevOf(b)) - f.h * UNIT;
+    if (playerX + hw > wl && playerX - hw < wr) {
+      if (py <= top + UNIT * 0.35 && vy >= 0) groundLevel = Math.min(groundLevel, top);  // land on top
+      else if (py > top + UNIT * 0.35) hit = true;                                       // hit the face
+    }
+  }
+  if (hit) { die(); return; }
+
+  const wasAir = !grounded;
+  if (overGap) {
+    grounded = false;
+    if (py >= playerGroundY) { die(); return; }     // no floor under us -> fell in
+  } else if (py >= groundLevel && vy >= 0) {
+    if (wasAir && vy > V0 * 0.4) { spawnDust(playerX, groundLevel, 8); squash = Math.min(1, vy / V0); shake = Math.max(shake, UNIT * 0.25); }
+    py = groundLevel; vy = 0; grounded = true; coyote = COYOTE;
+  } else grounded = false;
+  if (py > H + 60) { die(); return; }
+
+  coyote -= dt; jumpBuf -= dt;
+  if (jumpBuf > 0 && (grounded || coyote > 0)) {
+    vy = -V0; grounded = false; coyote = 0; jumpBuf = 0; squash = -0.7;
+    spawnDust(playerX, py, 5);
+  }
+
+  // collect note-orbs (the melody) -- bonus score + a little pop
+  const pcx = playerX, pcy = py - UNIT * 0.18;
+  for (const o of orbs) {
+    if (o.collected || o.t < songTime - 0.5 || o.t > songTime + futureSec) continue;
+    const ox = playerX + (o.t - songTime) * pxPerSec;
+    const oy = (groundBaseY - elevAt(o.t / beatDur)) - (0.6 + o.lane * 0.28) * UNIT;
+    const rr = UNIT * (o.bell ? 0.16 : 0.13);
+    if ((ox - pcx) ** 2 + (oy - pcy) ** 2 < (rr + UNIT * 0.18) ** 2) {
+      o.collected = true; picked++; scorePulse = 1;
+      spawnSpark(ox, oy, o.bell ? 'rgba(255,240,180,' : 'rgba(170,235,255,');
+    }
+  }
+
+  triggerVisuals(songTime);
+
+  // visuals / juice
+  runRot += pxPerSec * dt / (UNIT * 0.9);
+  squash += (0 - squash) * Math.min(1, dt * 12);
+  shake *= Math.pow(0.001, dt); if (shake < 0.2) shake = 0;
+  camY += (0 - camY) * Math.min(1, dt * 9);
+  flash *= Math.pow(0.02, dt); wash *= Math.pow(0.25, dt);
+  for (const s of stars) s.tw *= Math.pow(0.08, dt);
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const p = parts[i]; p.life += dt;
+    if (p.life >= p.max) { parts.splice(i, 1); continue; }
+    if (p.kind !== 'ring') { p.vy += G * 0.35 * dt; p.x += p.vx * dt; p.y += p.vy * dt; }
+  }
+  trail.unshift(py); if (trail.length > 7) trail.pop();
+  score = Math.max(score, Math.floor(songTime / beatDur) + picked * 3);
+}
+
+// --- render -----------------------------------------------------------------
+function drawBackground(songTime) {
+  // sky, washed by the pad chord
+  const hueA = 250, sky = ctx.createLinearGradient(0, 0, 0, groundBaseY + UNIT);
+  sky.addColorStop(0, `hsl(${hueA + wash * (washHue - hueA) * 0.3}, 60%, ${7 + wash * 6}%)`);
+  sky.addColorStop(1, `hsl(${280 + wash * 30}, 55%, ${14 + wash * 8}%)`);
+  ctx.fillStyle = sky; ctx.fillRect(0, 0, W, H);
+
+  // sun/moon glow on the horizon
+  const sun = ctx.createRadialGradient(W * 0.5, groundBaseY, 0, W * 0.5, groundBaseY, H * 0.65);
+  sun.addColorStop(0, `rgba(255,${110 + wash * 60},170,${0.26 + wash * 0.12})`); sun.addColorStop(1, 'rgba(4,4,10,0)');
+  ctx.fillStyle = sun; ctx.fillRect(0, 0, W, H);
+
+  // stars (parallax + twinkle on hats)
+  for (const s of stars) {
+    const x = ((s.x - songTime * 0.004 * s.z) % 1 + 1) % 1 * W;
+    const a = 0.25 * s.z + 0.6 * s.tw;
+    ctx.fillStyle = `rgba(210,235,255,${a})`;
+    ctx.fillRect(x, s.y * groundBaseY, 1.5 + s.tw * 1.5, 1.5 + s.tw * 1.5);
+  }
+
+  // distant parallax mountains (two layers)
+  for (let layer = 0; layer < 2; layer++) {
+    const speed = 0.05 + layer * 0.12, amp = H * (0.06 + layer * 0.05), base = groundBaseY - H * (0.16 - layer * 0.08);
+    ctx.beginPath(); ctx.moveTo(0, H);
+    for (let x = 0; x <= W; x += 24) {
+      const ph = (x / W + songTime * speed) * 6.28;
+      ctx.lineTo(x, base - (Math.sin(ph) * 0.6 + Math.sin(ph * 2.3 + layer) * 0.4) * amp);
+    }
+    ctx.lineTo(W, H); ctx.closePath();
+    ctx.fillStyle = layer === 0 ? 'rgba(30,24,70,0.55)' : 'rgba(50,34,95,0.55)';
+    ctx.fill();
+  }
+}
+
+function drawTerrain(songTime) {
+  const b0 = Math.floor(beatAtX(0, songTime)) - 1;
+  const b1 = Math.floor(beatAtX(W, songTime)) + 1;
+  const step = 9;
+  let seg = [];                                   // contiguous ground points
+  const flush = () => {
+    if (seg.length < 2) { seg = []; return; }
+    ctx.beginPath(); ctx.moveTo(seg[0].x, seg[0].y);
+    for (let i = 1; i < seg.length; i++) ctx.lineTo(seg[i].x, seg[i].y);
+    // body fill
+    ctx.lineTo(seg[seg.length - 1].x, H); ctx.lineTo(seg[0].x, H); ctx.closePath();
+    const grd = ctx.createLinearGradient(0, groundBaseY - UNIT, 0, H);
+    grd.addColorStop(0, 'rgba(40,150,200,0.5)'); grd.addColorStop(1, 'rgba(10,20,50,0.0)');
+    ctx.fillStyle = grd; ctx.fill();
+    // neon crest
+    ctx.beginPath(); ctx.moveTo(seg[0].x, seg[0].y);
+    for (let i = 1; i < seg.length; i++) ctx.lineTo(seg[i].x, seg[i].y);
+    ctx.strokeStyle = 'rgba(120,230,255,0.9)'; ctx.lineWidth = 2.5;
+    ctx.shadowColor = 'rgba(120,230,255,0.6)'; ctx.shadowBlur = 10; ctx.stroke(); ctx.shadowBlur = 0;
+    seg = [];
+  };
+  for (let x = 0; x <= W; x += step) {
+    const fb = beatAtX(x, songTime), b = Math.floor(fb), frac = fb - b, f = featAt(b);
+    const inHole = f.type === 'gap' && frac > 0.14 && frac < 0.86;
+    if (inHole) flush();
+    else seg.push({ x, y: groundBaseY - elevAt(fb) });
+  }
+  flush();
+
+  // walls -- neon pink pillars rising from the hill
+  for (let b = b0; b <= b1; b++) {
+    const f = featAt(b); if (f.type !== 'wall') continue;
+    const left = slotLeftX(b, songTime);
+    const wl = left + BEAT_PX * 0.30, wr = left + BEAT_PX * 0.70;
+    const base = groundBaseY - elevOf(b), top = base - f.h * UNIT;
+    const g2 = ctx.createLinearGradient(0, top, 0, base);
+    g2.addColorStop(0, 'rgba(255,120,210,0.9)'); g2.addColorStop(1, 'rgba(120,40,160,0.55)');
+    ctx.fillStyle = g2; ctx.fillRect(wl, top, wr - wl, base - top);
+    ctx.strokeStyle = 'rgba(255,180,240,0.95)'; ctx.lineWidth = 2;
+    ctx.shadowColor = 'rgba(255,120,210,0.7)'; ctx.shadowBlur = 14;
+    ctx.strokeRect(wl, top, wr - wl, base - top); ctx.shadowBlur = 0;
+  }
+}
+
+function drawOrbs(songTime) {
+  // faint connecting line = the melodic contour
+  ctx.beginPath(); let started = false;
+  for (const o of orbs) {
+    if (o.t < songTime - 0.5 || o.t > songTime + futureSec) continue;
+    const ox = playerX + (o.t - songTime) * pxPerSec;
+    const oy = (groundBaseY - elevAt(o.t / beatDur)) - (0.6 + o.lane * 0.28) * UNIT;
+    if (!started) { ctx.moveTo(ox, oy); started = true; } else ctx.lineTo(ox, oy);
+  }
+  ctx.strokeStyle = 'rgba(170,235,255,0.18)'; ctx.lineWidth = 1.5; ctx.stroke();
+
+  for (const o of orbs) {
+    if (o.t < songTime - 0.5 || o.t > songTime + futureSec) continue;
+    const ox = playerX + (o.t - songTime) * pxPerSec;
+    const oy = (groundBaseY - elevAt(o.t / beatDur)) - (0.6 + o.lane * 0.28) * UNIT;
+    const baseR = UNIT * (o.bell ? 0.13 : 0.10);
+    o.pulse *= 0.9;
+    const r = baseR * (1 + o.pulse * 0.8);
+    if (o.collected) {
+      ctx.fillStyle = 'rgba(255,255,255,0.10)';
+      ctx.beginPath(); ctx.arc(ox, oy, baseR * 0.5, 0, 6.28); ctx.fill();
+      continue;
+    }
+    const col = o.bell ? '255,240,180' : '170,235,255';
+    ctx.beginPath(); ctx.arc(ox, oy, r, 0, 6.28);
+    ctx.fillStyle = `rgba(${col},0.95)`; ctx.shadowColor = `rgba(${col},0.9)`;
+    ctx.shadowBlur = 12 + o.pulse * 16; ctx.fill(); ctx.shadowBlur = 0;
+  }
+}
+
+function drawParticles() {
+  for (const p of parts) {
+    const k = 1 - p.life / p.max;
+    if (p.kind === 'ring') {
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r + (1 - k) * UNIT * 1.6, 0, 6.28);
+      ctx.strokeStyle = p.col + (k * 0.5) + ')'; ctx.lineWidth = 2; ctx.stroke();
+    } else {
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 6.28);
+      ctx.fillStyle = (p.col.endsWith(',') ? p.col : p.col) + (k * 0.8) + ')'; ctx.fill();
+    }
+  }
+}
+
+function drawPlayer() {
+  // trail
+  for (let i = trail.length - 1; i >= 1; i--) {
+    ctx.beginPath();
+    ctx.arc(playerX - i * 5, trail[i] - UNIT * 0.18, UNIT * 0.16 * (1 - i / 9), 0, 6.28);
+    ctx.fillStyle = `rgba(150,225,255,${0.18 * (1 - i / 8)})`; ctx.fill();
+  }
+  const r = UNIT * 0.18, pyc = py - r;
+  const sx = 1 - squash * 0.5, sy = 1 + squash * 0.5;     // squash & stretch
+  ctx.save();
+  ctx.translate(playerX, pyc); ctx.rotate(runRot); ctx.scale(sx, sy);
+  ctx.beginPath(); ctx.arc(0, 0, r, 0, 6.28);
+  ctx.fillStyle = '#bff0ff'; ctx.shadowColor = '#9fe0ff'; ctx.shadowBlur = 18; ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = 'rgba(20,60,90,0.7)'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -r); ctx.stroke();   // spoke -> reads as rolling
+  ctx.restore();
+}
+
+function draw(songTime) {
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  drawBackground(songTime);
+
+  ctx.save();
+  const sxk = shake ? (Math.random() - 0.5) * shake : 0;
+  const syk = shake ? (Math.random() - 0.5) * shake : 0;
+  ctx.translate(sxk, syk + camY);                 // camera shake + kick thump
+
+  drawTerrain(songTime);
+  drawOrbs(songTime);
+  drawParticles();
+  drawPlayer();
+  ctx.restore();
+
+  if (flash > 0.01) { ctx.fillStyle = `rgba(230,245,255,${flash})`; ctx.fillRect(0, 0, W, H); }
+
+  // ui
+  scorePulse = Math.max(0, scorePulse - 0.05);
+  if (state === 'play') { scoreEl.textContent = score; notesEl.textContent = picked ? `notes ${picked}` : ''; }
+  scoreEl.style.transform = `scale(${1 + 0.16 * scorePulse})`;
+  hud.textContent = `best ${best}`;
+}
+
+// --- loop -------------------------------------------------------------------
+function frame() {
+  if (state !== 'start') {
+    const songTime = audio.currentTime - t0;
+    const prevScore = score;
+    if (state === 'play') update(songTime);
+    else if (state === 'dead') { flash *= 0.9; shake *= 0.88; }   // settle the frozen frame
+    if (score > prevScore) scorePulse = 1;
+    draw(Math.max(0, state === 'dead' ? freezeSong : songTime));
+  }
+  requestAnimationFrame(frame);
+}
+
+// --- input ------------------------------------------------------------------
+function begin() { if (audio) return; initAudio(); if (audio.state === 'suspended') audio.resume(); setInterval(audioTick, 40); startRun(); }
+
+addEventListener('keydown', (e) => {
+  if (e.code === 'Space' || e.code === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
+    if (!audio) begin(); else requestJump();
+    e.preventDefault();
+  }
+});
+addEventListener('keyup', (e) => { if (e.code === 'Space' || e.code === 'ArrowUp' || e.key === 'w' || e.key === 'W') releaseJump(); });
+
+function pdown(e) { if (!audio) begin(); else requestJump(); e.preventDefault(); }
+canvas.addEventListener('mousedown', pdown);
+addEventListener('mouseup', releaseJump);
+canvas.addEventListener('touchstart', pdown, { passive: false });
+canvas.addEventListener('touchend', releaseJump);
+startEl.addEventListener('click', () => { if (!audio) begin(); });
+overEl.addEventListener('click', () => requestJump());
+
+// --- layout -----------------------------------------------------------------
+function resize() {
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+  playerX = Math.max(70, W * 0.28);
+  groundBaseY = H * 0.72;
+  UNIT = H * 0.12;                               // wall-height / hill step
+  G = H * 4;                                     // gravity (px/s^2)
+  V0 = Math.sqrt(2 * G * H * 0.38);              // jump speed -> apex ~0.38H
+  BEAT_PX = Math.min(190, Math.max(96, W * 0.17));
+  pxPerSec = BEAT_PX / beatDur;
+  futureSec = (W - playerX) / pxPerSec;
+}
+addEventListener('resize', resize);
+resize();
+seedStars();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

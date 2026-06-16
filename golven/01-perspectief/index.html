@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Golven</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #04040a; overflow: hidden; }
+  canvas { display: block; position: fixed; inset: 0; touch-action: none; }
+  .ui {
+    position: fixed; z-index: 2; pointer-events: none; user-select: none;
+    font: 12px/1.5 "Courier New", ui-monospace, monospace; color: #d6e6ff;
+    letter-spacing: 0.14em; text-transform: lowercase;
+  }
+  #hud { left: 14px; bottom: 14px; background: rgba(0,0,0,0.4); padding: 6px 10px; border-radius: 3px; }
+  #hint { right: 14px; bottom: 14px; opacity: 0.5; }
+  #score {
+    left: 0; right: 0; top: 75%; text-align: center;
+    font: 700 46px/1 "Courier New", ui-monospace, monospace;
+    color: rgba(228,242,255,0.82); letter-spacing: 0.1em;
+    text-shadow: 0 0 22px rgba(120,200,255,0.55);
+    will-change: transform; transform: scale(1);
+  }
+  #streak {
+    left: 0; right: 0; top: calc(75% + 52px); text-align: center;
+    font: 14px/1 "Courier New", ui-monospace, monospace;
+    letter-spacing: 0.22em; text-transform: lowercase;
+    color: rgba(150,205,255,0.7); text-shadow: 0 0 12px rgba(120,200,255,0.4);
+    min-height: 14px;
+  }
+  #start {
+    position: fixed; inset: 0; z-index: 3; display: flex; align-items: center; justify-content: center;
+    flex-direction: column; gap: 14px; text-align: center; cursor: pointer;
+    background: radial-gradient(120% 80% at 50% 60%, rgba(20,18,55,0.4), rgba(4,4,10,0.92));
+    color: #eaf2ff; font: 14px/1.6 "Courier New", ui-monospace, monospace; letter-spacing: 0.18em; text-transform: lowercase;
+  }
+  #start h1 { font-size: 30px; font-weight: 400; letter-spacing: 0.4em; margin: 0; color: #fff; }
+  #start small { opacity: 0.55; }
+  #start .pulse { opacity: 0.85; animation: bob 1.6s ease-in-out infinite; }
+  @keyframes bob { 0%,100%{ transform: translateY(0); opacity:.5 } 50%{ transform: translateY(-4px); opacity:.95 } }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="score" class="ui">0</div>
+<div id="streak" class="ui"></div>
+<div id="hud" class="ui"></div>
+<div id="hint" class="ui">move mouse &middot; &larr; &rarr; &middot; touch</div>
+<div id="start">
+  <h1>golven</h1>
+  <small>run forward through music you can see before you hear it</small>
+  <small>&larr; &rarr; move &nbsp;&middot;&nbsp; catch a note when it reaches you</small>
+  <div class="pulse">tap or press any key &middot; sound on</div>
+</div>
+
+<script>
+// Golven ("waves")
+// ----------------------------------------------------------------------------
+// An endless runner across REAL sound waves. The catch: the music is generated
+// here, so the future is already written -- which means we can DRAW upcoming
+// notes as the landscape ahead of you, and they sound exactly when they reach
+// you. The world IS the music:
+//   depth  = time   (just ahead of you = now, horizon = future, behind = past)
+//   width  = pitch  (low notes left, high notes right -> you run a spectrogram)
+//   height = volume (notes become hills, the kick a broad swell, rests valleys)
+// Each receding row is one literal slice of the waveform. Strafe left/right to
+// stand in a pitch lane; be there when a note turns "now" and you catch it.
+// Missing is harmless -- it's an endless, friendly drift. Refresh = new music.
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const hud = document.getElementById('hud');
+const scoreEl = document.getElementById('score');
+const streakEl = document.getElementById('streak');
+const startEl = document.getElementById('start');
+
+// --- tunables ---------------------------------------------------------------
+const BPM = 92;
+const beatDur = 60 / BPM;                  // seconds per beat
+const LOOKAHEAD_BEATS = 8;                  // beats of future terrain on screen
+const futureSec = LOOKAHEAD_BEATS * beatDur;
+const PRESENT_FRAC = 0.12;                  // where "now" sits in the depth span
+const totalSpan = futureSec / (1 - PRESENT_FRAC);
+
+const ROWS = 46;                            // depth resolution (waveform slices)
+const COLS = 58;                            // width resolution (per slice)
+const LANES = 7;                            // discrete pitch lanes you can stand in
+
+// pseudo-3D pinhole projection
+const Z0 = 1, ZSPAN = 8;                    // near/far camera depth
+const scalePresent = Z0 / (Z0 + PRESENT_FRAC * ZSPAN);  // perspective scale at "now"
+let horizonY, groundY, spread, eHeight, cx; // recomputed on resize
+
+// --- music model ------------------------------------------------------------
+const ROOT = 220;                           // A3
+const semi = (s) => ROOT * Math.pow(2, s / 12);
+const LANE_SEMI = [0, 3, 5, 7, 10, 12, 15]; // pentatonic-ish, one pitch per lane
+const laneFreq = LANE_SEMI.map(semi);
+const laneX = (L) => (L / (LANES - 1)) * 2 - 1;           // lane -> world x [-1,1]
+const hueForLane = (L) => 265 - (L / (LANES - 1)) * 200;  // low violet -> high cyan
+
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const SEED = (Math.random() * 0xffffffff) >>> 0;
+let notes = [];          // single source of truth, shared by audio + renderer
+let nextBeat = 0;        // next beat index to generate
+let melodyLane = 3;      // random-walk state for the lead voice
+
+// note: { start, dur, amp, x, hue, voice, freq, lane, catch, scheduled, resolved }
+function pushNote(n) { n.scheduled = false; n.resolved = false; notes.push(n); }
+
+// Deterministically generate one beat's worth of notes (absolute start times).
+function genBeat(beat) {
+  const t = t0 + beat * beatDur;
+  const bar = beat % 4;
+  const rng = mulberry32(SEED ^ Math.imul(beat + 1, 2654435761));
+
+  // kick -- four-on-the-floor, a broad central swell + low thud you feel
+  pushNote({ start: t, dur: 0.22, amp: 1.0, x: 0, w: 0.55, hue: 230,
+             voice: 'kick', freq: 120, lane: -1, catch: false });
+
+  // bass -- root / fifth on the strong beats, wide and low on the left
+  if (bar === 0 || bar === 2) {
+    const fifth = bar === 2 && rng() < 0.5;
+    pushNote({ start: t, dur: beatDur * 1.6, amp: 0.55, x: -0.72, w: 0.32,
+               hue: 280, voice: 'bass', freq: fifth ? 82.4 : 55, lane: -1, catch: false });
+  }
+
+  // pad -- a sustained chord once per bar, soft bed on the left-centre
+  if (bar === 0) {
+    [110, 130.8, 164.8].forEach((f, i) =>
+      pushNote({ start: t, dur: beatDur * 4, amp: 0.16, x: -0.35 + i * 0.12, w: 0.4,
+                 hue: 300, voice: 'pad', freq: f, lane: -1, catch: false }));
+  }
+
+  // lead -- a random walk over the pitch lanes; these are catchable
+  const subs = rng() < 0.5 ? [0, 0.5] : [0, 0.5, 0.75];
+  for (const s of subs) {
+    if (s > 0 && rng() < 0.35) continue;       // leave some gaps
+    const step = [-2, -1, -1, 0, 1, 1, 2][(rng() * 7) | 0];
+    melodyLane = Math.max(0, Math.min(LANES - 1, melodyLane + step));
+    pushNote({ start: t + s * beatDur, dur: 0.34, amp: 0.5, x: laneX(melodyLane),
+               w: 0.085, hue: hueForLane(melodyLane), voice: 'lead',
+               freq: laneFreq[melodyLane], lane: melodyLane, catch: true });
+  }
+
+  // bell -- occasional high sparkle an octave up, also catchable
+  if (rng() < 0.3) {
+    const L = 4 + ((rng() * 3) | 0);
+    pushNote({ start: t + 0.5 * beatDur, dur: 0.5, amp: 0.4, x: laneX(L), w: 0.07,
+               hue: hueForLane(L), voice: 'bell', freq: laneFreq[L] * 2, lane: L, catch: true });
+  }
+}
+
+// --- audio ------------------------------------------------------------------
+let audio, master, delay, t0 = 0, started = false;
+
+function initAudio() {
+  audio = new (window.AudioContext || window.webkitAudioContext)();
+  master = audio.createGain();
+  master.gain.value = 0.9;
+  const comp = audio.createDynamicsCompressor();   // keep peaks tame
+  // a little feedback delay for space
+  delay = audio.createDelay(1.0);
+  delay.delayTime.value = beatDur * 0.75;
+  const fb = audio.createGain(); fb.gain.value = 0.28;
+  const wet = audio.createGain(); wet.gain.value = 0.25;
+  delay.connect(fb); fb.connect(delay);
+  delay.connect(wet); wet.connect(comp);
+  master.connect(comp);
+  master.connect(delay);
+  comp.connect(audio.destination);
+  t0 = audio.currentTime + 0.12;
+}
+
+function playNote(n) {
+  const g = audio.createGain();
+  g.connect(master);
+  const a = n.start, atk = Math.min(0.02, n.dur * 0.3), peak = n.amp;
+  g.gain.setValueAtTime(0.0001, a);
+  g.gain.exponentialRampToValueAtTime(peak, a + atk);
+  g.gain.exponentialRampToValueAtTime(0.0008, a + n.dur);
+
+  if (n.voice === 'kick') {
+    const o = audio.createOscillator(); o.type = 'sine';
+    o.frequency.setValueAtTime(120, a);
+    o.frequency.exponentialRampToValueAtTime(45, a + 0.12);
+    o.connect(g); o.start(a); o.stop(a + n.dur + 0.02);
+    return;
+  }
+  const o = audio.createOscillator();
+  o.type = n.voice === 'pad' ? 'sawtooth' : n.voice === 'bass' ? 'triangle'
+         : n.voice === 'bell' ? 'sine' : 'square';
+  o.frequency.value = n.freq;
+  if (n.voice === 'pad' || n.voice === 'lead') {
+    const lp = audio.createBiquadFilter();
+    lp.type = 'lowpass'; lp.frequency.value = n.voice === 'pad' ? 900 : 2600;
+    o.connect(lp); lp.connect(g);
+  } else {
+    o.connect(g);
+  }
+  o.start(a); o.stop(a + n.dur + 0.05);
+}
+
+// --- scheduler: keep notes generated ahead, schedule audio just-in-time -----
+function audioTick() {
+  if (!started) return;
+  const now = audio.currentTime;
+  const songTime = now - t0;
+  // generate enough future for the terrain to draw
+  while (nextBeat * beatDur < songTime + futureSec + 2) genBeat(nextBeat++);
+  // schedule playback for notes entering the near horizon
+  for (const n of notes) {
+    if (!n.scheduled && n.start <= now + 0.18) { playNote(n); n.scheduled = true; }
+  }
+  // prune the distant past
+  const cutoff = songTime - PRESENT_FRAC * totalSpan - 1;
+  if (notes.length > 400) notes = notes.filter(n => n.start + n.dur > cutoff);
+}
+
+// --- gameplay state ---------------------------------------------------------
+let playerLane = 3, playerX = laneX(3), targetX = laneX(3);
+let score = 0, combo = 0, best = 0, energy = 0, scorePulse = 0;
+let prevSongTime = 0;
+const bursts = [];   // { x, depthFrac, life, hue }
+
+const laneFromX = (x) => Math.max(0, Math.min(LANES - 1, Math.round((x + 1) / 2 * (LANES - 1))));
+
+// keyboard: step one lane and snap the target to its centre
+function move(dir) {
+  playerLane = Math.max(0, Math.min(LANES - 1, playerLane + dir));
+  targetX = laneX(playerLane);
+}
+// pointer (mouse / touch): glide straight to the cursor across the full width,
+// so a single sweep takes you all the way left or right. The lane you catch in
+// is whichever you're nearest to.
+function aimAt(clientX) {
+  // inverse-project the cursor so the runner sits exactly under it horizontally
+  const half = spread * scalePresent;          // px from centre to lane edge at "now"
+  const x = Math.max(-1, Math.min(1, (clientX - cx) / half));
+  targetX = x;
+  playerLane = laneFromX(x);
+}
+
+function resolveCatches(songTime) {
+  for (const n of notes) {
+    if (!n.catch || n.resolved || n.start > songTime) continue;
+    n.resolved = true;
+    if (n.lane === playerLane) {
+      score++; combo++; best = Math.max(best, combo);
+      energy = Math.min(1, energy + 0.08);
+      scorePulse = 1;
+      bursts.push({ x: n.x, depthFrac: PRESENT_FRAC, life: 1, hue: n.hue });
+      if (started && master) master.gain.setTargetAtTime(0.9 + 0.25 * energy, audio.currentTime, 0.1);
+    } else {
+      combo = 0;
+      energy = Math.max(0, energy - 0.04);
+    }
+  }
+}
+
+// --- terrain field ----------------------------------------------------------
+// amplitude envelope of one note at absolute time T (the "real" wave height)
+function env(n, T) {
+  const tau = T - n.start;
+  if (tau < 0 || tau > n.dur) return 0;
+  const atk = Math.min(0.02, n.dur * 0.3);
+  if (tau < atk) return tau / atk;
+  return Math.max(0, 1 - (tau - atk) / (n.dur - atk));
+}
+
+// --- projection -------------------------------------------------------------
+function project(depthFrac, x, elev) {
+  const z = Z0 + depthFrac * ZSPAN;
+  const s = Z0 / z;
+  const sx = cx + x * spread * s;
+  const sy = horizonY + (groundY - horizonY) * s - elev * eHeight * s;
+  return [sx, sy, s];
+}
+
+// --- render -----------------------------------------------------------------
+function draw(songTime) {
+  ctx.fillStyle = '#04040a';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // horizon glow / sun
+  const sun = ctx.createRadialGradient(cx, horizonY, 0, cx, horizonY, canvas.height * 0.5);
+  sun.addColorStop(0, `hsla(${200 + energy * 60},80%,55%,${0.20 + energy * 0.15})`);
+  sun.addColorStop(1, 'rgba(4,4,10,0)');
+  ctx.fillStyle = sun;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // collect notes active at any drawn row once per frame is hard; instead, for
+  // each row gather the few notes overlapping that time, then sample columns.
+  for (let r = 0; r < ROWS; r++) {
+    const depthFrac = 1 - r / (ROWS - 1);              // far first, near last
+    const T = songTime + (depthFrac - PRESENT_FRAC) * totalSpan;
+
+    // notes touching this slice of time
+    const act = [];
+    for (const n of notes) {
+      const h = n.amp * env(n, T);
+      if (h > 0.001) act.push({ x: n.x, w: n.w, h });
+    }
+
+    // sample the waveform across pitch (width)
+    const pts = [];
+    for (let c = 0; c < COLS; c++) {
+      const x = (c / (COLS - 1)) * 2 - 1;
+      let e = 0;
+      for (const a of act) {
+        const d = (x - a.x) / a.w;
+        e += a.h * Math.exp(-0.5 * d * d);
+      }
+      pts.push(project(depthFrac, x, e));
+    }
+
+    // colour: future cool, present bright, past magenta + fade
+    const rel = T - songTime;                          // <0 past, >0 future
+    const near = Math.max(0, 1 - Math.abs(rel) / (futureSec));
+    const hue = rel >= 0 ? 200 - near * 30 : 290;
+    const alpha = (depthFrac < PRESENT_FRAC ? 0.25 : 0.85) * (0.25 + 0.75 * (1 - depthFrac));
+    const light = 45 + near * 25 + energy * 10;
+
+    // glow pass (thick, faint) then crisp line
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(pts[0][0], pts[0][1]);
+    for (let c = 1; c < COLS; c++) ctx.lineTo(pts[c][0], pts[c][1]);
+    ctx.strokeStyle = `hsla(${hue},90%,${light}%,${alpha * 0.25})`;
+    ctx.lineWidth = 6 * pts[0][2];
+    ctx.stroke();
+    ctx.strokeStyle = `hsla(${hue},95%,${light + 15}%,${alpha})`;
+    ctx.lineWidth = Math.max(1, 2 * pts[0][2]);
+    ctx.stroke();
+  }
+
+  // catchable note markers riding their slice
+  for (const n of notes) {
+    if (!n.catch || n.resolved) continue;
+    const T = n.start;
+    const depthFrac = PRESENT_FRAC + (T - songTime) / totalSpan;
+    if (depthFrac < 0 || depthFrac > 1) continue;
+    const e = n.amp;
+    const [sx, sy, s] = project(depthFrac, n.x, e);
+    const rad = Math.max(2, 7 * s);
+    ctx.beginPath();
+    ctx.arc(sx, sy, rad, 0, Math.PI * 2);
+    const aligned = n.lane === playerLane;
+    ctx.fillStyle = `hsla(${n.hue},95%,${aligned ? 80 : 62}%,${0.85})`;
+    ctx.shadowColor = `hsl(${n.hue},95%,70%)`;
+    ctx.shadowBlur = aligned ? 18 : 8;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+
+  // hit bursts
+  for (let i = bursts.length - 1; i >= 0; i--) {
+    const b = bursts[i];
+    b.life -= 0.04;
+    if (b.life <= 0) { bursts.splice(i, 1); continue; }
+    const [sx, sy, s] = project(b.depthFrac, b.x, 0.2);
+    ctx.beginPath();
+    ctx.arc(sx, sy, (1 - b.life) * 40 * s + 4, 0, Math.PI * 2);
+    ctx.strokeStyle = `hsla(${b.hue},95%,75%,${b.life})`;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+
+  // player -- sits on the wave at "now", bobbing with the music
+  playerX += (targetX - playerX) * 0.6;
+  let pe = 0;
+  for (const n of notes) {
+    const h = n.amp * env(n, songTime);
+    if (h <= 0.001) continue;
+    const d = (playerX - n.x) / n.w;
+    pe += h * Math.exp(-0.5 * d * d);
+  }
+  const [px, py, ps] = project(PRESENT_FRAC, playerX, pe);
+  // shadow on the surface
+  ctx.beginPath();
+  ctx.ellipse(px, py + 4 * ps, 12 * ps, 4 * ps, 0, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(0,0,0,0.45)';
+  ctx.fill();
+  // body
+  ctx.beginPath();
+  ctx.arc(px, py - 10 * ps, 9 * ps, 0, Math.PI * 2);
+  ctx.fillStyle = `hsl(${190 + combo * 4 % 80}, 100%, ${70 + energy * 20}%)`;
+  ctx.shadowColor = '#bfe9ff'; ctx.shadowBlur = 16;
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // score -- big and centred over the past, with a soft pop on each catch
+  scorePulse *= 0.86;
+  scoreEl.textContent = score;
+  scoreEl.style.transform = `scale(${1 + 0.16 * scorePulse})`;
+  scoreEl.style.color = `rgba(228,242,255,${0.82 + 0.18 * scorePulse})`;
+  streakEl.textContent = combo > 1 ? `streak ${combo}` : '';
+  hud.textContent = `best ${best}`;
+}
+
+// --- main loop --------------------------------------------------------------
+function frame() {
+  if (started) {
+    const songTime = audio.currentTime - t0;
+    resolveCatches(songTime);
+    draw(songTime);
+    prevSongTime = songTime;
+  }
+  requestAnimationFrame(frame);
+}
+
+// --- input ------------------------------------------------------------------
+function begin() {
+  if (started) return;
+  initAudio();
+  if (audio.state === 'suspended') audio.resume();
+  started = true;
+  startEl.style.display = 'none';
+  // pre-generate so the first frames already have a landscape
+  while (nextBeat * beatDur < futureSec + 2) genBeat(nextBeat++);
+  setInterval(audioTick, 40);
+}
+
+addEventListener('keydown', (e) => {
+  if (!started) { begin(); return; }
+  if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') { move(-1); e.preventDefault(); }
+  if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') { move(1); e.preventDefault(); }
+});
+
+// the player tracks the cursor directly -- move the mouse, the runner follows
+addEventListener('mousemove', e => { if (started) aimAt(e.clientX); });
+canvas.addEventListener('mousedown', e => { if (!started) begin(); else aimAt(e.clientX); });
+// touch: the runner follows your finger anywhere across the width
+canvas.addEventListener('touchstart', e => {
+  if (!started) { begin(); return; }
+  aimAt(e.touches[0].clientX); e.preventDefault();
+}, { passive: false });
+canvas.addEventListener('touchmove', e => { if (started) { aimAt(e.touches[0].clientX); e.preventDefault(); } }, { passive: false });
+startEl.addEventListener('click', begin);
+
+// --- layout -----------------------------------------------------------------
+function resize() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  cx = canvas.width / 2;
+  horizonY = canvas.height * 0.40;
+  groundY = canvas.height * 0.98;
+  // Half-width of the field at the player line, in px. It tracks screen width
+  // (so narrow/portrait phones fill the screen) but is capped against height so
+  // wide desktops don't stretch flat. Lower the 0.52 to make desktop narrower /
+  // deeper; the cursor still maps 1:1 to the runner because aimAt() reuses this.
+  const halfW = Math.min(canvas.width * 0.46, canvas.height * 0.52);
+  spread = halfW / scalePresent;
+  eHeight = canvas.height * 0.20;
+}
+addEventListener('resize', resize);
+resize();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

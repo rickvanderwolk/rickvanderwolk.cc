@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="nl">
+<head>
+    <meta charset="utf-8">
+    <title>Chaos — stijlen</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="chaos — gooi een pagina overhoop in verschillende stijlen">
+    <meta name="author" content="Rick van der Wolk">
+    <style>
+        body {
+            font-family: -apple-system, system-ui, sans-serif;
+            max-width: 640px;
+            margin: 0 auto;
+            padding: 80px 20px 60px;
+            line-height: 1.6;
+            color: #222;
+        }
+        h1 { font-size: 2.4rem; }
+        a { color: #0044cc; }
+        .card {
+            border: 1px solid #ddd;
+            border-radius: 10px;
+            padding: 16px;
+            margin: 16px 0;
+            background: #fafafa;
+        }
+        .swatch {
+            display: inline-block;
+            width: 48px; height: 48px;
+            border-radius: 8px; margin: 4px;
+        }
+        button, input {
+            font: inherit;
+            padding: 8px 14px;
+            border-radius: 8px;
+            border: 1px solid #999;
+            background: #fff;
+        }
+        button { cursor: pointer; }
+        code { background: #eee; padding: 2px 6px; border-radius: 4px; }
+
+        /* Vaste knoppenbalk — wordt door alle effecten met rust gelaten. */
+        #fx-bar {
+            position: fixed; top: 0; left: 0; right: 0; z-index: 2147483647;
+            display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+            padding: 8px 12px; background: #111; color: #fff;
+            font: 14px/1.2 -apple-system, system-ui, sans-serif;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+        }
+        #fx-bar strong { margin-right: 6px; }
+        #fx-bar a {
+            color: #fff; text-decoration: none; padding: 5px 10px;
+            border: 1px solid #555; border-radius: 6px; background: #222;
+        }
+        #fx-bar a:hover { background: #333; }
+        #fx-bar a.actief { background: #fff; color: #111; border-color: #fff; }
+        #fx-bar .reset { margin-left: auto; border-color: #844; }
+    </style>
+</head>
+<body>
+    <div id="fx-bar" data-fx-ignore>
+        <strong>Stijl:</strong>
+        <a href="?style=chaos"  data-style="chaos">Chaos</a>
+        <a href="?style=glitch" data-style="glitch">Glitch</a>
+        <a href="?style=retro"  data-style="retro">Retro 90s</a>
+        <a href="?style=vhs"    data-style="vhs">VHS</a>
+        <a href="?style=kapot"  data-style="kapot">Kapot</a>
+        <a href="?" class="reset">Reset</a>
+    </div>
+
+    <h1>Chaos 🌀</h1>
+    <p>Kies hierboven een stijl. De pagina herlaadt schoon en het effect
+       begint na ~1 seconde. Elke stijl is een los bestand dat je met één
+       regel inlaadt, bijv. <code>&lt;script src="/chaos/glitch.js"&gt;&lt;/script&gt;</code>.</p>
+
+    <div class="card">
+        <h2>Een kaartje</h2>
+        <p>Met wat tekst, een <a href="#">link</a> en een knop.</p>
+        <button>Een knop</button>
+    </div>
+
+    <div class="card">
+        <h2>Een plaatje</h2>
+        <img width="200" height="120" alt="voorbeeld"
+             src="data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='120'%3E%3Crect width='200' height='120' fill='%232a9d8f'/%3E%3Ccircle cx='60' cy='60' r='34' fill='%23f1a208'/%3E%3Crect x='110' y='28' width='64' height='64' fill='%23e63946'/%3E%3C/svg%3E">
+    </div>
+
+    <div class="card">
+        <h2>Kleuren</h2>
+        <span class="swatch" style="background:#e63946"></span>
+        <span class="swatch" style="background:#f1a208"></span>
+        <span class="swatch" style="background:#2a9d8f"></span>
+        <span class="swatch" style="background:#264653"></span>
+        <span class="swatch" style="background:#8338ec"></span>
+        <span class="swatch" style="background:#ff006e"></span>
+    </div>
+
+    <div class="card">
+        <h2>Een formuliertje</h2>
+        <p><label>Je naam: <input type="text" placeholder="typ hier..."></label></p>
+        <button>Versturen</button>
+    </div>
+
+    <ul>
+        <li>Eerste punt</li>
+        <li>Tweede punt</li>
+        <li>Derde punt</li>
+    </ul>
+
+    <script>
+        (function () {
+            var params = new URLSearchParams(location.search);
+            var style = params.get('style');
+
+            // Markeer de actieve knop.
+            if (style) {
+                var active = document.querySelector('#fx-bar a[data-style="' + style.replace(/[^a-z0-9]/g, '') + '"]');
+                if (active) { active.classList.add('actief'); }
+            }
+
+            // Korte vertraging in de demo zodat je het effect snel ziet.
+            window.EFFECT_DELAY = 1200;
+
+            if (style && /^[a-z0-9]+$/.test(style)) {
+                var s = document.createElement('script');
+                s.src = style + '.js';
+                document.body.appendChild(s);
+            }
+        })();
+    </script>
+</body>
+</html>

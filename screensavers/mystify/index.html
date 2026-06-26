@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Mystify</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; position: fixed; inset: 0; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas><script>
+// Mystify — "Mystify Your Mind": a couple of polygons whose corners drift and
+// bounce around the screen like balls. Each polygon leaves a trail of its
+// recent shapes, fading and shifting hue, so it smears into those hypnotic
+// wireframe ribbons. Pure bouncing geometry, no randomness once it starts.
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d', { alpha: false });
+let W, H;
+
+const CORNERS = 4;      // points per polygon
+const TRAIL = 14;       // how many past shapes linger
+const SPEED = 130;      // corner speed in px/sec
+
+function makeShape(hue) {
+  const pts = [];
+  for (let i = 0; i < CORNERS; i++) {
+    const a = Math.random() * Math.PI * 2;
+    pts.push({
+      x: Math.random() * W, y: Math.random() * H,
+      vx: Math.cos(a) * SPEED, vy: Math.sin(a) * SPEED,
+    });
+  }
+  return { pts, hue, hist: [] };
+}
+
+let shapes;
+function reset(initial) {
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+  if (initial) shapes = [makeShape(190), makeShape(320)];
+}
+
+function step(shape, dt) {
+  for (const p of shape.pts) {
+    p.x += p.vx * dt; p.y += p.vy * dt;
+    if (p.x < 0) { p.x = 0; p.vx = Math.abs(p.vx); }
+    else if (p.x > W) { p.x = W; p.vx = -Math.abs(p.vx); }
+    if (p.y < 0) { p.y = 0; p.vy = Math.abs(p.vy); }
+    else if (p.y > H) { p.y = H; p.vy = -Math.abs(p.vy); }
+  }
+  shape.hue = (shape.hue + dt * 22) % 360;          // slow colour cycle
+  shape.hist.unshift(shape.pts.map(p => ({ x: p.x, y: p.y })));
+  if (shape.hist.length > TRAIL) shape.hist.pop();
+}
+
+function drawShape(shape) {
+  for (let i = shape.hist.length - 1; i >= 0; i--) {
+    const snap = shape.hist[i];
+    const a = 1 - i / TRAIL;                         // newest = brightest
+    const hue = (shape.hue - i * 6 + 360) % 360;
+    ctx.strokeStyle = `hsla(${hue},100%,${30 + a * 35}%,${a})`;
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(snap[0].x, snap[0].y);
+    for (let k = 1; k < snap.length; k++) ctx.lineTo(snap[k].x, snap[k].y);
+    ctx.closePath();
+    ctx.stroke();
+  }
+}
+
+let last = performance.now();
+function frame(now) {
+  let dt = (now - last) / 1000; last = now;
+  if (dt > 0.1) dt = 0.1;
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, H);
+  for (const s of shapes) { step(s, dt); drawShape(s); }
+  requestAnimationFrame(frame);
+}
+
+window.addEventListener('resize', () => reset(false));
+reset(true);
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

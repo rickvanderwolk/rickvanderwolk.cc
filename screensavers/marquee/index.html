@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Marquee</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; position: fixed; inset: 0; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+// Scrolling Marquee screensaver (classic Windows style).
+// A single bold line scrolls right-to-left on black, looping seamlessly.
+// Color smoothly cycles through hues; vertical center bobs gently.
+// House style: pure canvas 2D, framerate-independent via dt.
+
+const MESSAGE = "rickvanderwolk.cc        "; // trailing spaces give a gap before the loop wraps
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+let W = 0, H = 0, dpr = 1;
+let fontSize = 0;
+let textWidth = 0;
+let scrollX = 0;          // current left edge offset of the leading copy
+let hue = 0;              // 0..360, cycles over time
+let bobPhase = 0;         // slow sine phase for vertical bob
+
+function setFont() {
+  ctx.font = `bold ${fontSize}px Arial, Helvetica, sans-serif`;
+  ctx.textBaseline = 'middle';
+  ctx.textAlign = 'left';
+}
+
+function resize() {
+  dpr = window.devicePixelRatio || 1;
+  W = window.innerWidth;
+  H = window.innerHeight;
+  canvas.width = Math.round(W * dpr);
+  canvas.height = Math.round(H * dpr);
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  fontSize = Math.round(H * 0.20); // ~20% of viewport height
+  setFont();
+  textWidth = ctx.measureText(MESSAGE).width;
+  if (scrollX === 0) scrollX = W; // start off the right edge
+}
+
+window.addEventListener('resize', resize);
+resize();
+
+let last = performance.now();
+
+function frame(now) {
+  let dt = (now - last) / 1000;
+  last = now;
+  if (dt > 0.1) dt = 0.1; // clamp after tab-switches / hitches
+
+  // Scroll: traverse one screen width every ~6 seconds.
+  const speed = W / 6;
+  scrollX -= speed * dt;
+
+  // Seamless wrap: when one full copy of the text has passed the left edge,
+  // shift back by exactly textWidth so the loop is continuous (no gap/jump).
+  if (textWidth > 0) {
+    while (scrollX <= -textWidth) scrollX += textWidth;
+  }
+
+  // Smooth hue cycle and gentle vertical bob.
+  hue = (hue + dt * 30) % 360;
+  bobPhase += dt * 0.6;
+  const bob = Math.sin(bobPhase) * (H * 0.04);
+  const cy = H / 2 + bob;
+
+  // Clear to black.
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.fillStyle = `hsl(${hue}, 100%, 55%)`;
+  setFont();
+
+  // Draw enough copies to cover the screen for a continuous loop.
+  if (textWidth > 0) {
+    let x = scrollX;
+    while (x < W) {
+      ctx.fillText(MESSAGE, x, cy);
+      x += textWidth;
+    }
+  }
+
+  requestAnimationFrame(frame);
+}
+
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

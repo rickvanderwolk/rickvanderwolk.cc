@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Flying Windows</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; position: fixed; inset: 0; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+// Flying Windows screensaver — a faithful nod to the Win9x "Flying Through Space" saver.
+// ~40 waving four-pane Windows flags fly out from the center toward the viewer (starfield
+// perspective): tiny far away, growing and drifting outward, recycled when they pass the edge.
+// Pure procedural canvas 2D, hard black clear each frame, painter's order by depth.
+
+(function () {
+  "use strict";
+
+  var canvas = document.getElementById("c");
+  var ctx = canvas.getContext("2d");
+
+  var W = 0, H = 0, cx = 0, cy = 0;
+  var FOCAL = 0;          // focal length, scaled to viewport
+  var Z_NEAR = 12;        // closest depth before recycle
+  var Z_FAR = 1400;       // spawn depth
+  var SPEED = 6.5;        // depth units per frame (~60fps baseline)
+  var COUNT = 40;
+
+  function resize() {
+    W = canvas.width = window.innerWidth;
+    H = canvas.height = window.innerHeight;
+    cx = W / 2;
+    cy = H / 2;
+    FOCAL = Math.max(W, H) * 0.95;
+  }
+  window.addEventListener("resize", resize);
+  resize();
+
+  // Spread in a cone around the camera axis; x,y are world offsets at the focal plane.
+  function spawn(p, atFar) {
+    var spread = Math.max(W, H) * 0.9;
+    p.x = (Math.random() - 0.5) * spread;
+    p.y = (Math.random() - 0.5) * spread;
+    p.z = atFar ? Z_FAR : (Z_NEAR + Math.random() * (Z_FAR - Z_NEAR));
+    p.phase = Math.random() * Math.PI * 2;   // wave phase offset
+    p.spin = (Math.random() - 0.5) * 0.0006;  // tiny per-flag wave speed jitter
+    return p;
+  }
+
+  var flags = [];
+  for (var i = 0; i < COUNT; i++) flags.push(spawn({}, false));
+
+  // Pane colors (classic Windows flag).
+  var COLORS = [
+    ["#e7000e", "#ff5a4a"], // top-left  red
+    ["#27a700", "#79e85a"], // top-right green
+    ["#0057d8", "#4aa3ff"], // bottom-left blue
+    ["#ffd400", "#fff070"]  // bottom-right yellow
+  ];
+
+  // Draw the waving four-pane Windows flag, centered at (0,0) in the current
+  // transform, with full width/height = size. t drives the wave animation.
+  function drawWindowsFlag(size, t, phase) {
+    var half = size / 2;
+    var gapFrac = 0.06;                       // gap as fraction of pane
+    var shear = size * 0.09;                   // gentle lean (flatter, more retro)
+    var waveAmp = size * 0.028;                // subtle wave, not a fluttering banner
+    var cols = 8, rows = 6;
+    var midU = 0.5, midV = 0.5;
+
+    function vx(u, v) {
+      return -half + u * size + (1 - v) * shear - shear * 0.5;
+    }
+    function vy(u, v) {
+      var sway = Math.sin(t + u * 5.4 + phase) * waveAmp * (0.30 + u * 0.70);
+      var ripple = Math.cos(t * 0.9 + v * 3.1 + phase) * waveAmp * 0.25;
+      return -half + v * size + sway + ripple;
+    }
+
+    // (No drop shadow — the old Flying Windows flag was a flat banner.)
+
+    // Four panes, each occupying a quadrant of the [0..1]x[0..1] mesh, inset by gap.
+    var quads = [
+      { u0: 0.0, u1: midU, v0: 0.0, v1: midV, c: COLORS[0] }, // red TL
+      { u0: midU, u1: 1.0, v0: 0.0, v1: midV, c: COLORS[1] }, // green TR
+      { u0: 0.0, u1: midU, v0: midV, v1: 1.0, c: COLORS[2] }, // blue BL
+      { u0: midU, u1: 1.0, v0: midV, v1: 1.0, c: COLORS[3] }  // yellow BR
+    ];
+
+    var g = gapFrac * 0.5;
+
+    for (var qi = 0; qi < 4; qi++) {
+      var q = quads[qi];
+      var au0 = q.u0 + (q.u0 === 0 ? g : g);
+      var au1 = q.u1 - (q.u1 === 1 ? g : g);
+      var av0 = q.v0 + (q.v0 === 0 ? g : g);
+      var av1 = q.v1 - (q.v1 === 1 ? g : g);
+
+      // flat pane colour — the classic flag was flat, not glossy/beveled
+      ctx.fillStyle = q.c[0];
+
+      // Tessellate the pane along the u/v mesh so the wave bends it.
+      var stepsU = Math.max(2, Math.round((au1 - au0) * cols));
+      var stepsV = Math.max(2, Math.round((av1 - av0) * rows));
+      var du = (au1 - au0) / stepsU;
+      var dv = (av1 - av0) / stepsV;
+
+      ctx.beginPath();
+      // top edge L->R
+      for (var iu = 0; iu <= stepsU; iu++) {
+        var u = au0 + iu * du;
+        if (iu === 0) ctx.moveTo(vx(u, av0), vy(u, av0));
+        else ctx.lineTo(vx(u, av0), vy(u, av0));
+      }
+      // right edge top->bottom
+      for (var iv = 1; iv <= stepsV; iv++) {
+        var v = av0 + iv * dv;
+        ctx.lineTo(vx(au1, v), vy(au1, v));
+      }
+      // bottom edge R->L
+      for (var iu2 = stepsU - 1; iu2 >= 0; iu2--) {
+        var u2 = au0 + iu2 * du;
+        ctx.lineTo(vx(u2, av1), vy(u2, av1));
+      }
+      // left edge bottom->top
+      for (var iv2 = stepsV - 1; iv2 >= 1; iv2--) {
+        var v2 = av0 + iv2 * dv;
+        ctx.lineTo(vx(au0, v2), vy(au0, v2));
+      }
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+
+  var lastT = performance.now();
+
+  function frame(now) {
+    var dt = (now - lastT) / 16.6667; // normalize to ~60fps steps
+    if (dt > 4) dt = 4;
+    lastT = now;
+    var t = now * 0.004;
+
+    // Hard clear — crisp logos, no trails.
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, W, H);
+
+    // Advance depth (fly toward camera).
+    for (var i = 0; i < flags.length; i++) {
+      var p = flags[i];
+      p.z -= SPEED * dt;
+      // Project to check bounds.
+      if (p.z <= Z_NEAR) {
+        spawn(p, true);
+        continue;
+      }
+      var inv = FOCAL / p.z;
+      var sx = cx + p.x * inv;
+      var sy = cy + p.y * inv;
+      var sizeAtZ = inv * 30; // base logo size in world units -> pixels
+      var margin = sizeAtZ;
+      if (sx < -margin || sx > W + margin || sy < -margin || sy > H + margin) {
+        // Off screen (flew past edge as it grew) -> recycle.
+        if (p.z < Z_FAR * 0.5) {
+          spawn(p, true);
+          continue;
+        }
+      }
+    }
+
+    // Painter's order: far first.
+    flags.sort(function (a, b) { return b.z - a.z; });
+
+    for (var j = 0; j < flags.length; j++) {
+      var f = flags[j];
+      if (f.z <= Z_NEAR) continue;
+      var iv = FOCAL / f.z;
+      var px = cx + f.x * iv;
+      var py = cy + f.y * iv;
+      var size = iv * 30;
+      if (size < 1.2) continue;
+
+      // Fade in tiny far ones a touch.
+      var alpha = Math.min(1, (Z_FAR - f.z) / (Z_FAR * 0.15));
+      alpha = Math.max(0.1, alpha);
+
+      ctx.save();
+      ctx.translate(px, py);
+      ctx.globalAlpha = alpha;
+      drawWindowsFlag(size, t, f.phase);
+      ctx.restore();
+    }
+
+    requestAnimationFrame(frame);
+  }
+
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

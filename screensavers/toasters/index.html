@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Flying Toasters</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; position: fixed; inset: 0; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+// Flying Toasters — an homage to the After Dark classic.
+// Chrome toasters with flapping bird-wings fly down-and-left across a dark
+// navy sky, interspersed with pieces of flying toast. Each object drifts on a
+// shared diagonal, varies in size (depth/parallax), and recycles off-screen.
+
+(function () {
+  "use strict";
+
+  var canvas = document.getElementById("c");
+  var ctx = canvas.getContext("2d");
+  var W = 0, H = 0, DPR = 1;
+
+  function resize() {
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth;
+    H = window.innerHeight;
+    canvas.width = Math.floor(W * DPR);
+    canvas.height = Math.floor(H * DPR);
+    canvas.style.width = W + "px";
+    canvas.style.height = H + "px";
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  }
+  window.addEventListener("resize", resize);
+  resize();
+
+  // Shared flight direction (down and to the left), normalized-ish.
+  var DIR_X = -0.78, DIR_Y = 0.62;
+
+  function rand(a, b) { return a + Math.random() * (b - a); }
+
+  // ---- Object model ---------------------------------------------------------
+  // type: "toaster" | "toast"
+  // scale: depth (bigger = closer = faster)
+  // flapPhase: per-toaster offset so wings aren't synced
+  function makeObject(type, atStart) {
+    var scale = rand(0.55, 1.25);
+    var o = {
+      type: type,
+      scale: scale,
+      // bigger ones move a bit faster (parallax)
+      speed: rand(70, 95) * (0.6 + scale * 0.6),
+      flapPhase: rand(0, Math.PI * 2),
+      flapSpeed: rand(5.5, 7.5),
+      spin: type === "toast" ? rand(-0.4, 0.4) : 0,
+      rot: type === "toast" ? rand(-0.3, 0.3) : 0,
+      x: 0, y: 0
+    };
+    placeObject(o, atStart);
+    return o;
+  }
+
+  // Place an object somewhere along the top/right entry band.
+  // atStart=true scatters it across the whole field for the initial fill.
+  function placeObject(o, atStart) {
+    var margin = 160;
+    if (atStart) {
+      o.x = rand(-margin, W + margin);
+      o.y = rand(-margin, H + margin);
+    } else {
+      // Re-enter from the top-right diagonal band.
+      var t = Math.random();
+      if (t < 0.55) {
+        // along the top edge
+        o.x = rand(0, W + margin);
+        o.y = rand(-margin, -40);
+      } else {
+        // along the right edge
+        o.x = rand(W, W + margin);
+        o.y = rand(-margin, H * 0.7);
+      }
+    }
+  }
+
+  function offscreen(o) {
+    var m = 220 * o.scale;
+    return (o.x < -m && o.y > -m) || o.y > H + m || o.x < -m * 1.5;
+  }
+
+  var objects = [];
+  function build() {
+    objects = [];
+    var toasters = 8;
+    var toasts = 4;
+    for (var i = 0; i < toasters; i++) objects.push(makeObject("toaster", true));
+    for (var j = 0; j < toasts; j++) objects.push(makeObject("toast", true));
+  }
+  build();
+
+  // ---- Drawing helpers ------------------------------------------------------
+  function roundRect(c, x, y, w, h, r) {
+    if (r > Math.min(w, h) / 2) r = Math.min(w, h) / 2;
+    c.beginPath();
+    c.moveTo(x + r, y);
+    c.lineTo(x + w - r, y);
+    c.arcTo(x + w, y, x + w, y + r, r);
+    c.lineTo(x + w, y + h - r);
+    c.arcTo(x + w, y + h, x + w - r, y + h, r);
+    c.lineTo(x + r, y + h);
+    c.arcTo(x, y + h, x, y + h - r, r);
+    c.lineTo(x, y + r);
+    c.arcTo(x, y, x + r, y, r);
+    c.closePath();
+  }
+
+  // A single feathered wing, drawn from the shoulder, pointing left/up.
+  // flap in radians rotates the whole wing about the shoulder.
+  // mirror = -1 draws the far wing (smaller, behind body).
+  function drawWing(c, flap, mirror) {
+    c.save();
+    c.scale(1, mirror); // mirror flips wing to the other side vertically
+    c.rotate(-flap);
+
+    // membrane / wing base
+    var feathers = 5;
+    var len = 78;
+    // back-most (longest) feathers first
+    for (var i = feathers - 1; i >= 0; i--) {
+      var f = i / (feathers - 1);
+      var fl = len * (0.62 + 0.38 * (1 - f)); // outer feathers longer
+      var spread = -10 - i * 11;              // vertical offset of each feather
+      var tipY = spread - 14;
+      var shade = 235 - i * 14;
+      c.fillStyle = "rgb(" + shade + "," + shade + "," + (shade + 6) + ")";
+      c.strokeStyle = "rgba(70,80,110,0.55)";
+      c.lineWidth = 1;
+      c.beginPath();
+      c.moveTo(0, -2);
+      // upper edge out to the feather tip
+      c.quadraticCurveTo(-fl * 0.5, spread * 0.5 - 4, -fl, tipY);
+      // rounded tip
+      c.quadraticCurveTo(-fl - 6, tipY + 9, -fl + 6, spread + 8);
+      // lower edge back to shoulder
+      c.quadraticCurveTo(-fl * 0.45, spread + 12, 0, 8);
+      c.closePath();
+      c.fill();
+      c.stroke();
+    }
+
+    // shoulder cover (rounded mass where wing meets body)
+    c.fillStyle = "#e9edf5";
+    c.beginPath();
+    c.ellipse(2, 0, 14, 17, 0, 0, Math.PI * 2);
+    c.fill();
+
+    c.restore();
+  }
+
+  // Toaster centered on origin, body roughly 120 wide.
+  function drawToaster(c, o, time) {
+    var bw = 120, bh = 84;
+    var x = -bw / 2, y = -bh / 2;
+
+    // flap angle: sine wave -> wings beat up and down
+    var flap = Math.sin(time * o.flapSpeed + o.flapPhase) * 0.6 + 0.15;
+
+    // --- far wing (behind body) ---
+    c.save();
+    c.translate(x + 30, y + 30);
+    c.globalAlpha = 0.85;
+    drawWing(c, flap * 0.85, -1);
+    c.restore();
+
+    // --- body (chrome) ---
+    var g = c.createLinearGradient(0, y, 0, y + bh);
+    g.addColorStop(0, "#fdfefe");
+    g.addColorStop(0.18, "#dfe6ee");
+    g.addColorStop(0.5, "#aab6c6");
+    g.addColorStop(0.82, "#7f8da0");
+    g.addColorStop(1, "#5d6a7d");
+    c.fillStyle = g;
+    roundRect(c, x, y, bw, bh, 18);
+    c.fill();
+
+    // body outline
+    c.strokeStyle = "rgba(40,50,65,0.6)";
+    c.lineWidth = 1.5;
+    c.stroke();
+
+    // lighter rounded top cap
+    var gt = c.createLinearGradient(0, y, 0, y + 30);
+    gt.addColorStop(0, "#ffffff");
+    gt.addColorStop(1, "#cfd8e2");
+    c.fillStyle = gt;
+    roundRect(c, x + 6, y + 5, bw - 12, 26, 13);
+    c.fill();
+
+    // top slot
+    c.fillStyle = "#26303d";
+    roundRect(c, x + 24, y + 11, bw - 48, 12, 6);
+    c.fill();
+    // slot inner highlight
+    c.fillStyle = "rgba(120,140,165,0.7)";
+    roundRect(c, x + 27, y + 13, bw - 54, 3, 1.5);
+    c.fill();
+
+    // vertical shiny highlight band
+    var hb = c.createLinearGradient(x + 34, 0, x + 56, 0);
+    hb.addColorStop(0, "rgba(255,255,255,0)");
+    hb.addColorStop(0.5, "rgba(255,255,255,0.65)");
+    hb.addColorStop(1, "rgba(255,255,255,0)");
+    c.fillStyle = hb;
+    roundRect(c, x + 34, y + 30, 20, bh - 36, 8);
+    c.fill();
+
+    // secondary thin highlight
+    c.fillStyle = "rgba(255,255,255,0.4)";
+    roundRect(c, x + 70, y + 34, 6, bh - 44, 3);
+    c.fill();
+
+    // side lever knob (on the right cheek)
+    c.fillStyle = "#3a4452";
+    roundRect(c, x + bw - 10, y + 40, 14, 8, 4);
+    c.fill();
+    c.fillStyle = "#1f262f";
+    c.beginPath();
+    c.arc(x + bw - 2, y + 44, 3.5, 0, Math.PI * 2);
+    c.fill();
+
+    // little feet
+    c.fillStyle = "#5d6a7d";
+    roundRect(c, x + 14, y + bh - 3, 16, 6, 3);
+    c.fill();
+    roundRect(c, x + bw - 30, y + bh - 3, 16, 6, 3);
+    c.fill();
+
+    // --- near wing (in front, brighter) ---
+    c.save();
+    c.translate(x + 22, y + 34);
+    drawWing(c, flap, 1);
+    c.restore();
+  }
+
+  // Toast slice centered on origin.
+  function drawToast(c) {
+    var s = 70;
+    var x = -s / 2, y = -s / 2;
+
+    // crust edge (darker)
+    c.fillStyle = "#8a5a2b";
+    roundRect(c, x, y, s, s, 16);
+    c.fill();
+
+    // toasted body
+    var g = c.createLinearGradient(0, y, 0, y + s);
+    g.addColorStop(0, "#f3cd8e");
+    g.addColorStop(1, "#e0ad63");
+    c.fillStyle = g;
+    roundRect(c, x + 5, y + 5, s - 10, s - 10, 11);
+    c.fill();
+
+    // speckles
+    c.fillStyle = "rgba(120,75,30,0.55)";
+    c.beginPath(); c.arc(x + 24, y + 28, 3, 0, Math.PI * 2); c.fill();
+    c.beginPath(); c.arc(x + 44, y + 22, 2.2, 0, Math.PI * 2); c.fill();
+    c.beginPath(); c.arc(x + 38, y + 46, 2.6, 0, Math.PI * 2); c.fill();
+    c.beginPath(); c.arc(x + 22, y + 48, 1.8, 0, Math.PI * 2); c.fill();
+
+    // soft top highlight
+    c.fillStyle = "rgba(255,245,220,0.35)";
+    roundRect(c, x + 9, y + 9, s - 18, 8, 4);
+    c.fill();
+  }
+
+  // ---- Background -----------------------------------------------------------
+  var sky = null, skyH = 0;
+  function paintSky() {
+    if (!sky || skyH !== H) {
+      sky = ctx.createLinearGradient(0, 0, 0, H);
+      sky.addColorStop(0, "#000000");      // the real After Dark sky was solid black
+      sky.addColorStop(1, "#000000");
+      skyH = H;
+    }
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  // ---- Loop -----------------------------------------------------------------
+  var last = performance.now();
+  function frame(now) {
+    var dt = (now - last) / 1000;
+    last = now;
+    if (dt > 0.1) dt = 0.1;
+    if (dt < 0) dt = 0;
+    var time = now / 1000;
+
+    paintSky();
+
+    // sort by scale so smaller (far) draw behind larger (near)
+    objects.sort(function (a, b) { return a.scale - b.scale; });
+
+    for (var i = 0; i < objects.length; i++) {
+      var o = objects[i];
+      o.x += DIR_X * o.speed * dt;
+      o.y += DIR_Y * o.speed * dt;
+      if (o.type === "toast") o.rot += o.spin * dt;
+
+      if (offscreen(o)) {
+        // recycle: respawn at the entry band, keep variety
+        var fresh = makeObject(o.type, false);
+        objects[i] = fresh;
+        o = fresh;
+      }
+
+      ctx.save();
+      ctx.translate(o.x, o.y);
+      ctx.scale(o.scale, o.scale);
+      if (o.type === "toast") {
+        ctx.rotate(o.rot);
+        drawToast(ctx);
+      } else {
+        drawToaster(ctx, o, time);
+      }
+      ctx.restore();
+    }
+
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

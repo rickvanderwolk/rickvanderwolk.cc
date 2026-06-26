@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Pipes</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #04060a; overflow: hidden; cursor: none; }
+  canvas { display: block; position: fixed; inset: 0; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+// Pipes — the "3D Pipes" screensaver. Pipes grow through a cubic lattice in all
+// six directions, viewed at a fixed 3/4 perspective. Like the original it paints
+// straight onto the screen and never redraws — so it keeps growing, slowly
+// filling the space dense with overlapping tubes, until the lattice is full;
+// then it fades and a new tangle begins. Straight runs are shaded cylinders with
+// a glossy stripe, bends are pipe-thick elbows, and the two ends of each pipe
+// get a chrome ball cap.
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d', { alpha: false });
+const BG = '#04060a';
+
+const N = 12;                 // lattice cells per axis
+const PIPE_R = 0.30;          // pipe radius in world units
+const STEP_MS = 45;           // time between growth steps
+const STRAIGHT = 0.74;        // chance to keep heading straight
+const FILL = 0.6;             // grow until this fraction of the lattice is used
+const DIRS = [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]];
+const YAW = 0.62, PITCH = 0.5;   // fixed viewing angles
+
+let W, H, cx, cy, F, grid, pipes, nodes, MAXN, fadeStart;
+
+function idx(i, j, k) { return (i * N + j) * N + k; }
+function inb(i, j, k) { return i >= 0 && j >= 0 && k >= 0 && i < N && j < N && k < N; }
+function world(c) { return [(c[0]-(N-1)/2), (c[1]-(N-1)/2), (c[2]-(N-1)/2)]; }
+function shade(h, l) { return `hsl(${h},60%,${l}%)`; }
+
+function project(p) {
+  const ca = Math.cos(YAW), sa = Math.sin(YAW);
+  const x = p[0]*ca + p[2]*sa, z1 = -p[0]*sa + p[2]*ca, y = p[1];
+  const cp = Math.cos(PITCH), sp = Math.sin(PITCH);
+  const y2 = y*cp - z1*sp, z2 = y*sp + z1*cp;
+  const zc = z2 + N * 1.7;
+  return { x: cx + x * F / zc, y: cy - y2 * F / zc, z: zc };
+}
+
+function drawSeg(ca, cb, hue) {
+  const a = project(world(ca)), b = project(world(cb));
+  const dx = b.x-a.x, dy = b.y-a.y, len = Math.hypot(dx, dy);
+  if (len < 0.5) return;
+  const hw = PIPE_R * F / ((a.z + b.z) / 2);
+  const nx = -dy/len * hw, ny = dx/len * hw;
+  const mx = (a.x+b.x)/2, my = (a.y+b.y)/2;
+  const g = ctx.createLinearGradient(mx-nx, my-ny, mx+nx, my+ny);
+  g.addColorStop(0.00, shade(hue, 12));
+  g.addColorStop(0.38, shade(hue, 84));
+  g.addColorStop(0.55, shade(hue, 58));
+  g.addColorStop(1.00, shade(hue, 12));
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.moveTo(a.x+nx, a.y+ny); ctx.lineTo(b.x+nx, b.y+ny);
+  ctx.lineTo(b.x-nx, b.y-ny); ctx.lineTo(a.x-nx, a.y-ny);
+  ctx.closePath(); ctx.fill();
+}
+
+function drawJoint(c, hue, ball) {
+  const p = project(world(c));
+  const r = PIPE_R * (ball ? 1.34 : 1.04) * F / p.z;
+  const g = ctx.createRadialGradient(p.x-r*0.34, p.y-r*0.34, r*0.15, p.x, p.y, r);
+  if (ball) { g.addColorStop(0, shade(hue,90)); g.addColorStop(0.55, shade(hue,56)); g.addColorStop(1, shade(hue,20)); }
+  else      { g.addColorStop(0, shade(hue,82)); g.addColorStop(0.5,  shade(hue,54)); g.addColorStop(1, shade(hue,14)); }
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2); ctx.fill();
+}
+
+function newField() {
+  ctx.fillStyle = BG; ctx.fillRect(0, 0, W, H);
+  grid = new Uint8Array(N*N*N); pipes = []; nodes = 0; fadeStart = 0;
+  for (let i = 0; i < 3; i++) addPipe();
+}
+
+function addPipe() {
+  for (let t = 0; t < 200; t++) {
+    const c = [(Math.random()*N)|0, (Math.random()*N)|0, (Math.random()*N)|0];
+    if (grid[idx(c[0],c[1],c[2])]) continue;
+    grid[idx(c[0],c[1],c[2])] = 1; nodes++;
+    const hue = (Math.random()*360)|0;
+    pipes.push({ c, dir: DIRS[(Math.random()*6)|0], hue, fresh: true });
+    drawJoint(c, hue, true);                       // ball cap at the start
+    return true;
+  }
+  return false;                                    // lattice essentially full
+}
+
+function advance(p) {
+  const free = DIRS.filter(d => {
+    const n = [p.c[0]+d[0], p.c[1]+d[1], p.c[2]+d[2]];
+    return inb(n[0],n[1],n[2]) && !grid[idx(n[0],n[1],n[2])];
+  });
+  if (!free.length) { drawJoint(p.c, p.hue, true); return false; }   // dead end -> ball cap
+  const straight = free.find(d => d[0]===p.dir[0] && d[1]===p.dir[1] && d[2]===p.dir[2]);
+  const nd = (straight && Math.random() < STRAIGHT) ? straight : free[(Math.random()*free.length)|0];
+  if (nd !== p.dir && !p.fresh) drawJoint(p.c, p.hue, false);        // elbow at the bend
+  const to = [p.c[0]+nd[0], p.c[1]+nd[1], p.c[2]+nd[2]];
+  drawSeg(p.c, to, p.hue);
+  grid[idx(to[0],to[1],to[2])] = 1; nodes++;
+  p.c = to; p.dir = nd; p.fresh = false;
+  return true;
+}
+
+function reset() {
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+  cx = W/2; cy = H/2; F = Math.min(W, H) * 1.15;
+  MAXN = Math.floor(N*N*N * FILL);
+  newField();
+}
+
+let acc = 0, last = performance.now();
+function frame(now) {
+  acc += now - last; last = now;
+
+  if (fadeStart) {                                  // fading out a full tangle
+    ctx.fillStyle = 'rgba(4,6,10,0.06)';
+    ctx.fillRect(0, 0, W, H);
+    if (now - fadeStart > 1300) newField();
+    requestAnimationFrame(frame); return;
+  }
+
+  while (acc >= STEP_MS) {
+    acc -= STEP_MS;
+    for (let i = pipes.length - 1; i >= 0; i--) {
+      if (!advance(pipes[i])) { pipes.splice(i, 1); addPipe(); }
+    }
+    if (nodes >= MAXN) { fadeStart = now; break; }   // full -> begin the wipe
+  }
+  requestAnimationFrame(frame);
+}
+
+window.addEventListener('resize', reset);
+reset();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

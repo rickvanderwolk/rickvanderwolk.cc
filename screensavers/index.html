@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Screen Saver</title>
+<style>
+  :root { --face: #c0c0c0; --hl: #ffffff; --sh: #808080; --dk: #000000; --lt: #dfdfdf; }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: #008080;                         /* classic teal desktop */
+    font: 13px/1.3 Tahoma, "MS Sans Serif", Verdana, sans-serif;
+    display: flex; align-items: center; justify-content: center;
+    padding: 16px; -webkit-text-size-adjust: 100%;
+  }
+  .raised { border: 2px solid; border-color: var(--hl) var(--sh) var(--sh) var(--hl);
+            box-shadow: inset 1px 1px 0 var(--lt), inset -1px -1px 0 var(--dk); }
+  .sunken { border: 2px solid; border-color: var(--sh) var(--hl) var(--hl) var(--sh);
+            box-shadow: inset 1px 1px 0 var(--dk), inset -1px -1px 0 var(--lt); }
+
+  .window { width: 340px; max-width: 100%; background: var(--face); padding: 3px; }
+  .titlebar {
+    display: flex; align-items: center; gap: 6px;
+    background: linear-gradient(90deg, #000080, #1084d0);
+    color: #fff; font-weight: bold; padding: 3px 4px; margin-bottom: 8px;
+  }
+  .titlebar .t { flex: 1; }
+  .titlebar .x {
+    width: 18px; height: 16px; background: var(--face); color: #000;
+    font: bold 11px/14px Tahoma, sans-serif; text-align: center;
+    border: 2px solid; border-color: var(--hl) var(--sh) var(--sh) var(--hl);
+  }
+  .body { padding: 6px 12px 12px; }
+
+  /* the monitor */
+  .monitor { width: 200px; margin: 4px auto 2px; }
+  .case { background: #c8c8b8; border-radius: 10px 10px 6px 6px; padding: 12px 12px 16px; }
+  .screen { background: #000; aspect-ratio: 4 / 3; position: relative; overflow: hidden; cursor: pointer; }
+  .screen iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; pointer-events: none; }
+  .screen .glass { position: absolute; inset: 0; }   /* catches the click */
+  .neck { width: 40px; height: 12px; background: #c8c8b8; margin: 0 auto;
+          border-left: 2px solid #b0b0a0; border-right: 2px solid #b0b0a0; }
+  .base { width: 96px; height: 9px; background: #c8c8b8; margin: 0 auto;
+          border-radius: 0 0 7px 7px; }
+
+  .row { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
+  .row label { white-space: nowrap; }
+  select { flex: 1; font: 13px Tahoma, sans-serif; padding: 2px 3px; background: #fff;
+           border: 2px solid; border-color: var(--sh) var(--hl) var(--hl) var(--sh); }
+  .btns { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+  button {
+    min-width: 84px; padding: 5px 10px; background: var(--face); color: #000;
+    font: 13px Tahoma, sans-serif; cursor: pointer;
+    border: 2px solid; border-color: var(--hl) var(--sh) var(--sh) var(--hl);
+    box-shadow: inset 1px 1px 0 var(--lt), inset -1px -1px 0 var(--dk);
+  }
+  button:active { border-color: var(--sh) var(--hl) var(--hl) var(--sh);
+                  box-shadow: inset 1px 1px 0 var(--dk); }
+  button:disabled { color: var(--sh); text-shadow: 1px 1px 0 var(--hl); cursor: default; }
+  .hint { margin-top: 12px; font-size: 11px; color: #404040; text-align: center; }
+</style>
+</head>
+<body>
+<div class="window raised">
+  <div class="titlebar"><span class="t">Display Properties — Screen Saver</span><span class="x">✕</span></div>
+  <div class="body">
+    <div class="monitor">
+      <div class="case raised">
+        <div class="screen sunken" id="screen">
+          <iframe id="preview" title="preview" scrolling="no"></iframe>
+          <div class="glass"></div>
+        </div>
+      </div>
+      <div class="neck"></div>
+      <div class="base raised"></div>
+    </div>
+
+    <div class="row">
+      <label for="pick">Screen saver</label>
+      <select id="pick"></select>
+    </div>
+
+    <div class="btns">
+      <button id="settings" disabled>Settings…</button>
+      <button id="preview-btn">Preview</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Add a saver here and it shows up in the list automatically.
+  const SAVERS = [
+    { name: '3D Maze',        slug: 'maze' },
+    { name: 'Starfield',      slug: 'starfield' },
+    { name: 'Mystify',        slug: 'mystify' },
+    { name: '3D Pipes',       slug: 'pipes' },
+    { name: 'Flying Windows', slug: 'flying-windows' },
+    { name: 'Beziers',        slug: 'beziers' },
+    { name: 'Marquee',        slug: 'marquee' },
+    { name: 'Flying Toasters', slug: 'toasters' },
+    { name: '3D Text',        slug: '3d-text' },
+  ];
+  const urlFor = i => SAVERS[i].slug + '/index.html';   // explicit file: works on file:// and servers alike
+
+  const pick = document.getElementById('pick');
+  const preview = document.getElementById('preview');
+  SAVERS.forEach((s, i) => {
+    const o = document.createElement('option');
+    o.value = i; o.textContent = s.name;
+    pick.appendChild(o);
+  });
+
+  // optional deep-link: screensavers/?s=pipes selects that one
+  const want = new URLSearchParams(location.search).get('s');
+  let cur = Math.max(0, SAVERS.findIndex(s => s.slug === want));
+
+  function show(i) {
+    cur = i; pick.value = i;
+    preview.src = urlFor(i);
+  }
+  function run() { location.href = urlFor(cur); }
+
+  pick.addEventListener('change', () => show(+pick.value));
+  document.getElementById('screen').addEventListener('click', run);
+  document.getElementById('preview-btn').addEventListener('click', run);
+
+  show(cur);
+</script>
+</body>
+</html>

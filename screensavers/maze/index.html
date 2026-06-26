@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doolhof</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; position: fixed; inset: 0; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas><script>
+// Doolhof ("maze")
+// ----------------------------------------------------------------------------
+// An homage to the Windows 95/98 "3D Maze" screensaver: a camera that floats,
+// forever, through a first-person brick labyrinth. There is no goal and no
+// player -- it just wanders. At every junction it turns in place (exactly like
+// the original) and picks a corridor, slightly preferring to go straight so the
+// walk feels purposeful rather than dizzy. The walls are raycast the old way
+// (DDA, one vertical strip per column), textured with hand-mixed brick and the
+// occasional smiley plaque hung in a dead corridor. Every so often the whole
+// maze dissolves to black and a fresh one fades in. Nothing is saved. Stare.
+// ----------------------------------------------------------------------------
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d', { alpha: false });
+
+// ---- tunables --------------------------------------------------------------
+const COLS = 12, ROWS = 12;        // maze size in cells (corridors are 1 tile)
+const MOVE_SPEED = 2.0;            // tiles per second the camera glides forward
+const TURN_SPEED = 2.6;           // radians per second it pivots at a corner
+const STRAIGHT_BIAS = 0.86;        // chance to keep going straight when it can
+const CARVE_STRAIGHT = 0.78;       // generator's bias toward long straight halls
+const FOG = 9.0;                  // tiles until a wall fades fully to black
+const REGEN_MS = 80000;            // rebuild the maze roughly this often
+const FADE_MS = 2200;             // length of the dissolve between mazes
+const TS = 64;                     // texture size in pixels
+
+// ---- maze generation (recursive backtracker) -------------------------------
+// Tiles: 1 = wall, 0 = open. Cells live on odd coordinates; the wall between
+// two carved cells is knocked out as we visit.
+function genMaze(cols, rows) {
+  const W = 2 * cols + 1, H = 2 * rows + 1;
+  const g = Array.from({ length: H }, () => new Array(W).fill(1));
+  const vis = new Set(['0,0']);
+  const stack = [{ x: 0, y: 0, dir: null }];         // remember how we entered
+  g[1][1] = 0;
+  while (stack.length) {
+    const cur = stack[stack.length - 1];
+    const { x: cx, y: cy, dir: lastDir } = cur;
+    const dirs = [[0, -1], [1, 0], [0, 1], [-1, 0]];
+    for (let i = dirs.length - 1; i > 0; i--) {      // Fisher-Yates shuffle
+      const j = (Math.random() * (i + 1)) | 0;
+      [dirs[i], dirs[j]] = [dirs[j], dirs[i]];
+    }
+    // Bias: usually try to keep carving in the same direction we came in,
+    // which yields long straight halls instead of a constant zigzag.
+    if (lastDir && Math.random() < CARVE_STRAIGHT) {
+      const k = dirs.findIndex(d => d[0] === lastDir[0] && d[1] === lastDir[1]);
+      if (k > 0) dirs.unshift(dirs.splice(k, 1)[0]);
+    }
+    let moved = false;
+    for (const [dx, dy] of dirs) {
+      const nx = cx + dx, ny = cy + dy;
+      if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue;
+      if (vis.has(nx + ',' + ny)) continue;
+      vis.add(nx + ',' + ny);
+      g[1 + 2 * ny][1 + 2 * nx] = 0;                 // carve the neighbour cell
+      g[1 + 2 * cy + dy][1 + 2 * cx + dx] = 0;       // and the wall between
+      stack.push({ x: nx, y: ny, dir: [dx, dy] });
+      moved = true;
+      break;
+    }
+    if (!moved) stack.pop();
+  }
+  return { g, W, H };
+}
+
+// ---- textures --------------------------------------------------------------
+// One staple brick texture plus a couple of plaques to break the monotony,
+// drawn once onto offscreen canvases and sampled per column at runtime.
+function makeCanvas() {
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = TS;
+  return cv;
+}
+
+function makeBrick() {
+  const cv = makeCanvas();
+  const c = cv.getContext('2d');
+  c.fillStyle = '#c9bfa8';                 // mortar (light, like real brickwork)
+  c.fillRect(0, 0, TS, TS);
+  const rh = 16, rw = 32, m = 2;            // brick rows / width / mortar gap
+  for (let row = 0, y = 0; y < TS; y += rh, row++) {
+    const off = (row % 2) ? -rw / 2 : 0;    // running bond offset
+    for (let x = off; x < TS; x += rw) {
+      const shade = 0.85 + Math.random() * 0.28;  // per-brick tone jitter
+      const r = Math.round(176 * shade), gg = Math.round(82 * shade), b = Math.round(60 * shade);
+      c.fillStyle = `rgb(${r},${gg},${b})`;       // warm red brick, like the original
+      c.fillRect(x + m, y + m, rw - m, rh - m);
+    }
+  }
+  // a faint grime gradient so flat walls still read as lit from above
+  const grad = c.createLinearGradient(0, 0, 0, TS);
+  grad.addColorStop(0, 'rgba(255,255,255,0.08)');
+  grad.addColorStop(1, 'rgba(0,0,0,0.12)');
+  c.fillStyle = grad;
+  c.fillRect(0, 0, TS, TS);
+  return cv;
+}
+
+function makePlaque(brick, draw) {
+  const cv = makeCanvas();
+  const c = cv.getContext('2d');
+  c.drawImage(brick, 0, 0);
+  c.fillStyle = '#d8c5a0';                  // worn metal plate
+  c.fillRect(14, 14, 36, 36);
+  c.strokeStyle = '#3a342c';
+  c.lineWidth = 2;
+  c.strokeRect(14, 14, 36, 36);
+  draw(c);
+  return cv;
+}
+
+const brick = makeBrick();
+const signs = [
+  makePlaque(brick, c => {                  // smiley
+    c.strokeStyle = '#222'; c.lineWidth = 2.5;
+    c.beginPath(); c.arc(32, 32, 12, 0, Math.PI * 2); c.stroke();
+    c.fillStyle = '#222';
+    c.beginPath(); c.arc(28, 29, 1.6, 0, 7); c.fill();
+    c.beginPath(); c.arc(36, 29, 1.6, 0, 7); c.fill();
+    c.beginPath(); c.arc(32, 33, 7, 0.2, Math.PI - 0.2); c.stroke();
+  }),
+  makePlaque(brick, c => {                  // question mark
+    c.fillStyle = '#222';
+    c.font = 'bold 30px Georgia, serif';
+    c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.fillText('?', 32, 34);
+  }),
+];
+
+// Assign a texture to each wall tile deterministically: mostly brick, a sparse
+// scatter of plaques. Computed fresh whenever the maze is rebuilt.
+let texGrid;
+function buildTexGrid(g, W, H) {
+  texGrid = Array.from({ length: H }, () => new Array(W).fill(null));
+  for (let y = 0; y < H; y++)
+    for (let x = 0; x < W; x++) {
+      if (g[y][x] !== 1) continue;
+      const h = (x * 73856093) ^ (y * 19349663);
+      texGrid[y][x] = ((h >>> 0) % 23 === 0) ? signs[(x + y) % signs.length] : brick;
+    }
+}
+
+// ---- the walker ------------------------------------------------------------
+let maze, posX, posY, dir;        // pose: tile position + heading angle
+let camFrom, camTo, prevTile, phase, targetDir;
+
+function tileOpen(x, y) {
+  return x >= 0 && y >= 0 && x < maze.W && y < maze.H && maze.g[y][x] === 0;
+}
+
+function snapDir(dx, dy) { return Math.atan2(dy, dx); }
+
+function pickNext() {
+  const cx = Math.round(posX - 0.5), cy = Math.round(posY - 0.5);
+  const opts = [[1, 0], [-1, 0], [0, 1], [0, -1]].filter(([dx, dy]) => tileOpen(cx + dx, cy + dy));
+  // forward direction in tile steps, from the heading we arrived with
+  const fdx = Math.round(Math.cos(dir)), fdy = Math.round(Math.sin(dir));
+  const back = prevTile ? [prevTile.x - cx, prevTile.y - cy] : null;  // step back to where we came from
+  let live = opts.filter(([dx, dy]) => !(back && dx === back[0] && dy === back[1]));
+  if (live.length === 0) live = opts;             // dead end -> turn around
+  const straight = live.find(([dx, dy]) => dx === fdx && dy === fdy);
+  let choice;
+  if (straight && Math.random() < STRAIGHT_BIAS) choice = straight;
+  else choice = live[(Math.random() * live.length) | 0];
+  prevTile = { x: cx, y: cy };
+  camFrom = { x: posX, y: posY };
+  camTo = { x: cx + choice[0] + 0.5, y: cy + choice[1] + 0.5 };
+  targetDir = snapDir(choice[0], choice[1]);
+  phase = angDiff(dir, targetDir) ? 'turn' : 'move';
+}
+
+function angDiff(a, b) {
+  let d = (b - a) % (Math.PI * 2);
+  if (d > Math.PI) d -= Math.PI * 2;
+  if (d < -Math.PI) d += Math.PI * 2;
+  return d;
+}
+
+// ---- lifecycle: start / rebuild --------------------------------------------
+let regenTimer = 0, fade = 0, fadeDir = 0;   // fade: 0..1 black overlay
+
+function newMaze() {
+  maze = genMaze(COLS, ROWS);
+  buildTexGrid(maze.g, maze.W, maze.H);
+  posX = 1.5; posY = 1.5;
+  dir = 0; prevTile = null;
+  regenTimer = 0;
+  pickNext();
+}
+
+// ---- update ----------------------------------------------------------------
+let bob = 0;
+function update(dt) {
+  regenTimer += dt * 1000;
+  if (fadeDir === 0 && regenTimer > REGEN_MS) { fadeDir = 1; }   // start dissolve
+  if (fadeDir === 1) {
+    fade = Math.min(1, fade + dt * 1000 / FADE_MS);
+    if (fade >= 1) { newMaze(); fadeDir = -1; }
+  } else if (fadeDir === -1) {
+    fade = Math.max(0, fade - dt * 1000 / FADE_MS);
+    if (fade <= 0) fadeDir = 0;
+  }
+
+  if (phase === 'turn') {
+    const d = angDiff(dir, targetDir);
+    const step = TURN_SPEED * dt;
+    if (Math.abs(d) <= step) { dir = targetDir; phase = 'move'; }
+    else dir += Math.sign(d) * step;
+  } else {
+    const dx = camTo.x - posX, dy = camTo.y - posY;
+    const dist = Math.hypot(dx, dy);
+    const step = MOVE_SPEED * dt;
+    bob += dt * MOVE_SPEED * 3.2;
+    if (dist <= step) { posX = camTo.x; posY = camTo.y; pickNext(); }
+    else { posX += dx / dist * step; posY += dy / dist * step; }
+  }
+}
+
+// ---- render (raycaster) ----------------------------------------------------
+let W = 0, H = 0, STEP = 2;
+function render() {
+  const dirX = Math.cos(dir), dirY = Math.sin(dir);
+  const FOV = 0.66;
+  const planeX = -dirY * FOV, planeY = dirX * FOV;
+  const horizon = H / 2 + Math.sin(bob) * H * 0.012;   // gentle float
+
+  // ceiling + floor as vertical gradients meeting at the horizon
+  let grad = ctx.createLinearGradient(0, 0, 0, horizon);
+  grad.addColorStop(0, '#cfd2d0'); grad.addColorStop(1, '#9ea29f');   // light tiled ceiling
+  ctx.fillStyle = grad; ctx.fillRect(0, 0, W, horizon);
+  grad = ctx.createLinearGradient(0, horizon, 0, H);
+  grad.addColorStop(0, '#7a5435'); grad.addColorStop(1, '#43301f');   // warm wooden floor
+  ctx.fillStyle = grad; ctx.fillRect(0, horizon, W, H - horizon);
+
+  for (let col = 0; col < W; col += STEP) {
+    const camX = 2 * col / W - 1;
+    const rayX = dirX + planeX * camX;
+    const rayY = dirY + planeY * camX;
+    let mapX = Math.floor(posX), mapY = Math.floor(posY);
+    const dDistX = Math.abs(1 / rayX), dDistY = Math.abs(1 / rayY);
+    let stepX, stepY, sideX, sideY;
+    if (rayX < 0) { stepX = -1; sideX = (posX - mapX) * dDistX; }
+    else { stepX = 1; sideX = (mapX + 1 - posX) * dDistX; }
+    if (rayY < 0) { stepY = -1; sideY = (posY - mapY) * dDistY; }
+    else { stepY = 1; sideY = (mapY + 1 - posY) * dDistY; }
+
+    let side = 0;
+    for (let guard = 0; guard < 64; guard++) {
+      if (sideX < sideY) { sideX += dDistX; mapX += stepX; side = 0; }
+      else { sideY += dDistY; mapY += stepY; side = 1; }
+      if (maze.g[mapY] && maze.g[mapY][mapX] === 1) break;
+    }
+
+    const perp = side === 0 ? (sideX - dDistX) : (sideY - dDistY);
+    if (perp <= 0) continue;
+    const lineH = H / perp;
+    let drawStart = horizon - lineH / 2;
+
+    let wallX = side === 0 ? posY + perp * rayY : posX + perp * rayX;
+    wallX -= Math.floor(wallX);
+    let texX = Math.floor(wallX * TS);
+    if (side === 0 && rayX > 0) texX = TS - texX - 1;
+    if (side === 1 && rayY < 0) texX = TS - texX - 1;
+
+    const tex = (texGrid[mapY] && texGrid[mapY][mapX]) || brick;
+    ctx.drawImage(tex, texX, 0, 1, TS, col, drawStart, STEP, lineH);
+
+    // distance fog + a flat side darken for a sense of corners
+    let shade = Math.min(1, perp / FOG) * 0.62;
+    if (side === 1) shade = Math.min(1, shade + 0.12);
+    if (shade > 0.01) {
+      ctx.fillStyle = `rgba(0,0,0,${shade})`;
+      ctx.fillRect(col, drawStart, STEP, lineH);
+    }
+  }
+
+  if (fade > 0) {
+    ctx.fillStyle = `rgba(0,0,0,${fade})`;
+    ctx.fillRect(0, 0, W, H);
+  }
+}
+
+// ---- loop ------------------------------------------------------------------
+let last = performance.now();
+function frame(now) {
+  let dt = (now - last) / 1000;
+  last = now;
+  if (dt > 0.1) dt = 0.1;          // after a tab switch: no jump
+  update(dt);
+  render();
+  requestAnimationFrame(frame);
+}
+
+function resize() {
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+  STEP = W > 1400 ? 3 : 2;          // fewer rays on very wide screens
+}
+window.addEventListener('resize', resize);
+
+resize();
+newMaze();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

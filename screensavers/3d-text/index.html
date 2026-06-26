@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>3D Text</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; position: fixed; inset: 0; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+// 3D Text screensaver — a recreation of the classic Windows "3D Text" saver.
+// A chunky extruded word slowly spins around the vertical axis on black.
+// Fake-3D: the word is stamped many times along a screen-space depth vector to
+// build the slab side wall (dark), then a bright front face is drawn on top.
+
+// ---- the word ----------------------------------------------------------
+const WORD = "rickvanderwolk.cc";   // change me
+
+const canvas = document.getElementById("c");
+const ctx = canvas.getContext("2d");
+
+let W = 0, H = 0, dpr = 1;
+function resize() {
+  dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+  W = window.innerWidth;
+  H = window.innerHeight;
+  canvas.width = Math.floor(W * dpr);
+  canvas.height = Math.floor(H * dpr);
+  canvas.style.width = W + "px";
+  canvas.style.height = H + "px";
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+resize();
+window.addEventListener("resize", resize);
+
+// Pick a font size that fits the word across the viewport even at full width.
+function fitFontSize() {
+  let size = Math.min(H * 0.42, W * 0.5);
+  for (let i = 0; i < 12; i++) {
+    ctx.font = "bold " + size + "px Arial, Helvetica, sans-serif";
+    const w = ctx.measureText(WORD).width;
+    const maxW = W * 0.82;            // leave margin so it never clips
+    if (w <= maxW) break;
+    size *= maxW / w * 0.99;
+  }
+  return size;
+}
+
+const TILT = 0.22;          // vertical tilt for depth
+const DEPTH = 1.0;          // base extrusion depth scale
+const SPEED = 0.6;          // rad/sec, slow & hypnotic
+
+let angle = 0;
+let last = performance.now();
+
+function frame(now) {
+  let dt = (now - last) / 1000;
+  last = now;
+  if (dt > 0.1) dt = 0.1;
+  angle += SPEED * dt;
+
+  // solid black clear
+  ctx.fillStyle = "#000";
+  ctx.fillRect(0, 0, W, H);
+
+  const size = fitFontSize();
+  ctx.font = "bold " + size + "px Arial, Helvetica, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+
+  const cx = W / 2;
+  const cy = H / 2;
+
+  const c = Math.cos(angle);
+  const s = Math.sin(angle);
+
+  // Horizontal squash narrows the word to an edge as it rotates around Y.
+  // Floor keeps it from collapsing to zero; sign lets the back face mirror.
+  const scaleX = (c >= 0 ? 1 : -1) * Math.max(Math.abs(c), 0.04);
+
+  // Extrusion vector in SCREEN space (not squashed): widest when edge-on.
+  // sin() drives the amount and which side the wall sits on as it turns.
+  const depthPx = size * 0.26 * DEPTH;
+  const ox = -s * depthPx;            // horizontal depth offset
+  const oy = depthPx * TILT;          // downward offset = subtle tilt
+  const STEPS = Math.max(10, Math.round(size * 0.35));
+
+  // stamp the word at a screen-space position with the Y-squash + shear
+  function stamp(px, py, style) {
+    ctx.save();
+    ctx.translate(px, py);
+    ctx.transform(1, 0, TILT * 0.18, 1, 0, 0);  // slight shear for depth feel
+    ctx.scale(scaleX, 1);
+    ctx.fillStyle = style;
+    ctx.fillText(WORD, 0, 0);
+    ctx.restore();
+  }
+
+  // ---- extrusion side wall: stamp from back to front, dark -> mid ----
+  for (let i = STEPS; i >= 1; i--) {
+    const t = i / STEPS;                         // 1 = back, ~0 = front
+    const v = Math.round(16 + (1 - t) * 78);     // darker toward the back
+    const col = "rgb(" + Math.round(v * 0.66) + "," + Math.round(v * 0.78) + "," + v + ")";
+    stamp(cx + ox * t, cy + oy * t, col);
+  }
+
+  // ---- front face: bright metallic blue-grey with a specular sheen ----
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.transform(1, 0, TILT * 0.18, 1, 0, 0);
+  ctx.scale(scaleX, 1);
+  const grad = ctx.createLinearGradient(0, -size * 0.5, 0, size * 0.5);
+  grad.addColorStop(0.00, "#dfe7f2");
+  grad.addColorStop(0.42, "#aab8cc");
+  grad.addColorStop(0.50, "#f2f6ff");           // specular highlight band
+  grad.addColorStop(0.58, "#9aa8bd");
+  grad.addColorStop(1.00, "#6f7d92");
+  ctx.fillStyle = grad;
+  ctx.fillText(WORD, 0, 0);
+  ctx.restore();
+
+  requestAnimationFrame(frame);
+}
+
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

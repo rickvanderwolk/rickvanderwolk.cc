@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Starfield</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; position: fixed; inset: 0; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas><script>
+// Starfield — the Windows "Starfield Simulation": an endless warp through
+// space. Each star has a depth z; every frame it drifts toward the camera,
+// is projected onto the screen, and grows + brightens as it nears. Stars that
+// pass the camera respawn far away, so the flow never stops. A faint streak
+// from the previous frame gives that classic hyperspace smear.
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d', { alpha: false });
+let W, H, cx, cy, NUM, ZMAX, FOCAL;
+let SPEED = 6.5;           // forward drift per frame, in depth units
+
+let stars = [];
+function spawn(s, fresh) {
+  s.x = (Math.random() * 2 - 1) * W;
+  s.y = (Math.random() * 2 - 1) * H;
+  // new stars start deep; on first fill, scatter across all depths
+  s.z = fresh ? Math.random() * ZMAX + 1 : ZMAX;
+  return s;
+}
+
+function reset() {
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+  cx = W / 2; cy = H / 2;
+  ZMAX = Math.max(W, H);
+  FOCAL = ZMAX * 0.5;                    // projection scales with the viewport -> reads at any size
+  NUM = Math.max(150, Math.round((W * H) / 1500));   // keep enough stars even in a tiny preview
+  stars = [];
+  for (let i = 0; i < NUM; i++) stars.push(spawn({}, true));
+}
+
+function frame() {
+  ctx.fillStyle = '#000';                 // crisp clear -> sharp white dots
+  ctx.fillRect(0, 0, W, H);
+
+  for (const s of stars) {
+    s.z -= SPEED;
+    if (s.z < 1) { spawn(s, false); continue; }
+
+    const sx = cx + (s.x / s.z) * FOCAL;
+    const sy = cy + (s.y / s.z) * FOCAL;
+    if (sx < 0 || sx >= W || sy < 0 || sy >= H) { spawn(s, false); continue; }
+
+    const k = 1 - s.z / ZMAX;             // 0 far .. 1 near
+    const r = 0.7 + k * k * 2.8;          // grows fast as it nears the camera
+    const b = Math.round(120 + k * 135);  // clearly visible far, bright white near
+    ctx.fillStyle = `rgb(${b},${b},${b})`;
+    ctx.beginPath();
+    ctx.arc(sx, sy, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  requestAnimationFrame(frame);
+}
+
+window.addEventListener('resize', reset);
+reset();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

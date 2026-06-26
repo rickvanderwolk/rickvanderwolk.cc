@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Beziers</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; position: fixed; inset: 0; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+// Beziers / "Curves and Colors": the curvy cousin of Mystify.
+// Control points bounce off the screen edges like balls; each frame the
+// smooth bezier path through them is snapshotted into a history buffer.
+// We redraw the whole ribbon oldest->newest, fading and hue-shifting, so a
+// glowing rainbow curve trails the moving one. Two curves at once.
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+let W = 0, H = 0, dpr = 1;
+function resize() {
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth;
+  H = window.innerHeight;
+  canvas.width = Math.round(W * dpr);
+  canvas.height = Math.round(H * dpr);
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+window.addEventListener('resize', resize);
+resize();
+
+const HISTORY = 22;        // snapshots kept per curve
+const POINTS = 6;          // control points per curve
+const SPEED_MIN = 80;      // px/sec
+const SPEED_MAX = 140;
+
+function rand(a, b) { return a + Math.random() * (b - a); }
+
+function makeCurve(hue0) {
+  const pts = [];
+  for (let i = 0; i < POINTS; i++) {
+    const speed = rand(SPEED_MIN, SPEED_MAX);
+    const ang = rand(0, Math.PI * 2);
+    pts.push({
+      x: rand(0, W), y: rand(0, H),
+      vx: Math.cos(ang) * speed, vy: Math.sin(ang) * speed
+    });
+  }
+  return { pts, hue: hue0, history: [] };
+}
+
+const curves = [ makeCurve(0), makeCurve(180) ];
+
+function step(curve, dt) {
+  for (const p of curve.pts) {
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    if (p.x < 0) { p.x = 0; p.vx = -p.vx; }
+    else if (p.x > W) { p.x = W; p.vx = -p.vx; }
+    if (p.y < 0) { p.y = 0; p.vy = -p.vy; }
+    else if (p.y > H) { p.y = H; p.vy = -p.vy; }
+  }
+  // snapshot current point positions
+  const snap = curve.pts.map(p => ({ x: p.x, y: p.y }));
+  curve.history.push(snap);
+  if (curve.history.length > HISTORY) curve.history.shift();
+}
+
+// Draw a smooth bezier path through a set of points using Catmull-Rom
+// converted to cubic bezier segments (a continuous, curvy ribbon).
+function tracePath(pts) {
+  const n = pts.length;
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for (let i = 0; i < n - 1; i++) {
+    const p0 = pts[i - 1] || pts[i];
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const p3 = pts[i + 2] || p2;
+    const c1x = p1.x + (p2.x - p0.x) / 6;
+    const c1y = p1.y + (p2.y - p0.y) / 6;
+    const c2x = p2.x - (p3.x - p1.x) / 6;
+    const c2y = p2.y - (p3.y - p1.y) / 6;
+    ctx.bezierCurveTo(c1x, c1y, c2x, c2y, p2.x, p2.y);
+  }
+}
+
+function drawCurve(curve, baseHue) {
+  const hist = curve.history;
+  const len = hist.length;
+  for (let i = 0; i < len; i++) {
+    const t = i / Math.max(1, len - 1);   // 0 oldest, 1 newest
+    const alpha = 0.06 + t * t * 0.55;     // older dimmer
+    const hue = (baseHue + (1 - t) * 90) % 360; // ribbon = hue gradient
+    ctx.strokeStyle = 'hsla(' + hue.toFixed(1) + ',100%,' +
+      (52 + t * 10).toFixed(1) + '%,' + alpha.toFixed(3) + ')';
+    ctx.lineWidth = 1.5 + t * 0.6;
+    tracePath(hist[i]);
+    ctx.stroke();
+  }
+}
+
+let last = performance.now();
+function frame(now) {
+  let dt = (now - last) / 1000;
+  last = now;
+  if (dt > 0.1) dt = 0.1;
+
+  // hue cycling over time
+  for (const c of curves) c.hue = (c.hue + dt * 14) % 360;
+
+  for (const c of curves) step(c, dt);
+
+  // solid black clear; trail lives in the history buffer
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.globalCompositeOperation = 'lighter'; // glow
+  for (const c of curves) drawCurve(c, c.hue);
+  ctx.globalCompositeOperation = 'source-over';
+
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

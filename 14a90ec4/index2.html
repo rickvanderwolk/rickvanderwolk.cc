@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title></title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #fff; overflow: hidden; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d');
+
+  let W = 0, H = 0, dpr = 1;
+  function resize() {
+    dpr = window.devicePixelRatio || 1;
+    W = window.innerWidth;
+    H = window.innerHeight;
+    canvas.width = W * dpr;
+    canvas.height = H * dpr;
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  const SIZE = 12;        // hoogte/dikte van het blokje
+  const RAMP = 10;        // seconden tot "vol gas"
+  const BASE = 40;        // beginsnelheid (px/s)
+  const PEAK = 6000;      // snelheid na de ramp
+  const AFTER = 1.15;     // blijft versnellen na de ramp
+  const MAX = 5e6;        // plafond, zodat de snelheid nooit Infinity wordt
+
+  let x = 0;
+  let last = null;
+  let elapsed = 0;
+
+  function speed() {
+    let s;
+    if (elapsed <= RAMP) {
+      const t = elapsed / RAMP;
+      s = BASE + (PEAK - BASE) * (t * t);
+    } else {
+      s = PEAK * Math.pow(AFTER, elapsed - RAMP);
+    }
+    return Math.min(s, MAX);
+  }
+
+  // teken een veeg vanaf positie `start`, met lengte `len`, wrap over breedte W
+  function sweep(start, len, y, h) {
+    let pos = ((start % W) + W) % W;
+    let remaining = len;
+    while (remaining > 0) {
+      const seg = Math.min(remaining, W - pos);
+      ctx.fillRect(pos, y, seg, h);
+      remaining -= seg;
+      pos += seg;
+      if (pos >= W) pos = 0;
+    }
+  }
+
+  function frame(now) {
+    if (last === null) last = now;
+    const dt = (now - last) / 1000;
+    last = now;
+    elapsed += dt;
+
+    const dist = speed() * dt;       // afstand die het blokje dit frame echt aflegt
+
+    ctx.clearRect(0, 0, W, H);
+
+    const y = H / 2 - SIZE / 2;
+    // De veeg is het hele pad van dit frame, plus de breedte van het blokje zelf.
+    // Zodra dist >= W is het pad één doorlopende lijn over de volle breedte.
+    const len = Math.min(dist + SIZE, W);
+    sweep(x, len, y, SIZE);
+
+    x = (x + dist) % W;
+
+    requestAnimationFrame(frame);
+  }
+
+  requestAnimationFrame(frame);
+</script>
+</body>
+</html>

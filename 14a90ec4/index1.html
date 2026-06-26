@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title></title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #fff; overflow: hidden; }
+  #block {
+    position: fixed;
+    top: 50%;
+    left: 0;
+    width: 12px;
+    height: 12px;
+    background: #000;
+    transform: translateY(-50%);
+    will-change: left;
+  }
+</style>
+</head>
+<body>
+<div id="block"></div>
+<script>
+  const block = document.getElementById('block');
+
+  let x = 0;
+  let last = null;
+  let elapsed = 0;
+
+  // Snelheid (pixels per seconde) loopt op gedurende de eerste 10 seconden
+  // en blijft daarna versnellen.
+  const RAMP = 10;        // seconden tot "vol gas"
+  const BASE = 40;        // beginsnelheid
+  const PEAK = 6000;      // snelheid na de ramp
+  const AFTER = 1.15;     // factor per seconde, blijft versnellen na de ramp
+  const MAX = 5e6;        // plafond, zodat de snelheid nooit Infinity wordt
+
+  function speed() {
+    let s;
+    if (elapsed <= RAMP) {
+      const t = elapsed / RAMP;        // 0..1
+      s = BASE + (PEAK - BASE) * (t * t);
+    } else {
+      s = PEAK * Math.pow(AFTER, elapsed - RAMP);
+    }
+    return Math.min(s, MAX);
+  }
+
+  function frame(now) {
+    if (last === null) last = now;
+    const dt = (now - last) / 1000;
+    last = now;
+    elapsed += dt;
+
+    const w = window.innerWidth - block.offsetWidth;
+    if (w > 0) {
+      x = (x + speed() * dt) % w;       // modulo: geen lus die kan ontsporen
+    }
+    block.style.left = x + 'px';
+
+    requestAnimationFrame(frame);
+  }
+
+  requestAnimationFrame(frame);
+</script>
+</body>
+</html>

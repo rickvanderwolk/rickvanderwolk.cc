@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title></title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #fff; overflow: hidden; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d');
+
+  let W = 0, H = 0, dpr = 1, scale = 1, cx = 0, cy = 0;
+  function resize() {
+    dpr = window.devicePixelRatio || 1;
+    W = window.innerWidth;
+    H = window.innerHeight;
+    canvas.width = W * dpr;
+    canvas.height = H * dpr;
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    cx = W / 2; cy = H / 2;
+    scale = Math.min(W, H) * 0.4 / 7;   // de curve reikt tot ~7 eenheden
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  // Een ingewikkelde gesloten curve (hypotrochoïde / spirograaf).
+  // Sluit zichzelf na t = PERIOD.
+  const Rr = 5, rr = 3, dd = 5;
+  const k = (Rr - rr) / rr;
+  const PERIOD = 2 * Math.PI * rr;       // hier 6π → veel overlappende lussen
+
+  function pt(t) {
+    const x = (Rr - rr) * Math.cos(t) + dd * Math.cos(k * t);
+    const y = (Rr - rr) * Math.sin(t) - dd * Math.sin(k * t);
+    return [cx + x * scale, cy + y * scale];
+  }
+
+  const SIZE = 6;         // lijndikte
+  const RAMP = 10;        // seconden tot "vol gas"
+  const BASE = 0.8;       // beginsnelheid (t-eenheden per seconde)
+  const PEAK = 60;        // snelheid na de ramp
+  const AFTER = 1.15;     // blijft versnellen na de ramp
+  const MAX = 4000;       // plafond, zodat de snelheid nooit Infinity wordt
+
+  let t = 0;
+  let last = null;
+  let elapsed = 0;
+
+  function speed() {
+    let s;
+    if (elapsed <= RAMP) {
+      const f = elapsed / RAMP;
+      s = BASE + (PEAK - BASE) * (f * f);
+    } else {
+      s = PEAK * Math.pow(AFTER, elapsed - RAMP);
+    }
+    return Math.min(s, MAX);
+  }
+
+  function frame(now) {
+    if (last === null) last = now;
+    const dt = (now - last) / 1000;
+    last = now;
+    elapsed += dt;
+
+    // hoeveel van de curve leggen we dit frame af (in t-eenheden)
+    const span = Math.min(speed() * dt, PERIOD);
+
+    ctx.clearRect(0, 0, W, H);
+    ctx.lineWidth = SIZE;
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = '#000';
+
+    // teken het pad van t tot t+span als veel kleine segmentjes
+    const SEG = PERIOD / 1400;                       // resolutie
+    const n = Math.min(Math.max(2, Math.ceil(span / SEG)), 4000);
+    ctx.beginPath();
+    let p = pt(t);
+    ctx.moveTo(p[0], p[1]);
+    for (let i = 1; i <= n; i++) {
+      p = pt(t + (span * i) / n);
+      ctx.lineTo(p[0], p[1]);
+    }
+    ctx.stroke();
+
+    t = (t + span) % PERIOD;
+
+    requestAnimationFrame(frame);
+  }
+
+  requestAnimationFrame(frame);
+</script>
+</body>
+</html>

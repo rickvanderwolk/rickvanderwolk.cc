@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title></title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #fff; overflow: hidden; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d');
+
+  let W = 0, H = 0, dpr = 1, R = 0;
+  function resize() {
+    dpr = window.devicePixelRatio || 1;
+    W = window.innerWidth;
+    H = window.innerHeight;
+    canvas.width = W * dpr;
+    canvas.height = H * dpr;
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    R = Math.min(W, H) * 0.35;        // straal van de cirkelbaan
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  const SIZE = 12;        // hoogte/dikte van het blokje
+  const RAMP = 10;        // seconden tot "vol gas"
+  const BASE = 40;        // beginsnelheid (px/s langs de baan)
+  const PEAK = 6000;      // snelheid na de ramp
+  const AFTER = 1.15;     // blijft versnellen na de ramp
+  const MAX = 5e6;        // plafond, zodat de snelheid nooit Infinity wordt
+
+  let dist = 0;           // afgelegde afstand langs de baan (px)
+  let last = null;
+  let elapsed = 0;
+
+  function speed() {
+    let s;
+    if (elapsed <= RAMP) {
+      const t = elapsed / RAMP;
+      s = BASE + (PEAK - BASE) * (t * t);
+    } else {
+      s = PEAK * Math.pow(AFTER, elapsed - RAMP);
+    }
+    return Math.min(s, MAX);
+  }
+
+  function frame(now) {
+    if (last === null) last = now;
+    const dt = (now - last) / 1000;
+    last = now;
+    elapsed += dt;
+
+    const step = speed() * dt;        // afstand langs de baan dit frame
+    const circ = 2 * Math.PI * R;     // omtrek van de cirkel
+
+    ctx.clearRect(0, 0, W, H);
+
+    const cx = W / 2, cy = H / 2;
+    // Teken de boog van het pad dat dit frame is afgelegd. Zodra step >= omtrek
+    // is dat een volledige cirkel.
+    const arc = Math.min(step / R, 2 * Math.PI);   // hoek in radialen
+    const a0 = dist / R;                            // starthoek
+    ctx.lineWidth = SIZE;
+    ctx.strokeStyle = '#000';
+    ctx.beginPath();
+    ctx.arc(cx, cy, R, a0, a0 + arc);
+    ctx.stroke();
+
+    dist = (dist + step) % circ;
+
+    requestAnimationFrame(frame);
+  }
+
+  requestAnimationFrame(frame);
+</script>
+</body>
+</html>

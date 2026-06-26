@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title></title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #fff; overflow: hidden; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d');
+
+  let W = 0, H = 0, dpr = 1;
+  function resize() {
+    dpr = window.devicePixelRatio || 1;
+    W = window.innerWidth;
+    H = window.innerHeight;
+    canvas.width = W * dpr;
+    canvas.height = H * dpr;
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  const rnd = (a, b) => a + Math.random() * (b - a);
+
+  // --- vlieg-toestand ---
+  let x = W / 2, y = H / 2;
+  let heading = rnd(0, Math.PI * 2);
+  let speed = 0;               // px/s
+  let angle = heading;         // waar het lijf naar wijst (volgt zachtjes het pad)
+
+  let state = 'rest';
+  let stateLeft = rnd(1.2, 4); // hoe lang in deze toestand
+
+  // tijdens vliegen
+  let turnLeft = 0;            // tot volgende plotse koersverandering (saccade)
+  let targetSpeed = 0;
+
+  // tijdens rusten (poetsen / kleine stapjes)
+  let groomLeft = rnd(0.3, 1.2);
+
+  function takeoff() {
+    state = 'fly';
+    stateLeft = rnd(0.6, 3.5);
+    // soms een traag rondzweven, soms een snelle dartel
+    const fast = Math.random() < 0.55;
+    targetSpeed = fast ? rnd(380, 820) : rnd(60, 220);
+    speed = targetSpeed * 0.4;
+    turnLeft = rnd(0.05, 0.25);
+  }
+
+  function land() {
+    state = 'rest';
+    stateLeft = rnd(1.0, 6.0);
+    speed = 0;
+    groomLeft = rnd(0.3, 1.4);
+  }
+
+  function steerToCenter() {
+    // zachte drang naar het midden als de vlieg te dicht bij de rand komt
+    const m = 60;
+    let want = heading;
+    if (x < m) want = 0;
+    else if (x > W - m) want = Math.PI;
+    if (y < m) want = Math.PI / 2;
+    else if (y > H - m) want = -Math.PI / 2;
+    if (want !== heading) {
+      let d = Math.atan2(Math.sin(want - heading), Math.cos(want - heading));
+      heading += d * 0.15;
+    }
+  }
+
+  function update(dt) {
+    stateLeft -= dt;
+
+    if (state === 'rest') {
+      // af en toe een klein pootstapje / poetsbeweging
+      groomLeft -= dt;
+      if (groomLeft <= 0) {
+        groomLeft = rnd(0.4, 1.8);
+        if (Math.random() < 0.5) {
+          // klein stapje
+          const a = rnd(0, Math.PI * 2);
+          x += Math.cos(a) * rnd(1, 4);
+          y += Math.sin(a) * rnd(1, 4);
+          angle += rnd(-0.5, 0.5);
+        } else {
+          // alleen even draaien op de plek
+          angle += rnd(-0.8, 0.8);
+        }
+      }
+      if (stateLeft <= 0) takeoff();
+    } else {
+      // VLIEGEN: rechte stukjes onderbroken door plotse scherpe bochten
+      turnLeft -= dt;
+      if (turnLeft <= 0) {
+        turnLeft = rnd(0.04, 0.35);
+        // meestal kleine koerscorrectie, soms een scherpe knik
+        const sharp = Math.random() < 0.4;
+        heading += sharp ? rnd(-2.2, 2.2) : rnd(-0.5, 0.5);
+        // snelheid varieert per stukje
+        targetSpeed *= rnd(0.7, 1.25);
+        targetSpeed = Math.max(40, Math.min(900, targetSpeed));
+      }
+      // lichte ruis op de koers, zodat niets perfect recht is
+      heading += rnd(-0.06, 0.06);
+      steerToCenter();
+
+      speed += (targetSpeed - speed) * Math.min(1, dt * 8);
+      x += Math.cos(heading) * speed * dt;
+      y += Math.sin(heading) * speed * dt;
+
+      // lijf draait soepel mee met de vliegrichting
+      let d = Math.atan2(Math.sin(heading - angle), Math.cos(heading - angle));
+      angle += d * Math.min(1, dt * 12);
+
+      if (stateLeft <= 0) land();
+    }
+
+    // binnen het scherm houden
+    x = Math.max(6, Math.min(W - 6, x));
+    y = Math.max(6, Math.min(H - 6, y));
+  }
+
+  function drawFly(flying) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+
+    // poten (subtiel, vooral zichtbaar in rust)
+    ctx.strokeStyle = 'rgba(20,20,20,0.55)';
+    ctx.lineWidth = 0.8;
+    const legSpread = flying ? 0.5 : 1;
+    const legs = [[-1, 1, 2.2], [0, 1.4, 0], [2, 1.1, -2.2]];
+    for (const [lx, ly, ang] of legs) {
+      for (const s of [1, -1]) {
+        ctx.beginPath();
+        ctx.moveTo(lx, s * 1.5);
+        ctx.lineTo(lx + Math.cos(ang) * 4 * legSpread,
+                   s * (1.5 + (5 + ly) * legSpread));
+        ctx.stroke();
+      }
+    }
+
+    // vleugels
+    if (flying) {
+      // wazig geklapper
+      ctx.fillStyle = 'rgba(150,150,160,0.16)';
+      for (const s of [1, -1]) {
+        ctx.beginPath();
+        ctx.ellipse(-1, s * 4, 10, 5, s * 0.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    } else {
+      // dichtgevouwen over de rug
+      ctx.fillStyle = 'rgba(190,192,198,0.45)';
+      ctx.strokeStyle = 'rgba(120,120,130,0.4)';
+      ctx.lineWidth = 0.5;
+      for (const s of [1, -1]) {
+        ctx.beginPath();
+        ctx.ellipse(-4, s * 1.8, 8, 2.6, s * 0.22, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      }
+    }
+
+    // achterlijf
+    ctx.fillStyle = '#2b2b2b';
+    ctx.beginPath();
+    ctx.ellipse(-4.5, 0, 5.5, 3.2, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // borststuk
+    ctx.fillStyle = '#161616';
+    ctx.beginPath();
+    ctx.ellipse(0.5, 0, 3.6, 3, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // kop
+    ctx.fillStyle = '#0d0d0d';
+    ctx.beginPath();
+    ctx.arc(4.6, 0, 2.1, 0, Math.PI * 2);
+    ctx.fill();
+
+    // ogen (donkerrood, subtiel)
+    ctx.fillStyle = 'rgba(90,40,38,0.9)';
+    for (const s of [1, -1]) {
+      ctx.beginPath();
+      ctx.arc(5.2, s * 1.1, 1.0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.restore();
+  }
+
+  let last = null;
+  function frame(now) {
+    if (last === null) last = now;
+    let dt = (now - last) / 1000;
+    last = now;
+    if (dt > 0.05) dt = 0.05;     // na tab-wissel niet ineens wegspringen
+
+    update(dt);
+
+    ctx.clearRect(0, 0, W, H);
+    drawFly(state === 'fly');
+
+    requestAnimationFrame(frame);
+  }
+
+  requestAnimationFrame(frame);
+</script>
+</body>
+</html>

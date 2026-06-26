@@ -20,7 +20,7 @@
 </head>
 <body>
 <canvas id="c"></canvas>
-<div id="hint">arrows / wasd to walk &nbsp;·&nbsp; on touch: tap left / right / middle</div>
+<div id="hint">arrows / wasd &nbsp;·&nbsp; or hold mouse / touch to walk, aim left &amp; right to steer</div>
 <script>
 // Doolhof ("maze") — the 3D Maze screensaver, but you drive.
 // ----------------------------------------------------------------------------
@@ -182,11 +182,12 @@ addEventListener('keydown', e => {
 });
 addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
 
-// touch / mouse: left third = turn left, right third = turn right, middle = forward
-const pointers = new Map();
-function zone(x) { return x < innerWidth * 0.33 ? 'left' : x > innerWidth * 0.67 ? 'right' : 'fwd'; }
-canvas.addEventListener('pointerdown', e => { pointers.set(e.pointerId, zone(e.clientX)); hideHint(); });
-canvas.addEventListener('pointermove', e => { if (pointers.has(e.pointerId)) pointers.set(e.pointerId, zone(e.clientX)); });
+// touch / mouse: hold to walk forward, steer toward where you point.
+// Pointing at the centre (the vanishing point straight ahead) walks dead
+// straight; pointing left/right of centre turns, more the further out you aim.
+const pointers = new Map();              // pointerId -> clientX
+canvas.addEventListener('pointerdown', e => { pointers.set(e.pointerId, e.clientX); hideHint(); });
+canvas.addEventListener('pointermove', e => { if (pointers.has(e.pointerId)) pointers.set(e.pointerId, e.clientX); });
 canvas.addEventListener('pointerup', e => pointers.delete(e.pointerId));
 canvas.addEventListener('pointercancel', e => pointers.delete(e.pointerId));
 
@@ -205,10 +206,15 @@ function update(dt) {
   if (keys['arrowdown'] || keys['s']) mv -= 1;
   if (keys['arrowleft'] || keys['a']) turn -= 1;
   if (keys['arrowright'] || keys['d']) turn += 1;
-  for (const z of pointers.values()) {
-    if (z === 'left') turn -= 1;
-    else if (z === 'right') turn += 1;
-    else mv += 1;
+  if (pointers.size) {
+    mv += 1;                                       // holding = walk forward
+    let sum = 0;
+    for (const x of pointers.values()) sum += x;
+    let s = (sum / pointers.size / innerWidth - 0.5) * 2;   // -1 far left .. 1 far right
+    const dead = 0.14;                             // a centre band that goes dead straight
+    if (Math.abs(s) < dead) s = 0;
+    else s = (s - Math.sign(s) * dead) / (1 - dead);
+    turn += s;
   }
 
   if (turn) dir += Math.max(-1, Math.min(1, turn)) * TURN_SPEED * dt;

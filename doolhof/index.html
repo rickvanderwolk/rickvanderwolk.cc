@@ -231,8 +231,13 @@ function update(dt) {
 let W = 0, H = 0, STEP = 2;
 function render() {
   const dirX = Math.cos(dir), dirY = Math.sin(dir);
-  const FOV = 0.66;
+  // Keep the corridor's proportions identical on every screen by scaling the
+  // camera plane with the aspect ratio, anchored to the desktop look (~16:10,
+  // where this is exactly 0.66). Without it walls stretch tall in portrait and
+  // go flat in wide landscape. projH stays H, so the desktop view is unchanged.
+  const FOV = Math.max(0.32, Math.min(0.95, 0.66 * (W / H) / 1.6));
   const planeX = -dirY * FOV, planeY = dirX * FOV;
+  const projH = H;
   const horizon = H / 2 + Math.sin(bob) * H * 0.012;
 
   let grad = ctx.createLinearGradient(0, 0, 0, horizon);
@@ -263,7 +268,7 @@ function render() {
 
     const perp = side === 0 ? (sideX - dDistX) : (sideY - dDistY);
     if (perp <= 0) continue;
-    const lineH = H / perp;
+    const lineH = projH / perp;
     const drawStart = horizon - lineH / 2;
 
     let wallX = side === 0 ? posY + perp * rayY : posX + perp * rayX;

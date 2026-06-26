@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v46 — IN DE BUIK VAN EEN MONSTER.
+// Een natte, donkere grot die ademt: peristaltisch pulserende wanden,
+// vage aderen en membranen, diepe vlezige rood-maroon met een ziek glanzen.
+// Claustrofobisch, levend, traag verteren.
+
+const SPEED = 2000; // 1 = uren-traag. Hoog (bv. 2000) om de reis snel te zien.
+const TIME_SCALE = 0.0000007 * SPEED;
+
+let buf;
+let BW, BH;
+
+function buildBuffer() {
+  BW = 150;
+  BH = Math.max(40, Math.round(BW * windowHeight / windowWidth));
+  buf = createImage(BW, BH);
+}
+
+function setup() {
+  pixelDensity(1);
+  createCanvas(windowWidth, windowHeight);
+  frameRate(30);
+  noSmooth();
+  buildBuffer();
+}
+
+function draw() {
+  let t = millis() * TIME_SCALE;
+  // ademhaling op een kalm vast tempo
+  let breathT = frameCount * 0.018;
+  // peristaltische golf die langzaam door de buik trekt
+  let peri = frameCount * 0.012;
+
+  // zieke gloed die heel langzaam tussen donker bloed en maroon kruipt
+  let glow = 0.5 + 0.5 * Math.sin(t * 0.5);
+
+  buf.loadPixels();
+  for (let y = 0; y < BH; y++) {
+    let ny = y / BH;
+    for (let x = 0; x < BW; x++) {
+      let nx = x / BW;
+
+      // organische verplaatsing: het vlees beweegt en kromt
+      let wx = nx + 0.10 * Math.sin(ny * 5.0 + breathT);
+      let wy = ny + 0.08 * Math.sin(nx * 4.0 - breathT * 0.7);
+
+      // peristaltische pulsering: golven die door de wanden lopen
+      let band = Math.sin(wy * 7.0 + peri + 1.4 * Math.sin(wx * 3.0 + peri * 0.5));
+      let pulse = 0.5 + 0.5 * band;
+
+      // diepte van de grot: van centrum naar wand donkerder
+      let cx = nx - 0.5, cy = ny - 0.5;
+      let rad = Math.sqrt(cx * cx + cy * cy);
+      let cavern = 1.0 - rad * 1.25;
+      cavern = Math.max(0, Math.min(1, cavern));
+
+      // ademende vernauwing: de hele buik knijpt samen
+      let breath = 0.78 + 0.22 * Math.sin(breathT * 1.0);
+      cavern *= breath;
+
+      // membraan / vlies textuur uit gelaagde noise
+      let flesh = noise(wx * 3.2, wy * 3.6, t * 0.4 + peri * 0.15);
+      let fine = noise(wx * 9.0 + 11, wy * 11.0, t * 0.5);
+
+      // aderen: dunne donkere lijnen die kronkelen door het vlees
+      let veinField = noise(wx * 5.0 + 40, wy * 6.0 - peri * 0.1, t * 0.3);
+      let vein = Math.abs(veinField - 0.5);
+      let veinDark = 1.0 - Math.max(0, 1.0 - vein * 14.0);
+
+      // glanzende natte hoogtepunten waar het vlees bol staat
+      let relief = pulse * flesh;
+      let glisten = Math.pow(Math.max(0, relief - 0.55) * 2.2, 3.0);
+
+      // basis viscerale kleur: diep bloedrood / maroon
+      let lum = (0.35 + 0.65 * relief) * cavern;
+      lum *= (0.55 + 0.45 * fine);
+      lum *= veinDark;
+
+      let r = lum * (70 + 95 * glow) + glisten * 120;
+      let g = lum * (10 + 14 * glow) + glisten * 55;
+      let b = lum * (16 + 20 * (1 - glow)) + glisten * 60;
+
+      // zieke groen-gele gloed diep in de keel
+      let sick = Math.pow(cavern, 2.0) * (0.4 + 0.3 * Math.sin(breathT * 0.8));
+      r += sick * 22;
+      g += sick * 26;
+      b += sick * 6;
+
+      let p = (y * BW + x) * 4;
+      buf.pixels[p] = Math.min(255, r);
+      buf.pixels[p + 1] = Math.min(255, g);
+      buf.pixels[p + 2] = Math.min(255, b);
+      buf.pixels[p + 3] = 255;
+    }
+  }
+  buf.updatePixels();
+  image(buf, 0, 0, width, height);
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  buildBuffer();
+}
+</script>
+</body>
+</html>

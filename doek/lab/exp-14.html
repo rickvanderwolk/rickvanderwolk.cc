@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v15 — VLOEIBARE GLANS. Doorborduren op v14 (exp-13).
+//
+// Zelfde vrij zwervende zaadpunten en zachte velden, maar nu met RELIEF en
+// LICHT. Het zaadpunt-veld wordt als een hoogtekaart gelezen (bobbels waar
+// punten dicht opeen liggen). Daaruit volgt per pixel een oppervlakte-normaal,
+// en daarop leg ik belichting:
+//   • diffuse schaduw  -> ronde, driedimensionale blobs
+//   • specular highlight -> natte/parelmoer GLANS
+// Het licht draait heel traag rond, dus de glans GLIJDT over de morfende
+// vormen -- dat maakt het levendig zonder ooit te springen.
+//
+// Rijkere, vollere kleuren dan v14 (de helderheid komt nu vooral van het licht,
+// dus de pigmenten zelf mogen verzadigder zijn). Alles continu -> puur gradueel.
+// Klein berekend, hard uitvergroot -> Pi-vriendelijk. Niets te bedienen.
+
+const SPEED      = 2000;              // 1 = uren-traag. Hoog (bv. 2000) om de reis snel te zien.
+const TIME_SCALE = 0.0000007 * SPEED;
+const N_SITE     = 14;                // aantal kleurbronnen
+const SPREAD     = 1.8;              // >1 = zaadpunten benutten het hele doek
+const SHARP      = 3.0;              // kleur-menging: hoog = bollere klonten, laag = meer mush
+const RELIEF     = 2.2;              // sterkte van het reliëf -> hoe rond/bol de blobs ogen
+const GLOSS      = 0.9;              // sterkte van de glans-highlight (0 = mat)
+const SHINE      = 24;               // hardheid van de glans (hoog = kleiner, feller glanspunt)
+const LIGHT_SPD  = 0.6;              // hoe snel het licht ronddraait (binnen de trage tijd)
+const BW_TARGET  = 150;               // buffer-breedte (klein = goedkoop, zachte schaal)
+
+let buf, BW, BH, hueBase, sites, H;
+
+function setup() {
+  pixelDensity(1);
+  createCanvas(windowWidth, windowHeight);
+  frameRate(30);
+  colorMode(HSL, 360, 100, 100, 1);    // kleuren in HSL opgeven (zie draw)
+  hueBase = random(360);
+  buildBuffer();
+
+  sites = [];
+  for (let i = 0; i < N_SITE; i++) {
+    sites.push({
+      sx: random(1000),   sy: random(1000),
+      rx: random(0.18, 0.5), ry: random(0.18, 0.5),   // zwerf-tempo x/y
+      sHue: random(1000), sLum: random(1000),
+      hueOff: (random() - 0.5) * 84    // bredere tint-spreiding -> rijkere kleuren
+    });
+  }
+}
+
+function buildBuffer() {
+  BW = BW_TARGET;
+  BH = Math.max(2, Math.round(BW * windowHeight / windowWidth));
+  buf = createGraphics(BW, BH);
+  buf.colorMode(HSL, 360, 100, 100, 1);
+  buf.pixelDensity(1);
+  H = new Float32Array(BW * BH);       // hoogtekaart voor de belichting
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  buildBuffer();
+}
+
+const lerp1 = (a, b, t) => a + (b - a) * t;
+const roam  = (n, span) => constrain((n - 0.5) * SPREAD + 0.5, 0, 1) * span;
+
+function draw() {
+  const t = millis() * TIME_SCALE;
+  const hueCenter = (hueBase + t * 22) % 360;
+
+  // positie van elk zwervend zaadpunt + (verzadigde) kleur naar RGB
+  const px = new Array(N_SITE), py = new Array(N_SITE);
+  const sr = new Array(N_SITE), sg = new Array(N_SITE), sb = new Array(N_SITE);
+  for (let i = 0; i < N_SITE; i++) {
+    const s = sites[i];
+    px[i] = roam(noise(s.sx, t * s.rx), BW);
+    py[i] = roam(noise(s.sy, t * s.ry), BH);
+    const h   = (hueCenter + s.hueOff + (noise(s.sHue, t * 0.5) - 0.5) * 30 + 360) % 360;
+    const sat = lerp1(48, 88, noise(s.sHue + 5, t * 0.4));   // voller verzadigd
+    const lum = lerp1(40, 58, noise(s.sLum, t * 0.45));      // midden: licht komt straks van de belichting
+    const c = color(h, sat, lum, 1);
+    sr[i] = red(c); sg[i] = green(c); sb[i] = blue(c);
+  }
+
+  const blobK = (BW * 0.20) * (BW * 0.20);   // bobbel-grootte voor het reliëf
+
+  // PASS 1 — per pixel: gewogen kleur + hoogteveld
+  buf.loadPixels();
+  const d = buf.pixels;
+  const hp = SHARP * 0.5;
+  for (let y = 0; y < BH; y++) {
+    for (let x = 0; x < BW; x++) {
+      let r = 0, g = 0, b = 0, wsum = 0, pot = 0;
+      for (let i = 0; i < N_SITE; i++) {
+        const dx = x - px[i], dy = y - py[i];
+        const d2 = dx * dx + dy * dy + 1;
+        const w  = 1 / Math.pow(d2, hp);       // kleurgewicht
+        r += sr[i] * w; g += sg[i] * w; b += sb[i] * w; wsum += w;
+        pot += 1 / (1 + d2 / blobK);            // zacht metaball-potentiaal -> hoogte
+      }
+      const k = y * BW + x;
+      H[k] = pot;
+      const j = 4 * k;
+      d[j]     = r / wsum;                       // basiskleur (belichting komt in pass 2)
+      d[j + 1] = g / wsum;
+      d[j + 2] = b / wsum;
+      d[j + 3] = 255;
+    }
+  }
+
+  // PASS 2 — belichting: normaal uit het hoogteveld, diffuse + glanzende highlight.
+  // Licht draait traag rond -> bewegende glans.
+  const la = t * LIGHT_SPD;
+  let lx = Math.cos(la), ly = Math.sin(la), lz = 0.85;
+  const ll = Math.hypot(lx, ly, lz); lx /= ll; ly /= ll; lz /= ll;
+  // half-vector (Blinn) met blikrichting V = (0,0,1)
+  let hx = lx, hy = ly, hz = lz + 1;
+  const hl = Math.hypot(hx, hy, hz); hx /= hl; hy /= hl; hz /= hl;
+
+  for (let y = 0; y < BH; y++) {
+    for (let x = 0; x < BW; x++) {
+      const k  = y * BW + x;
+      const xl = x > 0 ? k - 1 : k, xr = x < BW - 1 ? k + 1 : k;
+      const yu = y > 0 ? k - BW : k, yd = y < BH - 1 ? k + BW : k;
+      // normaal uit de helling van het hoogteveld
+      let nx = (H[xl] - H[xr]) * RELIEF;
+      let ny = (H[yu] - H[yd]) * RELIEF;
+      let nz = 1;
+      const nl = Math.hypot(nx, ny, nz); nx /= nl; ny /= nl; nz /= nl;
+
+      const diff = 0.45 + 0.55 * Math.max(0, nx * lx + ny * ly + nz * lz); // ambient + diffuse
+      let spec = nx * hx + ny * hy + nz * hz;
+      spec = spec > 0 ? Math.pow(spec, SHINE) * GLOSS : 0;
+
+      const j = 4 * k;
+      const add = 255 * spec;
+      d[j]     = constrain(d[j]     * diff + add, 0, 255);
+      d[j + 1] = constrain(d[j + 1] * diff + add, 0, 255);
+      d[j + 2] = constrain(d[j + 2] * diff + add, 0, 255);
+    }
+  }
+  buf.updatePixels();
+
+  image(buf, 0, 0, width, height);
+}
+</script>
+</body>
+</html>

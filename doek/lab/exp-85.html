@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v86 — TRAPPEN. Een verloop van blokgroottes over het doek (fijn aan de
+// ene kant, enorm aan de andere) dat langzaam roteert/schuift, zodat dezelfde
+// inhoud tegelijk op vele resoluties wordt gelezen.
+
+const SPEED = 2000; // 1 = uren-traag. Hoog (bv. 2000) om de reis snel te zien.
+const TIME_SCALE = 0.0000007 * SPEED;
+
+let src;
+
+function setup() {
+  pixelDensity(1);
+  createCanvas(windowWidth, windowHeight);
+  frameRate(30);
+  noSmooth();
+  buildSource();
+}
+
+function buildSource() {
+  src = createGraphics(windowWidth, windowHeight);
+  src.pixelDensity(1);
+  src.noSmooth();
+}
+
+function paintSource(t) {
+  const g = src;
+  g.push();
+  g.noStroke();
+  g.background(9, 10, 15);
+  g.translate(g.width / 2, g.height / 2);
+  g.rotate(frameCount * 0.0015 + t * 0.2);
+  const maxR = Math.max(g.width, g.height) * 1.5;
+
+  // scherpe spiraal-wiggen, sterk contrast
+  const n = 30;
+  for (let i = 0; i < n; i++) {
+    const a0 = (i / n) * TWO_PI;
+    const a1 = a0 + TWO_PI / n;
+    const hue = (t * 28 + i * 18 + frameCount * 0.09) % 360;
+    g.fill(...hsv(hue, 0.7, i % 2 === 0 ? 0.94 : 0.2));
+    g.beginShape();
+    g.vertex(0, 0);
+    g.vertex(Math.cos(a0) * maxR, Math.sin(a0) * maxR);
+    g.vertex(Math.cos(a1) * maxR, Math.sin(a1) * maxR);
+    g.endShape(CLOSE);
+  }
+  // harde concentrische blokringen
+  g.rectMode(CENTER);
+  for (let r = 60; r < maxR; r += 120) {
+    g.fill(r % 240 < 120 ? 245 : 8, 240, 225);
+    const inner = r - 24;
+    g.noStroke();
+    g.fill(245, 240, 225);
+    g.rect(0, 0, r * 2, 22);
+    g.rect(0, 0, 22, r * 2);
+  }
+  g.pop();
+}
+
+function hsv(h, s, v) {
+  h = ((h % 360) + 360) % 360;
+  const c = v * s, x = c * (1 - Math.abs(((h / 60) % 2) - 1)), m = v - c;
+  let r = 0, gg = 0, b = 0;
+  if (h < 60) { r = c; gg = x; }
+  else if (h < 120) { r = x; gg = c; }
+  else if (h < 180) { gg = c; b = x; }
+  else if (h < 240) { gg = x; b = c; }
+  else if (h < 300) { r = x; b = c; }
+  else { r = c; b = x; }
+  return [(r + m) * 255, (gg + m) * 255, (b + m) * 255];
+}
+
+function draw() {
+  const t = millis() * TIME_SCALE;
+  paintSource(t);
+  src.loadPixels();
+
+  // verloop-richting roteert langzaam (basismotie uit frameCount).
+  const ang = frameCount * 0.003 + t * 0.4;
+  const nx = Math.cos(ang), ny = Math.sin(ang);
+  const cx0 = width / 2, cy0 = height / 2;
+  const diag = Math.sqrt(width * width + height * height);
+  // gradient verschuift ook langzaam over de as
+  const shift = 0.5 + 0.5 * Math.sin(frameCount * 0.006 + t);
+  const minB = 3, maxB = 96;
+
+  const sp = src.pixels;
+  const sw = src.width, shh = src.height;
+  noStroke();
+
+  // wandel rij voor rij; per cel bepaalt de positie langs de as de blokgrootte.
+  // we lopen met variabele stap zodat blokken naadloos aansluiten per band.
+  let by = 0;
+  while (by < height) {
+    // bepaal blokgrootte op basis van verticale positie (snelle benadering),
+    // maar gradient gaat langs de geroteerde as: per band gebruiken we het midden.
+    let bx = 0;
+    // schat blokgrootte voor het midden van deze rij
+    const rowMidY = by;
+    while (bx < width) {
+      const mcx = bx, mcy = by;
+      // projectie op de as, genormaliseerd 0..1
+      let p = ((mcx - cx0) * nx + (mcy - cy0) * ny) / diag + 0.5;
+      p = constrain(p + (shift - 0.5) * 0.6, 0, 1);
+      const B = Math.max(1, Math.floor(minB + p * p * (maxB - minB)));
+      const cx = Math.min(sw - 1, Math.floor(bx + B / 2));
+      const cy = Math.min(shh - 1, Math.floor(by + B / 2));
+      const idx = 4 * (cy * sw + cx);
+      fill(sp[idx], sp[idx + 1], sp[idx + 2]);
+      rect(bx, by, B, B);
+      bx += B;
+    }
+    // stap voor de volgende rij: gebruik blokgrootte aan de linkerrand
+    let pe = ((0 - cx0) * nx + (by - cy0) * ny) / diag + 0.5;
+    pe = constrain(pe + (shift - 0.5) * 0.6, 0, 1);
+    const stepB = Math.max(1, Math.floor(minB + pe * pe * (maxB - minB)));
+    by += stepB;
+  }
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  buildSource();
+}
+</script>
+</body>
+</html>

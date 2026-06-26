@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v16 — CHROOM / KWIK. Variant op v15 (exp-14), richting: vloeibaar metaal.
+//
+// Zelfde zwervende reliëf-blobs, maar het oppervlak is nu METAAL: het toont
+// vrijwel geen eigen kleur, maar SPIEGELT een omgeving. Via de normaal "kijkt"
+// elk punt omhoog of omlaag in een verticale horizon (licht boven, donker
+// onder, met een lichte drijvende tint). Daar bovenop een harde, kleine
+// highlight. Het licht en de horizon-tint draaien traag -> kwik dat eindeloos
+// vloeit en spiegelt. Alles continu, puur gradueel. Pi-vriendelijk.
+
+const SPEED      = 2000;              // 1 = uren-traag. Hoog (bv. 2000) om de reis snel te zien.
+const TIME_SCALE = 0.0000007 * SPEED;
+const N_SITE     = 14;
+const SPREAD     = 1.8;
+const RELIEF     = 3.0;              // sterker reliëf -> meer spiegel-vervorming
+const SHINE      = 60;               // harde, kleine chroom-highlight
+const GLOSS      = 1.0;
+const LIGHT_SPD  = 0.6;
+const BW_TARGET  = 150;
+
+let buf, BW, BH, hueBase, sites, H;
+
+function setup() {
+  pixelDensity(1);
+  createCanvas(windowWidth, windowHeight);
+  frameRate(30);
+  hueBase = random(360);
+  buildBuffer();
+  sites = [];
+  for (let i = 0; i < N_SITE; i++) {
+    sites.push({ sx: random(1000), sy: random(1000),
+      rx: random(0.18, 0.5), ry: random(0.18, 0.5),
+      sLum: random(1000) });
+  }
+}
+function buildBuffer() {
+  BW = BW_TARGET;
+  BH = Math.max(2, Math.round(BW * windowHeight / windowWidth));
+  buf = createGraphics(BW, BH);
+  buf.pixelDensity(1);
+  H = new Float32Array(BW * BH);
+}
+function windowResized() { resizeCanvas(windowWidth, windowHeight); buildBuffer(); }
+
+const lerp1 = (a, b, t) => a + (b - a) * t;
+const roam  = (n, span) => constrain((n - 0.5) * SPREAD + 0.5, 0, 1) * span;
+
+function draw() {
+  const t = millis() * TIME_SCALE;
+
+  // zwervende zaadpunten (alleen positie nodig: kleur komt van de spiegeling)
+  const px = new Array(N_SITE), py = new Array(N_SITE);
+  for (let i = 0; i < N_SITE; i++) {
+    const s = sites[i];
+    px[i] = roam(noise(s.sx, t * s.rx), BW);
+    py[i] = roam(noise(s.sy, t * s.ry), BH);
+  }
+  const blobK = (BW * 0.20) * (BW * 0.20);
+
+  // PASS 1 — hoogteveld
+  for (let y = 0; y < BH; y++) for (let x = 0; x < BW; x++) {
+    let pot = 0;
+    for (let i = 0; i < N_SITE; i++) {
+      const dx = x - px[i], dy = y - py[i];
+      pot += 1 / (1 + (dx * dx + dy * dy + 1) / blobK);
+    }
+    H[y * BW + x] = pot;
+  }
+
+  // omgevings-horizon: traag drijvende tinten boven/onder
+  const hue1 = (hueBase + t * 16) % 360, hue2 = (hueBase + 140 + t * 16) % 360;
+  const top = hsl(hue1, 18, 86), bot = hsl(hue2, 26, 16);   // licht boven, donker onder
+
+  // licht + half-vector (Blinn)
+  const la = t * LIGHT_SPD;
+  let lx = Math.cos(la), ly = Math.sin(la), lz = 0.85;
+  const ll = Math.hypot(lx, ly, lz); lx /= ll; ly /= ll; lz /= ll;
+  let hx = lx, hy = ly, hz = lz + 1;
+  const hl = Math.hypot(hx, hy, hz); hx /= hl; hy /= hl; hz /= hl;
+
+  // PASS 2 — spiegeling + highlight
+  buf.loadPixels();
+  const d = buf.pixels;
+  for (let y = 0; y < BH; y++) for (let x = 0; x < BW; x++) {
+    const k  = y * BW + x;
+    const xl = x > 0 ? k - 1 : k, xr = x < BW - 1 ? k + 1 : k;
+    const yu = y > 0 ? k - BW : k, yd = y < BH - 1 ? k + BW : k;
+    let nx = (H[xl] - H[xr]) * RELIEF;
+    let ny = (H[yu] - H[yd]) * RELIEF;
+    let nz = 1;
+    const nl = Math.hypot(nx, ny, nz); nx /= nl; ny /= nl; nz /= nl;
+
+    // de normaal "kijkt" in de verticale horizon -> spiegelkleur
+    const f = ny * 0.5 + 0.5;                 // 0 = omlaag (donker), 1 = omhoog (licht)
+    const band = Math.pow(Math.abs(ny), 0.5); // helderdere band rond de horizon
+    let spec = nx * hx + ny * hy + nz * hz;
+    spec = spec > 0 ? Math.pow(spec, SHINE) * GLOSS : 0;
+
+    const j = 4 * k, add = 255 * spec;
+    d[j]     = constrain(lerp1(bot[0], top[0], f) + band * 26 + add, 0, 255);
+    d[j + 1] = constrain(lerp1(bot[1], top[1], f) + band * 26 + add, 0, 255);
+    d[j + 2] = constrain(lerp1(bot[2], top[2], f) + band * 26 + add, 0, 255);
+    d[j + 3] = 255;
+  }
+  buf.updatePixels();
+  image(buf, 0, 0, width, height);
+}
+
+// kleine HSL->RGB helper (geen p5-allocatie in de hete lus)
+function hsl(h, s, l) {
+  h /= 360; s /= 100; l /= 100;
+  if (s === 0) { const v = l * 255; return [v, v, v]; }
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+  const p = 2 * l - q;
+  const hk = (n) => { let x = (h + n) % 1; if (x < 0) x += 1;
+    if (x < 1/6) return p + (q - p) * 6 * x;
+    if (x < 1/2) return q;
+    if (x < 2/3) return p + (q - p) * (2/3 - x) * 6;
+    return p; };
+  return [hk(1/3) * 255, hk(0) * 255, hk(-1/3) * 255];
+}
+</script>
+</body>
+</html>

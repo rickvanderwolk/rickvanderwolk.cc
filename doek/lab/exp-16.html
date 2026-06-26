@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v17 — PARELMOER / ZEEPVLIES. Variant op v15 (exp-14), richting: iriserend.
+//
+// Zelfde zwervende reliëf-blobs, maar het oppervlak is een dun vlies (zeepbel,
+// olie op water, parelmoer). De KLEUR hangt af van de KIJKHOEK: waar het
+// oppervlak je recht aankijkt is het rustig, en naar de randen toe (waar het
+// wegbuigt = fresnel) schiet het door een regenboog van tinten. Daardoor
+// glijden er iriserende banden over de blobs terwijl ze morfen en het licht
+// traag rond draait. Alles continu, puur gradueel. Pi-vriendelijk.
+
+const SPEED      = 2000;              // 1 = uren-traag. Hoog (bv. 2000) om de reis snel te zien.
+const TIME_SCALE = 0.0000007 * SPEED;
+const N_SITE     = 14;
+const SPREAD     = 1.8;
+const RELIEF     = 2.6;
+const BANDS      = 3.2;              // aantal regenboog-omwentelingen over de fresnel
+const IRID       = 0.9;              // sterkte van de iriserende laag
+const SHINE      = 30;
+const GLOSS      = 0.7;
+const LIGHT_SPD  = 0.6;
+const BW_TARGET  = 150;
+const TAU        = Math.PI * 2;
+
+let buf, BW, BH, hueBase, sites, H;
+
+function setup() {
+  pixelDensity(1);
+  createCanvas(windowWidth, windowHeight);
+  frameRate(30);
+  hueBase = random(1);
+  buildBuffer();
+  sites = [];
+  for (let i = 0; i < N_SITE; i++) {
+    sites.push({ sx: random(1000), sy: random(1000),
+      rx: random(0.18, 0.5), ry: random(0.18, 0.5) });
+  }
+}
+function buildBuffer() {
+  BW = BW_TARGET;
+  BH = Math.max(2, Math.round(BW * windowHeight / windowWidth));
+  buf = createGraphics(BW, BH);
+  buf.pixelDensity(1);
+  H = new Float32Array(BW * BH);
+}
+function windowResized() { resizeCanvas(windowWidth, windowHeight); buildBuffer(); }
+
+const roam = (n, span) => constrain((n - 0.5) * SPREAD + 0.5, 0, 1) * span;
+// cosinus-palet (Inigo Quilez): zachte regenboog zonder allocatie
+const cosPal = (p, o) => {
+  o[0] = (0.55 + 0.45 * Math.cos(TAU * (p + 0.00))) * 255;
+  o[1] = (0.55 + 0.45 * Math.cos(TAU * (p + 0.33))) * 255;
+  o[2] = (0.55 + 0.45 * Math.cos(TAU * (p + 0.66))) * 255;
+};
+
+function draw() {
+  const t = millis() * TIME_SCALE;
+
+  const px = new Array(N_SITE), py = new Array(N_SITE);
+  for (let i = 0; i < N_SITE; i++) {
+    const s = sites[i];
+    px[i] = roam(noise(s.sx, t * s.rx), BW);
+    py[i] = roam(noise(s.sy, t * s.ry), BH);
+  }
+  const blobK = (BW * 0.20) * (BW * 0.20);
+
+  // PASS 1 — hoogteveld
+  for (let y = 0; y < BH; y++) for (let x = 0; x < BW; x++) {
+    let pot = 0;
+    for (let i = 0; i < N_SITE; i++) {
+      const dx = x - px[i], dy = y - py[i];
+      pot += 1 / (1 + (dx * dx + dy * dy + 1) / blobK);
+    }
+    H[y * BW + x] = pot;
+  }
+
+  const la = t * LIGHT_SPD;
+  let lx = Math.cos(la), ly = Math.sin(la), lz = 0.85;
+  const ll = Math.hypot(lx, ly, lz); lx /= ll; ly /= ll; lz /= ll;
+  let hx = lx, hy = ly, hz = lz + 1;
+  const hl = Math.hypot(hx, hy, hz); hx /= hl; hy /= hl; hz /= hl;
+
+  const hueShift = (hueBase + t * 0.06) % 1;   // het hele palet drift traag rond
+  const irc = [0, 0, 0];
+
+  // PASS 2 — iriserende dunne-vlies-kleur + glans
+  buf.loadPixels();
+  const d = buf.pixels;
+  for (let y = 0; y < BH; y++) for (let x = 0; x < BW; x++) {
+    const k  = y * BW + x;
+    const xl = x > 0 ? k - 1 : k, xr = x < BW - 1 ? k + 1 : k;
+    const yu = y > 0 ? k - BW : k, yd = y < BH - 1 ? k + BW : k;
+    let nx = (H[xl] - H[xr]) * RELIEF;
+    let ny = (H[yu] - H[yd]) * RELIEF;
+    let nz = 1;
+    const nl = Math.hypot(nx, ny, nz); nx /= nl; ny /= nl; nz /= nl;
+
+    // fresnel: 0 als oppervlak recht naar je toe wijst, 1 aan de wegbuigende rand
+    const fres = Math.pow(1 - nz, 1.6);
+    cosPal(hueShift + fres * BANDS, irc);        // tint verschuift met de hoek
+
+    const diff = 0.30 + 0.70 * Math.max(0, nx * lx + ny * ly + nz * lz);
+    let spec = nx * hx + ny * hy + nz * hz;
+    spec = spec > 0 ? Math.pow(spec, SHINE) * GLOSS : 0;
+
+    // donkere parelmoer-basis + iriserende laag (sterker naar de randen) + highlight
+    const base = 26, amt = IRID * (0.25 + 0.75 * fres);
+    const j = 4 * k, add = 255 * spec;
+    d[j]     = constrain((base + irc[0] * amt) * diff + add, 0, 255);
+    d[j + 1] = constrain((base + irc[1] * amt) * diff + add, 0, 255);
+    d[j + 2] = constrain((base + irc[2] * amt) * diff + add, 0, 255);
+    d[j + 3] = 255;
+  }
+  buf.updatePixels();
+  image(buf, 0, 0, width, height);
+}
+</script>
+</body>
+</html>

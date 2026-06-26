@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v10 — KLEURVLAKKEN (Rothko). Compleet andere richting.
+//
+// Geen streken en geen textuur, maar een paar GROTE zachte kleurvelden die
+// boven elkaar zweven op een gloeiend grondveld. De randen zijn vervaagd
+// (gefeatherd), zodat de vlakken in elkaar ademen. Elk veld heeft z'n eigen
+// trage slinger voor tint, verzadiging, helderheid en grootte; het grondveld
+// drift apart. Daardoor verschuift de hele stemming over de uren — soms warm
+// en gloeiend, soms koel en stil — maar het blijft altijd één rustige eenheid.
+//
+// Elk frame volledig opnieuw opgebouwd (geen accumulatie): meditatief,
+// geometrisch, kalm. Niets om te bedienen.
+
+const SPEED      = 1;                 // 1 = uren-traag. Hoog (bv. 2000) om snel te zien.
+const TIME_SCALE = 0.0000007 * SPEED;
+
+const N = 3;                          // aantal kleurvelden
+let hueBase, fields;
+
+function setup() {
+  pixelDensity(1);
+  createCanvas(windowWidth, windowHeight);
+  frameRate(30);
+  colorMode(HSL, 360, 100, 100, 1);
+  noStroke();
+  hueBase = random(360);
+  // elk veld z'n eigen noise-seeds, zodat ze onafhankelijk slingeren
+  fields = [];
+  for (let i = 0; i < N; i++) {
+    fields.push({
+      sHue: random(1000), sSat: random(1000), sLum: random(1000),
+      sPosY: random(1000), sH: random(1000), sW: random(1000),
+      hueOff: (i - (N - 1) / 2) * 26      // vaste tint-afstand -> harmonie
+    });
+  }
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+}
+
+const lerp1 = (a, b, t) => a + (b - a) * t;
+
+// Zacht rechthoekig veld met vervaagde randen: een stapel groter wordende
+// rechthoeken met afnemende alpha bouwt een feather rond de kern op.
+function softField(cx, cy, w, h, hue, sat, lum, alpha) {
+  const layers = 22;
+  for (let i = layers; i >= 1; i--) {
+    const f  = i / layers;             // 1 = buitenste (zachtste), ~0 = kern
+    const ew = w * (1 + f * 0.55);
+    const eh = h * (1 + f * 0.95);
+    const a  = alpha * (1 - f) * (1 - f) * 0.5;
+    fill(hue, sat, lum, a);
+    rect(cx - ew / 2, cy - eh / 2, ew, eh, min(ew, eh) * 0.06);
+  }
+}
+
+function draw() {
+  const t = millis() * TIME_SCALE;
+  const nz = (seed, k) => noise(seed, t * k);
+
+  // gloeiend grondveld (verticaal verloop dat traag van stemming wisselt)
+  const gHue = (hueBase + t * 18) % 360;
+  const gTop = nz(900, 0.3), gBot = nz(950, 0.3);
+  for (let y = 0; y < height; y += 2) {
+    const f = y / height;
+    const s = lerp1(18, 40, lerp1(gTop, gBot, f));
+    const l = lerp1(10, 26, lerp1(gTop, gBot, f));
+    fill((gHue + f * 14) % 360, s, l, 1);
+    rect(0, y, width, 2);
+  }
+
+  // de zwevende kleurvelden, van achter naar voor
+  const margin = height * 0.10;
+  const usable = height - margin * 2;
+  for (let i = 0; i < N; i++) {
+    const fd = fields[i];
+    // verticale plek: rond een gelijkmatige verdeling, traag dobberend
+    const base = margin + usable * ((i + 0.5) / N);
+    const cy   = base + (nz(fd.sPosY, 0.25) - 0.5) * usable * 0.10;
+    const cx   = width * 0.5 + (nz(fd.sW + 7, 0.2) - 0.5) * width * 0.04;
+
+    const w = width  * lerp1(0.52, 0.72, nz(fd.sW, 0.3));
+    const h = usable * lerp1(0.16, 0.30, nz(fd.sH, 0.3));
+
+    const hue = (gHue + fd.hueOff + (nz(fd.sHue, 0.4) - 0.5) * 36 + 360) % 360;
+    const sat = lerp1(34, 74, nz(fd.sSat, 0.5));
+    const lum = lerp1(40, 72, nz(fd.sLum, 0.45));
+
+    softField(cx, cy, w, h, hue, sat, lum, 0.9);
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v45 — HOOP. Duister dat traag en breekbaar wordt doorboord door
+// warm, groeiend licht — een vage dageraad die uitzet en weer inkrimpt,
+// nooit helemaal aanbreekt maar telkens terugkeert. Teder, lichtend.
+
+// 1 = uren-traag. Hoog (bv. 2000) om de reis snel te zien.
+const SPEED = 2000;
+const TIME_SCALE = 0.0000007 * SPEED;
+
+const BW = 150;
+let BH;
+let buf;
+
+function setup() {
+  pixelDensity(1);
+  createCanvas(windowWidth, windowHeight);
+  frameRate(30);
+  buildBuffer();
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  buildBuffer();
+}
+
+function buildBuffer() {
+  BH = Math.max(60, Math.round(BW * (windowHeight / windowWidth)));
+  buf = createGraphics(BW, BH);
+  buf.colorMode(HSB, 360, 100, 100, 1);
+  buf.noStroke();
+}
+
+function draw() {
+  const t = millis() * TIME_SCALE;     // trage drift van de gloed
+  const breath = millis() * 0.0007;    // kalme ademhaling van het licht
+
+  // het licht zwelt op en ebt weg, maar bereikt nooit volle kracht
+  // -> hoop die opkomt, terugdeinst en terugkeert
+  const rise = 0.5 + 0.5 * Math.sin(breath);
+  const intensity = 0.18 + 0.55 * rise * rise; // blijft teder, nooit verzadigd
+
+  // het hart van de dageraad wandelt heel traag over het doek
+  const cx = BW * (0.5 + 0.28 * Math.sin(t * 0.3));
+  const cy = BH * (0.92 - 0.2 * rise); // dageraad komt laag op en stijgt licht
+
+  // warme tint drijft tussen goud en roze
+  const warmH = 28 + 18 * noise(t * 0.2); // 28 (goud) .. 46 (warm)
+  const roseH = 350 + 12 * noise(t * 0.2 + 5);
+
+  buf.noStroke();
+  for (let y = 0; y < BH; y++) {
+    for (let x = 0; x < BW; x++) {
+      const dx = (x - cx) / BW;
+      const dy = (y - cy) / BH;
+      const d = Math.sqrt(dx * dx + dy * dy * 2.2); // wat platte gloed
+      // breekbaar: noise breekt het licht in zachte stralen/wolken
+      const veil = noise(x * 0.045, y * 0.045, breath * 0.4);
+      let glow = Math.exp(-d * d * 5.0) * intensity * (0.5 + 0.8 * veil);
+      glow = constrain(glow, 0, 1);
+
+      // donkere, koele basis met een vleugje nacht-blauw
+      let h = 225, s = 30, b = 4 + 3 * noise(x * 0.03, y * 0.03);
+      if (glow > 0.01) {
+        // meng naar warm goud in de kern, roze aan de zachte randen
+        const toWarm = constrain(glow * 1.4, 0, 1);
+        h = lerp(roseH % 360, warmH, toWarm * toWarm);
+        s = lerp(55, 38, toWarm);
+        b = lerp(b, 6 + 78 * glow, toWarm);
+      }
+      buf.fill(h, s, constrain(b, 3, 96));
+      buf.rect(x, y, 1, 1);
+    }
+  }
+
+  image(buf, 0, 0, width, height);
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v18 — FLUWEEL / SATIJN. Variant op v15 (exp-14), richting: ingetogen & diep.
+//
+// Zelfde zwervende reliëf-blobs, maar geen harde glans. Het oppervlak is
+// fluweel: donker en diep verzadigd, dat alleen OPLICHT waar het wegbuigt van
+// de blik (rim-light / tegenlicht-gloed langs de silhouetten). Daardoor zie je
+// vooral gloeiende randen in een warm, traag driftend licht, tegen een bijna
+// zwarte kern. Rustig, mysterieus. Alles continu, puur gradueel. Pi-vriendelijk.
+
+const SPEED      = 2000;              // 1 = uren-traag. Hoog (bv. 2000) om de reis snel te zien.
+const TIME_SCALE = 0.0000007 * SPEED;
+const N_SITE     = 14;
+const SPREAD     = 1.8;
+const SHARP      = 3.0;
+const RELIEF     = 2.4;
+const RIM        = 2.4;              // hardheid van de rand-gloed (hoog = dunnere rand)
+const RIMGAIN    = 1.25;             // sterkte van de rand-gloed
+const LIGHT_SPD  = 0.6;
+const BW_TARGET  = 150;
+
+let buf, BW, BH, hueBase, sites, H;
+
+function setup() {
+  pixelDensity(1);
+  createCanvas(windowWidth, windowHeight);
+  frameRate(30);
+  colorMode(HSL, 360, 100, 100, 1);
+  hueBase = random(360);
+  buildBuffer();
+  sites = [];
+  for (let i = 0; i < N_SITE; i++) {
+    sites.push({ sx: random(1000), sy: random(1000),
+      rx: random(0.18, 0.5), ry: random(0.18, 0.5),
+      sHue: random(1000), sLum: random(1000),
+      hueOff: (random() - 0.5) * 90 });
+  }
+}
+function buildBuffer() {
+  BW = BW_TARGET;
+  BH = Math.max(2, Math.round(BW * windowHeight / windowWidth));
+  buf = createGraphics(BW, BH);
+  buf.colorMode(HSL, 360, 100, 100, 1);
+  buf.pixelDensity(1);
+  H = new Float32Array(BW * BH);
+}
+function windowResized() { resizeCanvas(windowWidth, windowHeight); buildBuffer(); }
+
+const lerp1 = (a, b, t) => a + (b - a) * t;
+const roam  = (n, span) => constrain((n - 0.5) * SPREAD + 0.5, 0, 1) * span;
+
+function draw() {
+  const t = millis() * TIME_SCALE;
+  const hueCenter = (hueBase + t * 22) % 360;
+
+  const px = new Array(N_SITE), py = new Array(N_SITE);
+  const sr = new Array(N_SITE), sg = new Array(N_SITE), sb = new Array(N_SITE);
+  for (let i = 0; i < N_SITE; i++) {
+    const s = sites[i];
+    px[i] = roam(noise(s.sx, t * s.rx), BW);
+    py[i] = roam(noise(s.sy, t * s.ry), BH);
+    const h   = (hueCenter + s.hueOff + (noise(s.sHue, t * 0.5) - 0.5) * 30 + 360) % 360;
+    const sat = lerp1(60, 95, noise(s.sHue + 5, t * 0.4));   // diep verzadigd
+    const lum = lerp1(30, 50, noise(s.sLum, t * 0.45));
+    const c = color(h, sat, lum, 1);
+    sr[i] = red(c); sg[i] = green(c); sb[i] = blue(c);
+  }
+  const blobK = (BW * 0.20) * (BW * 0.20);
+
+  // rim-licht-kleur: warm, traag driftend
+  const rimC = color((hueCenter + 30) % 360, 80, 62, 1);
+  const rr = red(rimC), rg = green(rimC), rb = blue(rimC);
+
+  // PASS 1 — kleur + hoogteveld
+  buf.loadPixels();
+  const d = buf.pixels;
+  const hp = SHARP * 0.5;
+  for (let y = 0; y < BH; y++) for (let x = 0; x < BW; x++) {
+    let r = 0, g = 0, b = 0, wsum = 0, pot = 0;
+    for (let i = 0; i < N_SITE; i++) {
+      const dx = x - px[i], dy = y - py[i];
+      const d2 = dx * dx + dy * dy + 1;
+      const w  = 1 / Math.pow(d2, hp);
+      r += sr[i] * w; g += sg[i] * w; b += sb[i] * w; wsum += w;
+      pot += 1 / (1 + d2 / blobK);
+    }
+    const k = y * BW + x;
+    H[k] = pot;
+    const j = 4 * k;
+    d[j] = r / wsum; d[j + 1] = g / wsum; d[j + 2] = b / wsum; d[j + 3] = 255;
+  }
+
+  const la = t * LIGHT_SPD;
+  let lx = Math.cos(la), ly = Math.sin(la), lz = 0.7;
+  const ll = Math.hypot(lx, ly, lz); lx /= ll; ly /= ll; lz /= ll;
+
+  // PASS 2 — donkere kern + oplichtende rand
+  for (let y = 0; y < BH; y++) for (let x = 0; x < BW; x++) {
+    const k  = y * BW + x;
+    const xl = x > 0 ? k - 1 : k, xr = x < BW - 1 ? k + 1 : k;
+    const yu = y > 0 ? k - BW : k, yd = y < BH - 1 ? k + BW : k;
+    let nx = (H[xl] - H[xr]) * RELIEF;
+    let ny = (H[yu] - H[yd]) * RELIEF;
+    let nz = 1;
+    const nl = Math.hypot(nx, ny, nz); nx /= nl; ny /= nl; nz /= nl;
+
+    // fluweel: donkere kern, zachte diffuse, sterke rand-gloed waar nz klein is
+    const shade = 0.22 + 0.5 * Math.max(0, nx * lx + ny * ly + nz * lz);
+    const rim = Math.pow(1 - nz, RIM) * RIMGAIN * (0.4 + 0.6 * Math.max(0, nx * lx + ny * ly));
+
+    const j = 4 * k;
+    d[j]     = constrain(d[j]     * shade + rr * rim, 0, 255);
+    d[j + 1] = constrain(d[j + 1] * shade + rg * rim, 0, 255);
+    d[j + 2] = constrain(d[j + 2] * shade + rb * rim, 0, 255);
+  }
+  buf.updatePixels();
+  image(buf, 0, 0, width, height);
+}
+</script>
+</body>
+</html>

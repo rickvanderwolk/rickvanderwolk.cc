@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v72 — ONMOGELIJKE DIEPTE. Tegenstrijdige diepte-aanwijzingen: gebieden
+// lezen tegelijk als dichtbij en ver, voor- en achtergrond wisselen, een
+// Escher-achtige ruimte waar het oog niet op kan scherpstellen. Overlappende
+// parallax-lagen met conflicterende schaduw -> de blik vindt geen rust.
+
+const SPEED = 2000; // 1 = uren-traag. Hoog (bv. 2000) om de reis snel te zien.
+const TIME_SCALE = 0.0000007 * SPEED;
+
+let img, BW, BH;
+const NLAYERS = 4;
+
+function setup() {
+  pixelDensity(1);
+  createCanvas(windowWidth, windowHeight);
+  frameRate(30);
+  buildBuffer();
+}
+
+function buildBuffer() {
+  BW = 150;
+  BH = Math.max(1, Math.floor(BW * windowHeight / windowWidth));
+  img = createImage(BW, BH);
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  buildBuffer();
+}
+
+// een laag: bobbelvormen die met eigen parallax driften
+function layer(u, v, t, k, drift) {
+  // parallax: elke laag schuift met andere snelheid/richting
+  const off = (k + 1) * 0.04;
+  const px = u + Math.sin(t * 0.7 + k) * off + drift * (k - 1.5) * 0.03;
+  const py = v + Math.cos(t * 0.5 + k * 1.3) * off;
+  const freq = 2.0 + k * 1.6;
+  let n = noise(px * freq + k * 17.0, py * freq, t * 0.4 + k);
+  return n;
+}
+
+function draw() {
+  const slow = millis() * TIME_SCALE;
+  const t = frameCount * 0.004;
+  const drift = Math.sin(slow * 0.4);
+
+  // palet drift langzaam, schemerig en ruimtelijk-onbestemd
+  const baseR = 80 + 50 * Math.sin(slow * 0.6);
+  const baseG = 90 + 40 * Math.sin(slow * 0.7 + 1.0);
+  const baseB = 110 + 50 * Math.sin(slow * 0.5 + 2.5);
+
+  img.loadPixels();
+  const px = img.pixels;
+
+  for (let j = 0; j < BH; j++) {
+    const v = j / BH;
+    for (let i = 0; i < BW; i++) {
+      const u = i / BW;
+
+      let r = baseR * 0.25, g = baseG * 0.25, b = baseB * 0.25;
+
+      for (let k = 0; k < NLAYERS; k++) {
+        const n = layer(u, v, t, k, drift);
+        // masker: laag is alleen "aanwezig" waar n hoog is -> overlappende blobs
+        const mask = constrain((n - 0.5) * 4.0, 0, 1);
+        if (mask <= 0) continue;
+
+        // CONFLICTERENDE diepte: schaduw zegt het ene, schaal/helderheid het andere.
+        // donkerdere laag = normaal "verder weg", maar hier krijgt een verre laag
+        // soms juist meer contrast -> het oog kan niet ordenen.
+        const wrong = 0.5 + 0.5 * Math.sin(k * 1.7 + slow * 0.8);
+        // schaduwrichting per laag tegengesteld
+        const lit = 0.4 + 0.6 * (k % 2 === 0 ? n : 1.0 - n);
+        // "nabijheid" volgens contrast, maar tegengesteld aan helderheid
+        const shade = lit * (0.5 + wrong);
+
+        const lr = (baseR + k * 25) * shade;
+        const lg = (baseG + (NLAYERS - k) * 18) * shade;
+        const lb = (baseB + k * 12) * shade;
+
+        // over elkaar leggen met masker (verre lagen kunnen nabije overschrijven
+        // -> de "swap" van voor- en achtergrond)
+        r = r * (1 - mask) + lr * mask;
+        g = g * (1 - mask) + lg * mask;
+        b = b * (1 - mask) + lb * mask;
+      }
+
+      const idx = (i + j * BW) * 4;
+      px[idx]   = constrain(r, 0, 255);
+      px[idx+1] = constrain(g, 0, 255);
+      px[idx+2] = constrain(b, 0, 255);
+      px[idx+3] = 255;
+    }
+  }
+  img.updatePixels();
+
+  noSmooth();
+  image(img, 0, 0, width, height);
+}
+</script>
+</body>
+</html>

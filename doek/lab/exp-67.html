@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v68 — BIJNA-ORGANEN. Zachte natte membranen die net niet tot iets
+// lichamelijks stollen. Een reliefveld (normalen + diffuse + natte specular)
+// op een klein buffertje; de schaal blijft dubbelzinnig (micro of macro?),
+// het glimt en pulseert traag. Bijna een orgaan, nooit een orgaan.
+
+const SPEED = 2000; // 1 = uren-traag. Hoog (bv. 2000) om de reis snel te zien.
+const TIME_SCALE = 0.0000007 * SPEED;
+
+let buf, BW, BH;
+
+function setup() {
+  pixelDensity(1);
+  createCanvas(windowWidth, windowHeight);
+  frameRate(30);
+  buildBuffer();
+}
+
+function buildBuffer() {
+  BW = 150;
+  BH = Math.max(1, Math.floor(BW * windowHeight / windowWidth));
+  buf = createImage(BW, BH);
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  buildBuffer();
+}
+
+// hoogteveld: bobbelige cellen/blaasjes die samenklonteren
+function field(x, y, t, slow) {
+  let h = 0;
+  // grote membraan-golving
+  h += noise(x * 1.7 + 10, y * 1.7, t * 0.6) * 1.0;
+  // celachtige knobbels (hogere frequentie, met trage drift)
+  let n = noise(x * 4.5, y * 4.5 + slow * 2.0, t * 0.9);
+  h += Math.pow(Math.abs(n - 0.5) * 2, 0.6) * 0.55;
+  // fijne vochtige rimpeling
+  h += noise(x * 9.0, y * 9.0, t * 1.4) * 0.18;
+  // langzame pulse die het geheel laat ademen
+  h += 0.12 * Math.sin(t * 2.0 + n * 6.0);
+  return h;
+}
+
+function draw() {
+  const slow = millis() * TIME_SCALE;
+  const t = frameCount * 0.004;
+
+  // palet drift heel traag: vleeskleur die net niet klopt
+  const baseR = 150 + 60 * Math.sin(slow * 0.7);
+  const baseG = 70 + 40 * Math.sin(slow * 0.9 + 1.0);
+  const baseB = 90 + 50 * Math.sin(slow * 0.5 + 2.0);
+
+  buf.loadPixels();
+  const px = buf.pixels;
+  const inv = 1.0 / BW;
+  const eps = inv * 1.2;
+
+  // lichtrichting drift langzaam -> nat oppervlak kantelt
+  const la = slow * 0.4;
+  const lx = Math.cos(la) * 0.5, ly = Math.sin(la) * 0.45, lz = 0.82;
+
+  for (let j = 0; j < BH; j++) {
+    for (let i = 0; i < BW; i++) {
+      const u = i * inv, v = j * inv;
+      const c = field(u, v, t, slow);
+      const hx = field(u + eps, v, t, slow);
+      const hy = field(u, v + eps, t, slow);
+      // normaal uit hoogtegradient
+      let nx = (c - hx) * 9.0;
+      let ny = (c - hy) * 9.0;
+      let nz = 1.0;
+      const il = 1.0 / Math.sqrt(nx*nx + ny*ny + nz*nz);
+      nx *= il; ny *= il; nz *= il;
+
+      let diff = nx*lx + ny*ly + nz*lz;
+      if (diff < 0) diff = 0;
+
+      // natte specular: scherpe glimp
+      let spec = nz * lz + nx * lx * 0.3 + ny * ly * 0.3;
+      if (spec < 0) spec = 0;
+      spec = Math.pow(spec, 22.0) * 0.9;
+
+      const sh = 0.28 + 0.72 * diff;
+      // diepere plooien donkerder, bloederig
+      const depth = constrain(c * 0.45, 0, 1);
+
+      let r = baseR * sh + spec * 255 * 1.0 - depth * 30;
+      let g = baseG * sh + spec * 230 - depth * 20;
+      let b = baseB * sh + spec * 240 - depth * 10;
+
+      const idx = (i + j * BW) * 4;
+      px[idx]   = constrain(r, 0, 255);
+      px[idx+1] = constrain(g, 0, 255);
+      px[idx+2] = constrain(b, 0, 255);
+      px[idx+3] = 255;
+    }
+  }
+  buf.updatePixels();
+
+  noSmooth();
+  image(buf, 0, 0, width, height);
+}
+</script>
+</body>
+</html>

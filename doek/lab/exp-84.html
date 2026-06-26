@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v85 — MOZAIEK-VLEK. Een zwervende vlek van zware pixelatie drijft over
+// een verder scherp veld (als een censuur-mozaiek dat ronddoolt), en verruwt
+// alles waar hij overheen trekt.
+
+const SPEED = 2000; // 1 = uren-traag. Hoog (bv. 2000) om de reis snel te zien.
+const TIME_SCALE = 0.0000007 * SPEED;
+
+let src;
+const BLOCK = 48;
+
+function setup() {
+  pixelDensity(1);
+  createCanvas(windowWidth, windowHeight);
+  frameRate(30);
+  noSmooth();
+  buildSource();
+}
+
+function buildSource() {
+  src = createGraphics(windowWidth, windowHeight);
+  src.pixelDensity(1);
+  src.noSmooth();
+}
+
+function paintSource(t) {
+  const g = src;
+  g.push();
+  g.noStroke();
+  g.background(10, 11, 16);
+  const w = g.width, h = g.height;
+
+  // scherp veld: hard-edged ruit-raster met sterk contrast
+  const cell = Math.max(40, Math.floor(Math.min(w, h) / 12));
+  for (let y = 0; y < h; y += cell) {
+    for (let x = 0; x < w; x += cell) {
+      const checker = ((Math.floor(x / cell) + Math.floor(y / cell)) % 2) === 0;
+      const hue = (t * 20 + (x + y) * 0.05 + frameCount * 0.06) % 360;
+      g.fill(...hsv(hue, 0.65, checker ? 0.92 : 0.2));
+      g.rect(x, y, cell, cell);
+    }
+  }
+  // scherpe diagonale lijnen
+  g.push();
+  g.translate(w / 2, h / 2);
+  g.rotate(frameCount * 0.002 + t * 0.2);
+  g.fill(245, 240, 225);
+  const maxR = Math.max(w, h) * 1.5;
+  for (let i = -14; i <= 14; i++) {
+    g.rect(i * 90 - 6, -maxR / 2, 12, maxR);
+  }
+  g.pop();
+  g.pop();
+}
+
+function hsv(h, s, v) {
+  h = ((h % 360) + 360) % 360;
+  const c = v * s, x = c * (1 - Math.abs(((h / 60) % 2) - 1)), m = v - c;
+  let r = 0, gg = 0, b = 0;
+  if (h < 60) { r = c; gg = x; }
+  else if (h < 120) { r = x; gg = c; }
+  else if (h < 180) { gg = c; b = x; }
+  else if (h < 240) { gg = x; b = c; }
+  else if (h < 300) { r = x; b = c; }
+  else { r = c; b = x; }
+  return [(r + m) * 255, (gg + m) * 255, (b + m) * 255];
+}
+
+function draw() {
+  const t = millis() * TIME_SCALE;
+  paintSource(t);
+  src.loadPixels();
+
+  // scherp veld als basis
+  image(src, 0, 0);
+
+  // zwervende vlek: middelpunt beweegt langzaam (basismotie uit frameCount).
+  const bx0 = width * (0.5 + 0.42 * Math.sin(frameCount * 0.006 + t * 0.7));
+  const by0 = height * (0.5 + 0.42 * Math.sin(frameCount * 0.0047 + 1.7 + t * 0.5));
+  const rad = Math.min(width, height) * (0.22 + 0.08 * Math.sin(frameCount * 0.01 + t));
+  const r2 = rad * rad;
+
+  const sp = src.pixels;
+  const sw = src.width, shh = src.height;
+  noStroke();
+  for (let by = 0; by < height; by += BLOCK) {
+    for (let bx = 0; bx < width; bx += BLOCK) {
+      const mcx = bx + BLOCK / 2, mcy = by + BLOCK / 2;
+      // golvende rand van de vlek
+      const edge = 1 + 0.18 * Math.sin(Math.atan2(mcy - by0, mcx - bx0) * 5 + t * 3);
+      const dx = mcx - bx0, dy = mcy - by0;
+      if (dx * dx + dy * dy > r2 * edge * edge) continue;
+      const cx = Math.min(sw - 1, Math.floor(mcx));
+      const cy = Math.min(shh - 1, Math.floor(mcy));
+      const idx = 4 * (cy * sw + cx);
+      fill(sp[idx], sp[idx + 1], sp[idx + 2]);
+      rect(bx, by, BLOCK, BLOCK);
+    }
+  }
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  buildSource();
+}
+</script>
+</body>
+</html>

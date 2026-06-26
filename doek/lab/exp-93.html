@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v94 — VLOERKLEED-WEEFGETOUW. Een full-screen geknoopt tapijt dat eindeloos
+// andere old-school kleden weeft. Het put uit een vocabulaire van rand-patronen,
+// veld-motieven (güls, herati, kilim-ruiten, zigzag, bloem-rozetten), een groeiend/
+// krimpend medaillon en ~10 traditionele paletten. Alles vloeit traag in elkaar
+// over (ruimtelijke crossfades + palet-interpolatie), dus het wisselt nooit hard
+// maar wordt steeds een ander kleed: soms meer banden, meer kleuren, meer patroon.
+
+const SPEED = 2000; // 1 = uren-traag. Hoog (bv. 2000) om de reis snel te zien.
+const TIME_SCALE = 0.0000007 * SPEED;
+
+// rollen: 0 grond, 1 motief-A, 2 licht/crème, 3 goud-accent, 4 motief-B, 5 secundair, 6 donkere omlijning
+const PALS = [
+  [[150,30,32],[28,40,86],[224,202,150],[198,150,44],[38,112,92],[176,78,40],[18,18,24]],   // klassiek rood
+  [[26,38,78],[150,30,32],[222,200,150],[200,150,44],[60,130,110],[176,78,40],[12,12,20]],   // indigo grond
+  [[214,196,150],[40,60,110],[150,40,40],[180,130,40],[60,120,90],[160,70,40],[30,24,20]],    // ivoor grond
+  [[176,78,40],[40,50,90],[226,205,160],[210,160,50],[60,120,100],[140,40,38],[24,18,16]],    // terracotta
+  [[34,86,72],[150,34,34],[224,205,160],[206,158,50],[40,70,120],[176,80,42],[14,18,16]],     // groene grond
+  [[40,36,40],[150,40,44],[214,196,150],[196,150,46],[60,130,120],[176,80,46],[8,8,12]],       // houtskool
+  [[170,90,90],[60,70,110],[235,222,200],[206,168,80],[90,150,140],[150,70,60],[40,30,32]],    // zacht roze
+  [[196,150,44],[40,52,96],[232,214,170],[150,34,34],[50,120,100],[176,78,40],[26,22,16]],     // saffraan/goud
+  [[36,96,118],[200,80,50],[226,210,170],[210,170,60],[30,52,96],[150,60,50],[12,16,20]],       // blauw/teal
+  [[110,24,38],[34,44,80],[222,196,150],[196,146,44],[46,110,96],[170,74,44],[16,12,16]]        // bordeaux
+];
+
+let buf, GW, GH;
+// per-frame globals (1x per frame berekend, niet per knoop)
+let G = {};
+
+function setup(){ pixelDensity(1); createCanvas(windowWidth, windowHeight); frameRate(30); noSmooth(); buildBuffer(); }
+function buildBuffer(){
+  const c = Math.max(4, Math.floor(width / 160));
+  GW = Math.max(10, Math.round(width / c));
+  GH = Math.max(10, Math.round(height / c));
+  buf = createGraphics(GW, GH); buf.pixelDensity(1); buf.noStroke();
+}
+function windowResized(){ resizeCanvas(windowWidth, windowHeight); buildBuffer(); }
+
+const sstep = (e0, e1, x) => { let v = (x - e0) / (e1 - e0); v = v < 0 ? 0 : v > 1 ? 1 : v; return v * v * (3 - 2 * v); };
+
+// ---------- RAND-PATRONEN (rol-index) ----------
+function borderPat(id, qx, qy){
+  const s = Math.floor(qx / 3) + Math.floor(qy / 3);
+  if (id === 0) return (s % 2) ? 3 : 1;                                  // lopende ruiten
+  if (id === 1) return ((Math.floor(qx / 2) % 2) ^ (Math.floor(qy / 2) % 2)) ? 2 : 6; // meander/raster
+  if (id === 2){ const z = qx + Math.abs((qy % 6) - 3); return (Math.floor(z / 3) % 2) ? 5 : 2; } // zigzag
+  return (qx % 5 === 0 || qy % 5 === 0) ? 6 : ((s % 2) ? 4 : 2);         // haak-keten
+}
+
+// ---------- VELD-MOTIEVEN (rol-index) ----------
+function fieldPat(id, qx, qy, T, mp){
+  const u = ((qx % T) / T) - 0.5, v = ((qy % T) / T) - 0.5;
+  const d = Math.abs(u) + Math.abs(v);
+  const par = (Math.floor(qx / T) + Math.floor(qy / T)) % 2;
+  if (id === 0){ // güls / sterren
+    const star = d + 0.12 * Math.cos(Math.atan2(v, u) * 8 + mp);
+    if (star < 0.14) return par ? 3 : 2;
+    if (star < 0.20) return 6;
+    if (star < 0.32) return par ? 1 : 4;
+    if (Math.max(Math.abs(u), Math.abs(v)) > 0.40 && Math.min(Math.abs(u), Math.abs(v)) < 0.10) return 2;
+    return 0;
+  }
+  if (id === 1){ // herati ruit-lattice
+    if (d < 0.10) return 3;
+    if (d < 0.16) return 6;
+    if (d < 0.30) return 4;
+    if (d < 0.36) return 6;
+    if (Math.abs(u) < 0.06 || Math.abs(v) < 0.06) return 1;
+    return 0;
+  }
+  if (id === 2){ // kilim concentrische ruiten
+    const ring = Math.floor(d * 9);
+    const cols = [3, 6, 2, 5, 6, 4, 1, 6];
+    return cols[ring % cols.length];
+  }
+  if (id === 3){ // zigzag-banden
+    const bandH = Math.max(5, Math.floor(T * 0.6));
+    if ((qy % bandH) < 1) return 6;
+    const c = [1, 3, 4, 5][Math.floor(qy / bandH) % 4];
+    const z = Math.floor((qx + Math.abs((qy % bandH) - bandH / 2)) / 3) % 2;
+    return z ? c : 2;
+  }
+  // id 4: bloem-rozetten
+  const r = Math.sqrt(u * u + v * v);
+  if (r < 0.12) return 3;
+  if (r < 0.19) return 5;
+  if (r < 0.24) return 6;
+  return par ? 0 : 1;
+}
+
+function medallion(x, y, t){
+  if (G.medScale <= 0.001) return -1;
+  const cx = x - GW / 2, cy = y - GH / 2;
+  const r = Math.sqrt(cx * cx + cy * cy);
+  const ang = Math.atan2(cy, cx);
+  const medR = GW * (0.26 + 0.03 * Math.sin(t * 0.6)) * G.medScale;
+  const petal = 1 + 0.30 * Math.cos(ang * 8 + t * 0.4);
+  if (r < medR * petal){
+    if (r < medR * petal * 0.42) return (Math.floor(r * 0.6 + t * 2) % 2) ? 3 : 2;
+    if (r > medR * petal * 0.9) return 6;
+    return (Math.floor(ang / (Math.PI / 8) + t) % 2) ? 1 : 6;
+  }
+  return -1;
+}
+
+function knotRole(x, y, t){
+  const qx = Math.min(x, GW - 1 - x), qy = Math.min(y, GH - 1 - y);
+  const fx = qx / (GW / 2), fy = qy / (GH / 2), edge = Math.min(fx, fy);
+  const mask = noise(qx * 0.05, qy * 0.05, t * 0.08);   // crossfade-masker
+
+  // ----- RANDEN -----
+  if (edge < 0.018) return 6;
+  let be = edge - 0.018;
+  let acc = 0;
+  for (let b = 0; b < 3; b++){
+    const w = G.bw[b];
+    if (w > 0.0005 && be < acc + w){
+      const sb = G.bsel[b];
+      const id = (mask < sb.f) ? sb.i1 : sb.i0;
+      return borderPat(id, qx, qy);
+    }
+    acc += w;
+  }
+  if (be < acc + 0.012) return 6;
+  if (be < acc + 0.026) return 2;
+
+  // ----- MEDAILLON -----
+  const mr = medallion(x, y, t);
+  if (mr >= 0) return mr;
+
+  // ----- VELD (crossfade tussen twee motieven) -----
+  const id = (mask < G.fsel.f) ? G.fsel.i1 : G.fsel.i0;
+  return fieldPat(id, qx, qy, G.T, t * 0.4);
+}
+
+function csel(seed, n, t){
+  const s = noise(seed, t * 0.05) * n;
+  const i0 = Math.floor(s) % n;
+  return { i0, i1: (i0 + 1) % n, f: s - Math.floor(s) };
+}
+
+// Het kleed verandert extreem traag, dus we herweven het knoop-raster maar 1x
+// per RECALC frames i.p.v. elke frame -> veel lichter, even soepel. We tonen het
+// gebufferde beeld elke frame.
+const RECALC = 6;
+let woven = false;
+function draw(){
+  if (!woven || frameCount % RECALC === 0){ weave(); woven = true; }
+  image(buf, 0, 0, width, height);
+}
+
+function weave(){
+  const t = millis() * TIME_SCALE;
+
+  // ---- per-frame compositie-keuzes (traag driftend, continu) ----
+  G.T = Math.max(9, Math.floor(GW * (0.12 + 0.05 * noise(2, t * 0.04))));
+  G.fsel = csel(30, 5, t);
+  G.bsel = [csel(40, 4, t), csel(43, 4, t), csel(46, 4, t)];
+  // band-breedtes: de 3e band groeit/krimpt -> soms 2, soms 3 banden
+  const bw0 = 0.045, bw1 = 0.040;
+  const g2 = sstep(0.42, 0.62, noise(7, t * 0.04));
+  G.bw = [bw0, bw1, 0.045 * g2];
+  // medaillon groeit/krimpt zacht
+  G.medScale = sstep(0.45, 0.60, noise(9, t * 0.03));
+  // palet-interpolatie tussen twee kleden
+  const ps = noise(20, t * 0.03) * PALS.length;
+  const pa = Math.floor(ps) % PALS.length, pb = (pa + 1) % PALS.length, pf = ps - Math.floor(ps);
+  const A = PALS[pa], B = PALS[pb];
+
+  buf.loadPixels();
+  for (let y = 0; y < GH; y++){
+    for (let x = 0; x < GW; x++){
+      const role = knotRole(x, y, t);
+      const ca = A[role], cb = B[role];
+      const jt = (noise(x * 0.5, y * 0.5) - 0.5) * 14;   // garen-variatie
+      const k = 4 * (y * GW + x);
+      buf.pixels[k]     = constrain(ca[0] + (cb[0] - ca[0]) * pf + jt, 0, 255);
+      buf.pixels[k + 1] = constrain(ca[1] + (cb[1] - ca[1]) * pf + jt, 0, 255);
+      buf.pixels[k + 2] = constrain(ca[2] + (cb[2] - ca[2]) * pf + jt, 0, 255);
+      buf.pixels[k + 3] = 255;
+    }
+  }
+  buf.updatePixels();
+  image(buf, 0, 0, width, height);
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v12 — MOZAIEK / VORONOI. Compleet andere richting.
+//
+// Het doek is opgedeeld in facetten (Voronoi-cellen): elke pixel hoort bij het
+// dichtstbijzijnde "zaadpunt". Elk zaadpunt heeft z'n eigen kleur en zweeft
+// heel traag rond. Daardoor groeien en krimpen de cellen, schuiven grenzen en
+// herorganiseert het hele mozaiek zich onmerkbaar — als glas-in-lood of een
+// kubistisch vlak dat traag van vorm verandert.
+//
+// Alle celkleuren komen uit één traag driftende kleurfamilie, dus hoe de
+// facetten ook verschuiven, het blijft harmonieus. Berekend op een kleine
+// buffer en hard uitvergroot -> scherpe facetranden, en licht genoeg voor een Pi.
+//
+// Elk frame opnieuw opgebouwd, uren-traag. Niets om te bedienen.
+
+const SPEED      = 1;                 // 1 = uren-traag. Hoog (bv. 2000) om snel te zien.
+const TIME_SCALE = 0.0000007 * SPEED;
+const N_SITE     = 16;                // aantal facetten
+const BW_TARGET  = 150;               // buffer-breedte (klein = goedkoop, zachte schaal)
+
+let buf, BW, BH, hueBase, sites;
+
+function setup() {
+  pixelDensity(1);
+  createCanvas(windowWidth, windowHeight);
+  frameRate(30);
+  noSmooth();                          // harde facetranden bij uitvergroten
+  colorMode(HSL, 360, 100, 100, 1);    // celkleuren in HSL opgeven (zie draw)
+  hueBase = random(360);
+  buildBuffer();
+
+  // elk zaadpunt: een rustpositie + eigen noise-seeds voor drift en kleur
+  sites = [];
+  for (let i = 0; i < N_SITE; i++) {
+    sites.push({
+      hx: random(), hy: random(),      // thuispositie (genormaliseerd)
+      sx: random(1000), sy: random(1000),
+      sHue: random(1000), sLum: random(1000),
+      hueOff: (random() - 0.5) * 70    // tint-afwijking binnen de familie
+    });
+  }
+}
+
+function buildBuffer() {
+  BW = BW_TARGET;
+  BH = Math.max(2, Math.round(BW * windowHeight / windowWidth));
+  buf = createGraphics(BW, BH);
+  buf.colorMode(HSL, 360, 100, 100, 1);
+  buf.pixelDensity(1);
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  buildBuffer();
+}
+
+const lerp1 = (a, b, t) => a + (b - a) * t;
+
+function draw() {
+  const t = millis() * TIME_SCALE;
+
+  // traag driftende kleurfamilie
+  const hueCenter = (hueBase + t * 22) % 360;
+  const drift = min(BW, BH) * 0.22;   // hoe ver zaadpunten van hun thuis dwalen
+
+  // actuele positie van elk zaadpunt + diens kleur eenmalig naar RGB.
+  // (RGB vooraf -> in de hete pixel-lus geen color()-allocatie nodig: Pi-vriendelijk.)
+  const px = new Array(N_SITE), py = new Array(N_SITE);
+  const sr = new Array(N_SITE), sg = new Array(N_SITE), sb = new Array(N_SITE);
+  for (let i = 0; i < N_SITE; i++) {
+    const s = sites[i];
+    px[i] = s.hx * BW + (noise(s.sx, t * 0.4) - 0.5) * 2 * drift;
+    py[i] = s.hy * BH + (noise(s.sy, t * 0.4) - 0.5) * 2 * drift;
+    const h = (hueCenter + s.hueOff + (noise(s.sHue, t * 0.5) - 0.5) * 30 + 360) % 360;
+    const sat = lerp1(34, 72, noise(s.sHue + 5, t * 0.4));
+    const lum = lerp1(26, 70, noise(s.sLum, t * 0.45));
+    const c = color(h, sat, lum, 1);   // HSL in -> red()/green()/blue() geven RGB 0-255
+    sr[i] = red(c); sg[i] = green(c); sb[i] = blue(c);
+  }
+
+  // per buffer-pixel: dichtstbijzijnde zaadpunt -> diens kleur (+ lichte glas-rimpel)
+  buf.loadPixels();
+  const d = buf.pixels;
+  for (let y = 0; y < BH; y++) {
+    for (let x = 0; x < BW; x++) {
+      let best = 1e9, bi = 0;
+      for (let i = 0; i < N_SITE; i++) {
+        const dx = x - px[i], dy = y - py[i];
+        const dist = dx * dx + dy * dy;
+        if (dist < best) { best = dist; bi = i; }
+      }
+      const ripple = (noise(x * 0.06, y * 0.06, t * 0.2) - 0.5) * 26; // waarde-rimpel
+      const k = 4 * (y * BW + x);
+      d[k]     = constrain(sr[bi] + ripple, 0, 255);
+      d[k + 1] = constrain(sg[bi] + ripple, 0, 255);
+      d[k + 2] = constrain(sb[bi] + ripple, 0, 255);
+      d[k + 3] = 255;
+    }
+  }
+  buf.updatePixels();
+
+  image(buf, 0, 0, width, height);
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v67 — TV-RUIS met DOORLEKKENDE kleurzones.
+//
+// Grijze static, maar in langzaam driftende zones breekt het kleursignaal
+// erdoorheen: daar wordt de ruis gekleurd (eigen rood/groen/blauw-korrel),
+// feller in het hart van de zone, uitdovend naar de rand. De zones groeien,
+// krimpen en verschuiven traag, dus de kleur trekt als wolken over het doek.
+// Korrel leeft elk frame; zones en kleurfamilie driften traag (SPEED).
+
+const SPEED      = 1;                // 1 = uren-traag. Hoog (bv. 2000) om de reis snel te zien.
+const TIME_SCALE = 0.0000007 * SPEED;
+
+let buf, BW, BH;
+
+function buildBuffer() {
+  BW = 200;
+  BH = Math.max(40, Math.round(BW * windowHeight / windowWidth));
+  buf = createImage(BW, BH);
+}
+function setup() {
+  pixelDensity(1);
+  createCanvas(windowWidth, windowHeight);
+  frameRate(30);
+  noSmooth();
+  buildBuffer();
+}
+function windowResized() { resizeCanvas(windowWidth, windowHeight); buildBuffer(); }
+
+function hsb(h, s, b) {
+  h = ((h % 360) + 360) % 360; s /= 100; b /= 100;
+  const c = b * s, x = c * (1 - Math.abs(((h / 60) % 2) - 1)), m = b - c;
+  let r = 0, g = 0, bl = 0;
+  if (h < 60) { r = c; g = x; } else if (h < 120) { r = x; g = c; }
+  else if (h < 180) { g = c; bl = x; } else if (h < 240) { g = x; bl = c; }
+  else if (h < 300) { r = x; bl = c; } else { r = c; bl = x; }
+  return [(r + m) * 255, (g + m) * 255, (bl + m) * 255];
+}
+
+function draw() {
+  const t = millis() * TIME_SCALE;
+
+  // drempel ademt -> de kleurzones groeien en krimpen traag
+  const thr = 0.60 - 0.16 * Math.sin(t * 0.45);
+  const hueDrift = (t * 24) % 360;
+
+  buf.loadPixels();
+  const px = buf.pixels;
+  for (let y = 0; y < BH; y++) {
+    for (let x = 0; x < BW; x++) {
+      const g = random(255);          // grijze static-basis
+      let r = g, gg = g, b = g;
+
+      const zone = noise(x * 0.02, y * 0.02, frameCount * 0.006 + t);
+      if (zone > thr) {
+        const m = Math.min(1, (zone - thr) * 6);   // sterker in het hart van de zone
+        const h = (hueDrift + zone * 220) % 360;
+        const c = hsb(h, 95, random(25, 100));      // gekleurde korrel
+        r  = g + (c[0] - g) * m;
+        gg = g + (c[1] - g) * m;
+        b  = g + (c[2] - g) * m;
+      }
+
+      const p = (y * BW + x) * 4;
+      px[p] = r; px[p + 1] = gg; px[p + 2] = b; px[p + 3] = 255;
+    }
+  }
+  buf.updatePixels();
+  image(buf, 0, 0, width, height);
+}
+</script>
+</body>
+</html>

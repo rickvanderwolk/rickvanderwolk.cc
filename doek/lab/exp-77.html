@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v78 — GESTAPELDE WOLKENLAGEN. Meerdere doorschijnende fbm-wolkenlagen op
+// verschillende schaal en dichtheid, zacht van bovenaf belicht zodat de bollen
+// volume krijgen, elk drijvend op eigen snelheid voor parallax-diepte.
+
+const SPEED = 2000;        // 1 = uren-traag. Hoog (bv. 2000) om de reis snel te zien.
+const TIME_SCALE = 0.0000007 * SPEED;
+
+let buf;
+let BW, BH;
+const BUF_W = 150;
+
+// vier wolkenlagen, van ver (klein/zacht) naar dichtbij (groot/dicht)
+const LAYERS = [
+  { scale: 0.055, drift: 0.10, alpha: 0.30, lift: 1.6, tone: 0.62, seed: 0,    floor: 0.46 },
+  { scale: 0.034, drift: 0.18, alpha: 0.42, lift: 2.0, tone: 0.74, seed: 100,  floor: 0.50 },
+  { scale: 0.022, drift: 0.30, alpha: 0.55, lift: 2.4, tone: 0.86, seed: 200,  floor: 0.53 },
+  { scale: 0.014, drift: 0.50, alpha: 0.62, lift: 2.8, tone: 1.00, seed: 300,  floor: 0.56 },
+];
+
+function setup() {
+  pixelDensity(1);
+  createCanvas(windowWidth, windowHeight);
+  frameRate(30);
+  buildBuffer();
+}
+
+function buildBuffer() {
+  BW = BUF_W;
+  BH = Math.floor(BW * (windowHeight / windowWidth));
+  if (BH < 1) BH = 1;
+  buf = createImage(BW, BH);
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  buildBuffer();
+}
+
+// 3-octaaf fbm op p5-noise
+function fbm(x, y, z) {
+  let v = 0, amp = 0.5, f = 1.0;
+  for (let o = 0; o < 3; o++) {
+    v += amp * noise(x * f, y * f, z);
+    f *= 2.07;
+    amp *= 0.5;
+  }
+  return v;
+}
+
+function draw() {
+  const t = millis() * TIME_SCALE;
+  // basis-drift uit frameCount: zichtbaar bij SPEED=1
+  const base = frameCount * 0.006;
+
+  // achtergrond: zachte lucht, traag van toon wisselend
+  const skyTop = 14 + 8 * Math.sin(t * 0.7);
+  const skyBot = 40 + 14 * Math.sin(t * 0.5 + 1.0);
+
+  buf.loadPixels();
+  const px = buf.pixels;
+
+  for (let j = 0; j < BH; j++) {
+    const vy = j / BH;
+    // verticale luchtgradiënt
+    const skyR = (skyBot + (skyTop - skyBot) * (1 - vy)) * 0.9;
+    const skyG = (skyBot + (skyTop - skyBot) * (1 - vy));
+    const skyB = (skyBot + (skyTop - skyBot) * (1 - vy)) * 1.25 + 18;
+
+    for (let i = 0; i < BW; i++) {
+      let r = skyR, g = skyG, b = skyB;
+
+      for (let L = 0; L < LAYERS.length; L++) {
+        const ly = LAYERS[L];
+        const sx = ly.scale;
+        const sy = ly.scale;
+        // eigen drift per laag -> parallax
+        const ox = (base * ly.drift + ly.seed) + Math.sin(t * 0.3 + L) * 0.4;
+        const oy = ly.seed + Math.cos(t * 0.2 + L) * 0.3;
+        const zz = ly.seed * 0.01 + t * 0.4;
+
+        const d0 = fbm((i + ox * 60) * sx, (j + oy * 60) * sy, zz);
+        // dichtheid via zachte drempel
+        let dens = (d0 - ly.floor) / (1 - ly.floor);
+        if (dens < 0) dens = 0;
+        dens = dens * dens * (3 - 2 * dens); // smoothstep-achtig
+
+        if (dens > 0.001) {
+          // top-licht: vertikale gradiënt van het veld
+          const dUp = fbm((i + ox * 60) * sx, (j - 2 + oy * 60) * sy, zz);
+          let shade = 0.6 + ly.lift * (d0 - dUp);
+          if (shade < 0.25) shade = 0.25;
+          if (shade > 1.5) shade = 1.5;
+
+          const lum = ly.tone * shade;
+          const a = ly.alpha * dens;
+          const cr = (215 * lum + 24);
+          const cg = (210 * lum + 24);
+          const cb = (205 * lum + 30);
+          r = r + (cr - r) * a;
+          g = g + (cg - g) * a;
+          b = b + (cb - b) * a;
+        }
+      }
+
+      const idx = (j * BW + i) * 4;
+      px[idx]   = r;
+      px[idx+1] = g;
+      px[idx+2] = b;
+      px[idx+3] = 255;
+    }
+  }
+  buf.updatePixels();
+
+  noSmooth();
+  image(buf, 0, 0, width, height);
+}
+</script>
+</body>
+</html>

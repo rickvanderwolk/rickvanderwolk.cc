@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v29 — NOORDERLICHT. Verticale, glinsterende lichtgordijnen (groen,
+// violet, teal) golven traag over een donkere hemel via gelaagde ruis, met
+// zachte verticale uitdoving en additieve gloed.
+
+const SPEED = 2000;        // 1 = uren-traag. Hoog (bv. 2000) om de reis snel te zien.
+const TIME_SCALE = 0.0000007 * SPEED;
+
+let buf;
+let BW, BH;
+let palT = 0;
+
+function setup() {
+  pixelDensity(1);
+  createCanvas(windowWidth, windowHeight);
+  frameRate(30);
+  buildBuf();
+}
+
+function buildBuf() {
+  BW = 150;
+  BH = max(60, round(BW * (windowHeight / windowWidth)));
+  buf = createGraphics(BW, BH);
+  buf.pixelDensity(1);
+  buf.noStroke();
+}
+
+function draw() {
+  let t = millis() * TIME_SCALE;
+  palT += 0.0005 * (0.2 + SPEED * 0.0004);
+
+  let drift = t * 0.6;          // horizontale verschuiving van de gordijnen
+  let wave = t * 0.4;
+  let hueShift = Math.sin(palT) * 40;
+
+  buf.loadPixels();
+  let d = buf.pixels;
+
+  for (let x = 0; x < BW; x++) {
+    let xn = x / BW;
+
+    // horizontale golfpositie van enkele gordijn-banden
+    let curtain = 0;
+    let curtainHue = 0;
+    let nBands = 3;
+    for (let b = 0; b < nBands; b++) {
+      let bandPhase = b * 1.7;
+      // langzaam slingerende centrumlijn van deze band
+      let center = 0.5 + 0.42 * Math.sin(drift * (0.5 + b * 0.2) + bandPhase)
+                       + 0.12 * Math.sin(wave * 1.3 + b);
+      // ruis maakt de rand rafelig en levend
+      let edge = noise(xn * 4 + b * 10, wave * 0.8 + b) * 0.10;
+      let width0 = 0.05 + edge;
+      let dxn = (xn - center) / width0;
+      let band = Math.exp(-dxn * dxn);
+      // verticale strepen-glinstering in het gordijn
+      let shimmer = 0.6 + 0.4 * noise(xn * 8 + b * 5, wave * 2 + b * 3);
+      band *= shimmer;
+      curtain += band;
+      curtainHue += band * (b / nBands);
+    }
+    let hueLocal = curtainHue / (curtain + 0.0001);
+
+    for (let y = 0; y < BH; y++) {
+      let yn = y / BH;
+      // verticale uitdoving: helderst onderaan-midden, vervaagt naar boven
+      let fall = Math.pow(1 - yn, 1.6) * (0.4 + 0.6 * (1 - Math.abs(yn - 0.6) * 1.5));
+      fall = fall < 0 ? 0 : fall;
+      // fijne verticale ruisstrepen
+      let vstreak = 0.7 + 0.3 * noise(xn * 6 + 20, yn * 3 + wave);
+      let intensity = curtain * fall * vstreak;
+
+      // kleur: groen-teal-violet afhankelijk van band en hoogte
+      let hue = (130 + hueLocal * 150 + yn * 40 + hueShift) * Math.PI / 180;
+      let lum = intensity * 0.9;
+      let sat = 0.7;
+      let rr = lum * (0.5 + sat * Math.cos(hue));
+      let gg = lum * (0.6 + sat * Math.cos(hue - 2.094));
+      let bb = lum * (0.5 + sat * Math.cos(hue + 2.094));
+
+      // donkere hemelbasis met een vleugje gloed onderaan
+      let base = 0.02 + 0.05 * (1 - yn);
+
+      let idx = 4 * (y * BW + x);
+      d[idx] = constrain((rr + base * 0.3) * 255, 0, 255);
+      d[idx + 1] = constrain((gg + base) * 255, 0, 255);
+      d[idx + 2] = constrain((bb + base * 1.4) * 255, 0, 255);
+      d[idx + 3] = 255;
+    }
+  }
+  buf.updatePixels();
+
+  image(buf, 0, 0, width, height);
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  buildBuf();
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v58 — ROEST. Een koel staaloppervlak dat langzaam oxideert:
+// roest bloeit en kruipt, oranje-bruine patina vreet onomkeerbaar in het metaal,
+// putjes en vlekken breiden uit. Textuur, aardetinten, de schoonheid van traag verval.
+
+const SPEED = 2000; // 1 = uren-traag. Hoog (bv. 2000) om de reis snel te zien.
+const TIME_SCALE = 0.0000007 * SPEED;
+
+let buf;
+let bw, bh;
+let rust; // onomkeerbaar opgebouwde roest-laag per pixel
+
+function setup() {
+  pixelDensity(1);
+  createCanvas(windowWidth, windowHeight);
+  frameRate(30);
+  colorMode(RGB, 255);
+  buildBuffer();
+}
+
+function buildBuffer() {
+  bw = 150;
+  bh = Math.max(1, Math.round(bw * windowHeight / windowWidth));
+  buf = createImage(bw, bh);
+  rust = new Float32Array(bw * bh);
+}
+
+// gestapelde noise voor textuur
+function fbm(x, y, t) {
+  let v = 0, amp = 0.5, freq = 1;
+  for (let i = 0; i < 4; i++) {
+    v += amp * noise(x * freq, y * freq, t * 0.5 + i * 7.1);
+    amp *= 0.5;
+    freq *= 2.0;
+  }
+  return v;
+}
+
+function draw() {
+  const t = millis() * TIME_SCALE;
+  const baseT = millis() * 0.00003;
+
+  buf.loadPixels();
+  const px = buf.pixels;
+
+  for (let j = 0; j < bh; j++) {
+    for (let i = 0; i < bw; i++) {
+      const u = i / bw;
+      const v = j / bh;
+      const idx = i + j * bw;
+
+      // statisch roest-potentieel: waar roest graag begint en kruipt
+      const seed = fbm(u * 3.0 + 11.0, v * 3.0 + 4.0, 0.7);
+      const veins = fbm(u * 6.5, v * 6.5, 2.3);
+
+      // langzaam oprukkend front; oxidatie groeit alleen, nooit terug
+      const front = t * 0.55 + 0.5 * fbm(u * 1.6, v * 1.6, 5.0);
+      const target = constrain((front - (0.55 + 0.7 * seed)) * 2.0 + veins * 0.4, 0, 1);
+
+      // roest accumuleert onomkeerbaar (alleen omhoog)
+      if (target > rust[idx]) {
+        rust[idx] += (target - rust[idx]) * 0.02;
+      }
+      const r = rust[idx];
+
+      // micro-pitting: kleine putjes en korrel binnen de roest
+      const grain = fbm(u * 22.0, v * 22.0, baseT * 0.3 + 9.0);
+      const pit = fbm(u * 40.0, v * 40.0, 13.0);
+
+      // koel staal als basis
+      let cr = 96 + 14 * grain;
+      let cg = 104 + 14 * grain;
+      let cb = 112 + 14 * grain;
+      // donkere putjes in het staal
+      const dark = constrain((pit - 0.62) * 4.0, 0, 1) * 0.5;
+      cr *= (1 - dark); cg *= (1 - dark); cb *= (1 - dark);
+
+      // roest-kleuren: oranje-bruin, dieper bij oudere roest
+      const ro = 150 + 70 * grain;            // licht oranje
+      const go = 70 + 40 * grain;
+      const bo = 30 + 20 * pit;
+      const deep = constrain((r - 0.55) * 2.0, 0, 1); // diep ingevreten kern
+      const rr2 = lerp(ro, 96, deep);
+      const rg2 = lerp(go, 44, deep);
+      const rb2 = lerp(bo, 26, deep);
+
+      // staining halo: lichte verkleuring net buiten de kern
+      const stain = constrain(r * 1.4, 0, 1);
+      const baseR = lerp(cr, lerp(cr, rr2, 0.4), stain);
+      const baseG = lerp(cg, lerp(cg, rg2, 0.4), stain);
+      const baseB = lerp(cb, lerp(cb, rb2, 0.4), stain);
+
+      const m = constrain(r, 0, 1);
+      const outR = lerp(baseR, rr2, m);
+      const outG = lerp(baseG, rg2, m);
+      const outB = lerp(baseB, rb2, m);
+
+      const o = 4 * idx;
+      px[o] = outR;
+      px[o + 1] = outG;
+      px[o + 2] = outB;
+      px[o + 3] = 255;
+    }
+  }
+
+  buf.updatePixels();
+  push();
+  image(buf, 0, 0, width, height);
+  pop();
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  buildBuffer();
+}
+</script>
+</body>
+</html>

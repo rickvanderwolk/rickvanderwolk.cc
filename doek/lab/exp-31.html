@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v32 — TOPOGRAFIE. Levende hoogtekaart van een traag driftend veld.
+// Lijnen waar het scalairveld even-verdeelde niveaus kruist; niveaus en
+// veld schuiven, dus de bergkammen migreren onophoudelijk.
+
+const SPEED = 2000; // 1 = uren-traag. Hoog (bv. 2000) om de reis snel te zien.
+const TIME_SCALE = 0.0000007 * SPEED;
+
+let buf;
+const BW = 150;     // bufferbreedte
+let BH;             // bufferhoogte (op ratio)
+
+const LEVELS = 11;  // aantal hoogtelijnen
+
+function setup() {
+  pixelDensity(1);
+  createCanvas(windowWidth, windowHeight);
+  frameRate(30);
+  BH = Math.max(1, Math.round(BW * windowHeight / windowWidth));
+  buf = createGraphics(BW, BH);
+  buf.pixelDensity(1);
+  noSmooth();
+}
+
+// scalairveld: traag driftende heuvels
+function field(x, y, t) {
+  let nx = x / BW, ny = y / BH;
+  let v = noise(nx * 2.2 + t * 0.3, ny * 2.2 - t * 0.2, t * 0.5);
+  v += 0.5 * noise(nx * 4.5 - t * 0.15, ny * 4.5 + t * 0.25, t * 0.4 + 30);
+  return v / 1.5; // ~0..1
+}
+
+function draw() {
+  const t = millis() * TIME_SCALE;
+
+  // niveaus driften langzaam (phase) zodat lijnen door het landschap reizen
+  const phase = (t * 0.4) % (1 / LEVELS);
+  const hueBase = (t * 16) % 360;
+
+  buf.loadPixels();
+  const d = buf.pixelDensity();
+  for (let y = 0; y < BH; y++) {
+    for (let x = 0; x < BW; x++) {
+      let v = field(x, y, t);
+      // achtergrondtint per hoogte (zacht verloop)
+      let band = Math.floor((v + phase) * LEVELS);
+      let bh = (hueBase + band * 14) % 360;
+      let bg = hsl(bh, 0.30, 0.10 + 0.16 * (v));
+
+      // afstand tot dichtstbijzijnde niveaulijn binnen periode
+      let scaled = (v + phase) * LEVELS;
+      let frac = scaled - Math.floor(scaled);   // 0..1 binnen band
+      let distToLine = Math.min(frac, 1 - frac); // 0 op lijn
+      let lineW = 0.10;
+      let line = 1 - smoothstep(0, lineW, distToLine); // 1 op lijn, 0 ertussen
+
+      // hoofdlijnen (elke 5e) iets feller
+      let major = (band % 5 === 0) ? 1.0 : 0.6;
+      let lr = 230, lg = 225, lb = 205;
+
+      let r = bg[0] * (1 - line) + lr * line * major;
+      let g = bg[1] * (1 - line) + lg * line * major;
+      let b = bg[2] * (1 - line) + lb * line * major;
+
+      let idx = 4 * (x + y * BW) * d * d;
+      buf.pixels[idx] = r;
+      buf.pixels[idx + 1] = g;
+      buf.pixels[idx + 2] = b;
+      buf.pixels[idx + 3] = 255;
+    }
+  }
+  buf.updatePixels();
+
+  image(buf, 0, 0, width, height);
+}
+
+function smoothstep(a, b, x) {
+  let t = constrain((x - a) / (b - a), 0, 1);
+  return t * t * (3 - 2 * t);
+}
+
+function hsl(h, s, l) {
+  h = ((h % 360) + 360) % 360 / 360;
+  let r, g, b;
+  if (s === 0) { r = g = b = l; }
+  else {
+    let q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    let p = 2 * l - q;
+    r = hue2rgb(p, q, h + 1 / 3);
+    g = hue2rgb(p, q, h);
+    b = hue2rgb(p, q, h - 1 / 3);
+  }
+  return [r * 255, g * 255, b * 255];
+}
+function hue2rgb(p, q, t) {
+  if (t < 0) t += 1;
+  if (t > 1) t -= 1;
+  if (t < 1 / 6) return p + (q - p) * 6 * t;
+  if (t < 1 / 2) return q;
+  if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+  return p;
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  BH = Math.max(1, Math.round(BW * windowHeight / windowWidth));
+  buf = createGraphics(BW, BH);
+  buf.pixelDensity(1);
+}
+</script>
+</body>
+</html>

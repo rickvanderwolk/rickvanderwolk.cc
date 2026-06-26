@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v75 — BLOOM / GLOED. Heldere kernen in een donker veld bloeden
+// gloeiende halo's gekleurd licht in hun omgeving. Zware bloom: licht
+// stroomt over, kleuren bloeden in elkaar. Donker met overbelichte highlights.
+
+const SPEED = 2000; // 1 = uren-traag. Hoog (bv. 2000) om de reis snel te zien.
+const TIME_SCALE = 0.0000007 * SPEED;
+
+let scene;        // donkere scene met heldere kernen
+let bloom;        // zwaar geblurde kopie voor de gloed
+const BW = 240;
+let cores = [];
+const N = 9;
+
+function makeBuffers() {
+  const h = Math.max(2, Math.floor(BW * windowHeight / windowWidth));
+  scene = createGraphics(BW, h);
+  scene.pixelDensity(1);
+  scene.noStroke();
+  bloom = createGraphics(BW, h);
+  bloom.pixelDensity(1);
+  bloom.noStroke();
+}
+
+function setup() {
+  pixelDensity(1);
+  createCanvas(windowWidth, windowHeight);
+  frameRate(30);
+  makeBuffers();
+  for (let i = 0; i < N; i++) {
+    cores.push({
+      x: random(1), y: random(1),
+      r: random(0.06, 0.16),
+      sp: random(0.0006, 0.0022),
+      dir: random(TWO_PI),
+      ph: random(TWO_PI),
+      hueOff: random(1)
+    });
+  }
+}
+
+function draw() {
+  const t = frameCount * 0.004;
+  const slow = millis() * TIME_SCALE;
+
+  // 1) donkere scene met felle kernen
+  scene.push();
+  scene.background(3, 4, 9);
+  scene.blendMode(SCREEN);
+  for (let i = 0; i < N; i++) {
+    const c = cores[i];
+    const dx = cos(c.dir) * (t * c.sp * 45) + sin(t * 0.3 + c.ph) * 0.05;
+    const dy = sin(c.dir) * (t * c.sp * 45) + cos(t * 0.26 + c.ph) * 0.05;
+    let xx = ((c.x + dx) % 1.2 + 1.2) % 1.2 - 0.1;
+    let yy = ((c.y + dy) % 1.2 + 1.2) % 1.2 - 0.1;
+    const hue = (slow * 28 + c.hueOff * 360 + sin(t * 0.2 + c.ph) * 30) % 360;
+    const col = hsl(hue, 80, 62);
+    const pulse = 0.75 + 0.35 * sin(t * 0.6 + c.ph);
+    const rad = c.r * scene.width * pulse;
+    // felle, bijna overbelichte kern
+    coreSprite(scene, xx * scene.width, yy * scene.height, rad, col);
+  }
+  scene.pop();
+
+  // 2) bloom: kopieer scene, blur zwaar
+  bloom.push();
+  bloom.clear();
+  bloom.drawingContext.filter = 'blur(7px)';
+  bloom.image(scene, 0, 0);
+  bloom.drawingContext.filter = 'none';
+  bloom.pop();
+
+  // 3) compositie: scene + gloed additief over donker
+  background(0);
+  imageMode(CORNER);
+  image(scene, 0, 0, width, height);
+  blendMode(ADD);
+  // dubbele laag bloom voor extra overstraling
+  image(bloom, 0, 0, width, height);
+  image(bloom, 0, 0, width, height);
+  blendMode(BLEND);
+}
+
+function coreSprite(g, cx, cy, r, col) {
+  const ctx = g.drawingContext;
+  const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+  grad.addColorStop(0.0, 'rgba(255,255,255,0.95)');
+  grad.addColorStop(0.25, 'rgba(' + col[0] + ',' + col[1] + ',' + col[2] + ',0.85)');
+  grad.addColorStop(0.6, 'rgba(' + col[0] + ',' + col[1] + ',' + col[2] + ',0.30)');
+  grad.addColorStop(1.0, 'rgba(' + col[0] + ',' + col[1] + ',' + col[2] + ',0)');
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function hsl(h, s, l) {
+  s /= 100; l /= 100;
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const hp = (((h % 360) + 360) % 360) / 60;
+  const x = c * (1 - Math.abs(hp % 2 - 1));
+  let r = 0, g = 0, b = 0;
+  if (hp < 1) { r = c; g = x; }
+  else if (hp < 2) { r = x; g = c; }
+  else if (hp < 3) { g = c; b = x; }
+  else if (hp < 4) { g = x; b = c; }
+  else if (hp < 5) { r = x; b = c; }
+  else { r = c; b = x; }
+  const m = l - c / 2;
+  return [Math.round((r + m) * 255), Math.round((g + m) * 255), Math.round((b + m) * 255)];
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  makeBuffers();
+}
+</script>
+</body>
+</html>

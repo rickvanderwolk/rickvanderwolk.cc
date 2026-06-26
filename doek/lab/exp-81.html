@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v82 — RESOLUTIE-GOLF. De effectieve resolutie van het hele beeld ademt
+// langzaam tussen vlijmscherp en reuzenblokken: detail kristalliseert uit en
+// stort dan in tot mozaiek, keer op keer.
+
+const SPEED = 2000; // 1 = uren-traag. Hoog (bv. 2000) om de reis snel te zien.
+const TIME_SCALE = 0.0000007 * SPEED;
+
+let src;
+
+function setup() {
+  pixelDensity(1);
+  createCanvas(windowWidth, windowHeight);
+  frameRate(30);
+  noSmooth();
+  buildSource();
+}
+
+function buildSource() {
+  src = createGraphics(windowWidth, windowHeight);
+  src.pixelDensity(1);
+  src.noSmooth();
+}
+
+function paintSource(t) {
+  const g = src;
+  g.push();
+  g.noStroke();
+  // donkere achtergrond met langzaam driftende tint
+  const bg = 12 + 8 * Math.sin(t * 0.7);
+  g.background(bg, bg + 4, bg + 10);
+  g.translate(g.width / 2, g.height / 2);
+  g.rotate(t * 0.25 + frameCount * 0.0015);
+
+  // scherpe geometrische velden: hard-edged ringen en balken, sterk contrast
+  const n = 9;
+  const maxR = Math.max(g.width, g.height);
+  for (let i = n; i >= 1; i--) {
+    const f = i / n;
+    const hue = (t * 30 + i * 40 + frameCount * 0.1) % 360;
+    g.fill(...hsv(hue, 0.6, i % 2 === 0 ? 0.95 : 0.18));
+    g.rectMode(CENTER);
+    g.rotate(0.18 + 0.05 * Math.sin(t + i));
+    g.rect(0, 0, maxR * f, maxR * f);
+  }
+
+  // harde diagonale strepen er overheen
+  g.rotate(t * 0.4);
+  for (let i = -12; i <= 12; i++) {
+    g.fill(i % 2 === 0 ? 250 : 8, 240, 230);
+    g.rect(i * 60, 0, 24, maxR * 1.6);
+  }
+  g.pop();
+}
+
+function hsv(h, s, v) {
+  h = ((h % 360) + 360) % 360;
+  const c = v * s, x = c * (1 - Math.abs(((h / 60) % 2) - 1)), m = v - c;
+  let r = 0, gg = 0, b = 0;
+  if (h < 60) { r = c; gg = x; }
+  else if (h < 120) { r = x; gg = c; }
+  else if (h < 180) { gg = c; b = x; }
+  else if (h < 240) { gg = x; b = c; }
+  else if (h < 300) { r = x; b = c; }
+  else { r = c; b = x; }
+  return [(r + m) * 255, (gg + m) * 255, (b + m) * 255];
+}
+
+function draw() {
+  const t = millis() * TIME_SCALE;
+  paintSource(t);
+  src.loadPixels();
+
+  // resolutie-golf: blokgrootte ademt tussen 1 (scherp) en groot.
+  // basismotie uit frameCount zodat het ook bij SPEED=1 beweegt.
+  const wave = 0.5 - 0.5 * Math.cos(frameCount * 0.012);
+  const drift = 0.5 - 0.5 * Math.cos(t * 1.3);
+  const phase = constrain(0.55 * wave + 0.55 * drift, 0, 1);
+  const maxB = 110;
+  const B = Math.max(1, Math.floor(1 + phase * phase * maxB));
+
+  noStroke();
+  if (B <= 1) {
+    image(src, 0, 0);
+    return;
+  }
+
+  const sp = src.pixels;
+  const sw = src.width;
+  for (let by = 0; by < height; by += B) {
+    for (let bx = 0; bx < width; bx += B) {
+      const cx = Math.min(sw - 1, Math.floor(bx + B / 2));
+      const cy = Math.min(src.height - 1, Math.floor(by + B / 2));
+      const idx = 4 * (cy * sw + cx);
+      fill(sp[idx], sp[idx + 1], sp[idx + 2]);
+      rect(bx, by, B, B);
+    }
+  }
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  buildSource();
+}
+</script>
+</body>
+</html>

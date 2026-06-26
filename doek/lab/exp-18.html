@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v19 — REACTIE-DIFFUSIE. Richting: "je weet niet wat je ziet".
+//
+// Een levend chemisch oppervlak (Gray-Scott). Twee stoffen reageren en
+// diffunderen; daaruit ontstaan vanzelf stippen, strepen, doolhoven, cellen,
+// krullen... Het herkent niets, het lijkt nergens op -- en het verandert
+// continu. De reactie-parameters (feed/kill) driften heel traag rond door het
+// "interessante" gebied, dus het patroon-REGIME schuift onmerkbaar van het ene
+// type naar het andere zonder ooit te springen.
+//
+// Het concentratie-veld wordt als reliëf belicht (bewegende glans) en door een
+// traag driftend kleurpalet gehaald -> ook de kleur zit nooit vast. Klein
+// berekend, hard uitvergroot -> Pi-vriendelijk. Niets te bedienen.
+
+const SPEED      = 2000;              // 1 = uren-traag (alleen kleur/licht/regime-drift). Hoog = snel zien.
+const TIME_SCALE = 0.0000007 * SPEED;
+const STEPS      = 8;                 // reactie-stappen per frame: hoger = sneller morfen (calmer: lager)
+const RELIEF     = 90;               // sterkte reliëf-belichting op het concentratie-veld
+const SHINE      = 26;
+const GLOSS      = 0.8;
+const LIGHT_SPD  = 0.6;
+const BW_TARGET  = 150;               // verlaag (bv. 120) voor een trage Pi
+const TAU        = Math.PI * 2;
+
+let buf, BW, BH, hueBase, A, B, A2, B2;
+
+function setup() {
+  pixelDensity(1);
+  createCanvas(windowWidth, windowHeight);
+  frameRate(30);
+  hueBase = random(1);
+  buildBuffer();
+  seedRD();
+}
+function buildBuffer() {
+  BW = BW_TARGET;
+  BH = Math.max(2, Math.round(BW * windowHeight / windowWidth));
+  buf = createGraphics(BW, BH);
+  buf.pixelDensity(1);
+  const n = BW * BH;
+  A = new Float32Array(n); B = new Float32Array(n);
+  A2 = new Float32Array(n); B2 = new Float32Array(n);
+}
+function seedRD() {
+  for (let i = 0; i < BW * BH; i++) { A[i] = 1; B[i] = 0; }
+  for (let s = 0; s < 50; s++) {        // verspreide kiemen
+    const cx = Math.floor(random(BW)), cy = Math.floor(random(BH)), rad = Math.floor(random(2, 6));
+    for (let y = -rad; y <= rad; y++) for (let x = -rad; x <= rad; x++) {
+      const xx = (cx + x + BW) % BW, yy = (cy + y + BH) % BH;
+      B[yy * BW + xx] = 0.5;   // zachter zaaien -> stabieler (geen blow-up)
+    }
+  }
+}
+function windowResized() { resizeCanvas(windowWidth, windowHeight); buildBuffer(); seedRD(); }
+
+const lerp1 = (a, b, t) => a + (b - a) * t;
+const cosPal = (p, o) => {
+  o[0] = (0.55 + 0.45 * Math.cos(TAU * (p + 0.00))) * 255;
+  o[1] = (0.55 + 0.45 * Math.cos(TAU * (p + 0.33))) * 255;
+  o[2] = (0.55 + 0.45 * Math.cos(TAU * (p + 0.66))) * 255;
+};
+
+function stepRD(f, k) {
+  const Da = 1.0, Db = 0.5;
+  for (let y = 0; y < BH; y++) {
+    const ym = (y - 1 + BH) % BH, yp = (y + 1) % BH;
+    const yC = y * BW, yM = ym * BW, yP = yp * BW;
+    for (let x = 0; x < BW; x++) {
+      const xm = (x - 1 + BW) % BW, xp = (x + 1) % BW;
+      const i = yC + x, a = A[i], b = B[i];
+      const lapA = (A[yC + xm] + A[yC + xp] + A[yM + x] + A[yP + x]) * 0.2
+                 + (A[yM + xm] + A[yM + xp] + A[yP + xm] + A[yP + xp]) * 0.05 - a;
+      const lapB = (B[yC + xm] + B[yC + xp] + B[yM + x] + B[yP + x]) * 0.2
+                 + (B[yM + xm] + B[yM + xp] + B[yP + xm] + B[yP + xp]) * 0.05 - b;
+      const abb = a * b * b;
+      let na = a + (Da * lapA - abb + f * (1 - a));
+      let nb = b + (Db * lapB + abb - (k + f) * b);
+      A2[i] = na < 0 ? 0 : na > 1 ? 1 : na;   // clamp -> nooit NaN/Infinity
+      B2[i] = nb < 0 ? 0 : nb > 1 ? 1 : nb;
+    }
+  }
+  let tmp; tmp = A; A = A2; A2 = tmp; tmp = B; B = B2; B2 = tmp;
+}
+
+function draw() {
+  const t = millis() * TIME_SCALE;
+
+  // feed/kill driften traag door de "interessante" band -> wisselende regimes
+  const f = lerp1(0.022, 0.044, noise(11, t * 0.4));
+  const k = lerp1(0.051, 0.062, noise(23, t * 0.4));
+  for (let s = 0; s < STEPS; s++) stepRD(f, k);
+
+  // belichting
+  const la = t * LIGHT_SPD;
+  let lx = Math.cos(la), ly = Math.sin(la), lz = 0.85;
+  const ll = Math.hypot(lx, ly, lz); lx /= ll; ly /= ll; lz /= ll;
+  let hx = lx, hy = ly, hz = lz + 1;
+  const hl = Math.hypot(hx, hy, hz); hx /= hl; hy /= hl; hz /= hl;
+
+  const hueShift = (hueBase + t * 0.05) % 1;
+  const col = [0, 0, 0];
+
+  buf.loadPixels();
+  const d = buf.pixels;
+  for (let y = 0; y < BH; y++) for (let x = 0; x < BW; x++) {
+    const k2 = y * BW + x;
+    const xl = x > 0 ? k2 - 1 : k2, xr = x < BW - 1 ? k2 + 1 : k2;
+    const yu = y > 0 ? k2 - BW : k2, yd = y < BH - 1 ? k2 + BW : k2;
+    let nx = (B[xl] - B[xr]) * RELIEF;
+    let ny = (B[yu] - B[yd]) * RELIEF;
+    let nz = 1;
+    const nl = Math.hypot(nx, ny, nz); nx /= nl; ny /= nl; nz /= nl;
+
+    const v = B[k2];
+    cosPal(hueShift + v * 2.6, col);            // kleur uit concentratie + drift
+    const diff = 0.4 + 0.6 * Math.max(0, nx * lx + ny * ly + nz * lz);
+    let spec = nx * hx + ny * hy + nz * hz;
+    spec = spec > 0 ? Math.pow(spec, SHINE) * GLOSS : 0;
+
+    const j = 4 * k2, add = 255 * spec;
+    d[j]     = constrain(col[0] * diff + add, 0, 255);
+    d[j + 1] = constrain(col[1] * diff + add, 0, 255);
+    d[j + 2] = constrain(col[2] * diff + add, 0, 255);
+    d[j + 3] = 255;
+  }
+  buf.updatePixels();
+  image(buf, 0, 0, width, height);
+}
+</script>
+</body>
+</html>

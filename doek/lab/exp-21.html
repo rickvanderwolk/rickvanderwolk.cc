@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v22 — STROOMRIBBONS. Honderden deeltjes drijven door een traag draaiend
+// curl/stroomveld en laten vage sporen na op een nooit-gewist doek. Zo vouwen
+// rook-achtige nevelslierten zich eindeloos. Palet schuift langzaam mee.
+const SPEED = 2000; // 1 = uren-traag. Hoog (bv. 2000) om de reis snel te zien.
+const TIME_SCALE = 0.0000007 * SPEED;
+
+const N = 1200;
+let parts = [];
+
+function setup() {
+  pixelDensity(1);
+  createCanvas(windowWidth, windowHeight);
+  frameRate(30);
+  colorMode(HSB, 360, 100, 100, 1);
+  background(0);
+  for (let i = 0; i < N; i++) parts.push(newPart());
+}
+
+function newPart() {
+  return { x: random(width), y: random(height), age: random(400) };
+}
+
+// curl van een noise-veld -> divergentievrije stroom
+function flow(x, y, t) {
+  const s = 0.0016;
+  const e = 1.0;
+  const a = (px, py) => noise(px * s, py * s, t);
+  const dx = a(x + e, y) - a(x - e, y);
+  const dy = a(x, y + e) - a(x, y - e);
+  // curl: (dN/dy, -dN/dx)
+  return { vx: dy, vy: -dx };
+}
+
+function draw() {
+  const t = millis() * TIME_SCALE;
+
+  // heel af en toe een vage sluier zodat oude sporen vervagen
+  const veil = 0.006 + 0.006 * (0.5 + 0.5 * Math.sin(t * 1.7));
+  noStroke();
+  fill(0, 0, 0, veil);
+  rect(0, 0, width, height);
+
+  const baseHue = (t * 40) % 360;
+  const drift = t * 0.6;
+
+  for (let i = 0; i < N; i++) {
+    const p = parts[i];
+    const f = flow(p.x, p.y, drift * 0.05);
+    const ang = Math.atan2(f.vy, f.vx) + Math.sin(t * 0.5) * 0.4;
+    const sp = 0.9;
+    p.x += Math.cos(ang) * sp;
+    p.y += Math.sin(ang) * sp;
+    p.age += 1;
+
+    const h = (baseHue + (p.x + p.y) * 0.04 + p.age * 0.05) % 360;
+    fill((h + 360) % 360, 55, 95, 0.05);
+    circle(p.x, p.y, 1.6);
+
+    if (p.x < -5 || p.x > width + 5 || p.y < -5 || p.y > height + 5 || p.age > 900) {
+      parts[i] = newPart();
+    }
+  }
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  background(0);
+  parts = [];
+  for (let i = 0; i < N; i++) parts.push(newPart());
+}
+</script>
+</body>
+</html>

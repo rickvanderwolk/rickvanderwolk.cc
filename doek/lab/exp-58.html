@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v59 — SYNAPSEN. Een ijl netwerk van knopen en verbindingen waarlangs
+// lichtpulsen reizen en oplichten bij kruispunten — gedachte die over een web flikkert.
+// Schaars, elektrisch, koel met warme vonken. Bedraadt zichzelf langzaam om.
+
+const SPEED = 2000; // 1 = uren-traag. Hoog (bv. 2000) om de reis snel te zien.
+const TIME_SCALE = 0.0000007 * SPEED;
+
+let buf;
+let bw, bh;
+const NODES = 26;
+let nodes = [];
+let links = [];
+let pulses = [];
+
+function setup() {
+  pixelDensity(1);
+  createCanvas(windowWidth, windowHeight);
+  frameRate(30);
+  colorMode(RGB, 255);
+  buildBuffer();
+  buildNetwork();
+}
+
+function buildBuffer() {
+  bw = 150;
+  bh = Math.max(1, Math.round(bw * windowHeight / windowWidth));
+  buf = createImage(bw, bh);
+}
+
+function buildNetwork() {
+  nodes = [];
+  for (let i = 0; i < NODES; i++) {
+    nodes.push({
+      x: random(0.08, 0.92),
+      y: random(0.08, 0.92),
+      // trage drift-fasen voor herbedrading
+      px: random(1000), py: random(1000),
+      bloom: 0
+    });
+  }
+  links = [];
+  // verbind elke knoop met een paar dichtstbijzijnde
+  for (let i = 0; i < NODES; i++) {
+    let d = [];
+    for (let k = 0; k < NODES; k++) {
+      if (k === i) continue;
+      const dx = nodes[i].x - nodes[k].x, dy = nodes[i].y - nodes[k].y;
+      d.push({ k, dist: dx * dx + dy * dy });
+    }
+    d.sort((a, b) => a.dist - b.dist);
+    const n = Math.floor(random(2, 4));
+    for (let m = 0; m < n; m++) {
+      const a = Math.min(i, d[m].k), b = Math.max(i, d[m].k);
+      if (!links.some(l => l.a === a && l.b === b)) links.push({ a, b });
+    }
+  }
+  pulses = [];
+}
+
+function draw() {
+  const t = millis() * TIME_SCALE;
+  const fixed = millis() * 0.001;
+
+  // knoop-posities driften langzaam (herbedrading)
+  for (const nd of nodes) {
+    nd.cx = nd.x + 0.05 * (noise(nd.px, t * 0.3) - 0.5);
+    nd.cy = nd.y + 0.05 * (noise(nd.py, t * 0.3 + 50) - 0.5);
+    nd.bloom *= 0.92;
+  }
+
+  // af en toe een nieuwe puls afvuren langs een link
+  if (random() < 0.10 && links.length > 0) {
+    const l = links[Math.floor(random(links.length))];
+    pulses.push({ a: l.a, b: l.b, p: 0, dir: random() < 0.5 ? 1 : -1, life: 1 });
+  }
+
+  // pulsen voortbewegen
+  for (const pu of pulses) {
+    pu.p += 0.04;
+    if (pu.p >= 1) {
+      pu.life = 0;
+      const hit = pu.dir > 0 ? pu.b : pu.a;
+      nodes[hit].bloom = 1; // bloei bij kruispunt
+    }
+  }
+  pulses = pulses.filter(p => p.life > 0);
+
+  buf.loadPixels();
+  const px = buf.pixels;
+
+  for (let j = 0; j < bh; j++) {
+    for (let i = 0; i < bw; i++) {
+      const o = 4 * (i + j * bw);
+      // koele donkere achtergrond met lichte ademing
+      const bg = 6 + 4 * noise(i * 0.05, j * 0.05, fixed * 0.1);
+      px[o] = bg * 0.7;
+      px[o + 1] = bg * 0.9;
+      px[o + 2] = bg + 6;
+      px[o + 3] = 255;
+    }
+  }
+
+  const ax = (u) => u * bw;
+  const ay = (v) => v * bh;
+
+  // ijle verbindingen tekenen
+  for (const l of links) {
+    const A = nodes[l.a], B = nodes[l.b];
+    const steps = 26;
+    for (let s = 0; s <= steps; s++) {
+      const f = s / steps;
+      const x = ax(lerp(A.cx, B.cx, f));
+      const y = ay(lerp(A.cy, B.cy, f));
+      addGlow(px, x, y, 0.6, 18, 22, 30);
+    }
+  }
+
+  // pulsen als warme vonken
+  for (const pu of pulses) {
+    const A = nodes[pu.a], B = nodes[pu.b];
+    const f = pu.dir > 0 ? pu.p : 1 - pu.p;
+    const x = ax(lerp(A.cx, B.cx, f));
+    const y = ay(lerp(A.cy, B.cy, f));
+    addGlow(px, x, y, 2.4, 255, 170, 90);
+    addGlow(px, x, y, 1.2, 255, 220, 160);
+  }
+
+  // knopen + bloei
+  for (const nd of nodes) {
+    const x = ax(nd.cx), y = ay(nd.cy);
+    addGlow(px, x, y, 1.0, 90, 130, 180);
+    if (nd.bloom > 0.02) {
+      const b = nd.bloom;
+      addGlow(px, x, y, 1.6 + 2.5 * b, 255 * b, 200 * b, 130 * b, 2);
+    }
+  }
+
+  buf.updatePixels();
+  push();
+  image(buf, 0, 0, width, height);
+  pop();
+}
+
+// zachte additieve gloed rond een punt
+function addGlow(px, cx, cy, intensity, r, g, b, radius) {
+  const rad = radius || 1;
+  const ix = Math.round(cx), iy = Math.round(cy);
+  for (let dy = -rad; dy <= rad; dy++) {
+    for (let dx = -rad; dx <= rad; dx++) {
+      const x = ix + dx, y = iy + dy;
+      if (x < 0 || y < 0 || x >= bw || y >= bh) continue;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const fall = Math.max(0, 1 - dist / (rad + 0.5));
+      const a = fall * fall * intensity;
+      const o = 4 * (x + y * bw);
+      px[o] = Math.min(255, px[o] + r * a);
+      px[o + 1] = Math.min(255, px[o + 1] + g * a);
+      px[o + 2] = Math.min(255, px[o + 2] + b * a);
+    }
+  }
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  buildBuffer();
+}
+</script>
+</body>
+</html>

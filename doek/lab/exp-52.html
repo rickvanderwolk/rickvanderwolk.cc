@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v53 — HET OOG / SURVEILLANCE (het oog).
+// Koude, lensachtige vormen die driften en hun blik langzaam samenbrengen:
+// concentrische iris/diafragma-ringen die openen en sluiten, scannend.
+// Een gevoel bekeken te worden. Klinisch, koel palet, af en toe scherpstelling.
+
+const SPEED = 2000; // 1 = uren-traag. Hoog (bv. 2000) om de reis snel te zien.
+const TIME_SCALE = 0.0000007 * SPEED;
+
+let buf;
+let BW, BH;
+let eyes;
+
+function buildBuffer() {
+  BW = 150;
+  BH = Math.max(40, Math.round(BW * windowHeight / windowWidth));
+  buf = createImage(BW, BH);
+}
+
+function setup() {
+  pixelDensity(1);
+  createCanvas(windowWidth, windowHeight);
+  frameRate(30);
+  noSmooth();
+  buildBuffer();
+  // een handvol lenzen, elk met eigen trage drift-zaden
+  eyes = [];
+  for (let i = 0; i < 3; i++) {
+    eyes.push({ sx: random(100), sy: random(100), sp: random(100), ph: random(6.28) });
+  }
+}
+
+function draw() {
+  let t = millis() * TIME_SCALE;        // trage drift
+  let scan = frameCount * 0.02;          // kalme scan-beweging
+
+  // af en toe scherpstelling: alle blikken convergeren even
+  let focus = Math.pow(0.5 + 0.5 * Math.sin(t * 0.6), 4.0); // meestal laag, soms 1
+
+  // de lenzen driften traag, getrokken naar het midden bij scherpstelling
+  let pos = [];
+  for (let i = 0; i < eyes.length; i++) {
+    let e = eyes[i];
+    let dx = noise(e.sx, t * 0.5) - 0.5;
+    let dy = noise(e.sy, t * 0.5) - 0.5;
+    let bx = 0.5 + dx * 0.9;
+    let by = 0.5 + dy * 0.9;
+    // bij scherpstelling trekken ze samen naar het centrum
+    bx = bx + (0.5 - bx) * focus * 0.7;
+    by = by + (0.5 - by) * focus * 0.7;
+    // iris-opening pulseert: openen en sluiten
+    let ap = 0.30 + 0.18 * Math.sin(scan * 0.7 + e.ph) + 0.10 * focus;
+    pos.push({ x: bx, y: by, ap: ap });
+  }
+
+  let aspect = BW / BH;
+
+  buf.loadPixels();
+  for (let y = 0; y < BH; y++) {
+    let ny = y / BH;
+    for (let x = 0; x < BW; x++) {
+      let nx = x / BW;
+
+      let v = 0.04; // koude donkere achtergrond
+
+      for (let i = 0; i < pos.length; i++) {
+        let e = pos[i];
+        let ddx = (nx - e.x) * aspect;
+        let ddy = (ny - e.y);
+        let rad = Math.sqrt(ddx * ddx + ddy * ddy);
+
+        // concentrische diafragma-ringen
+        let rings = 0.5 + 0.5 * Math.sin(rad * 60.0 - scan * 1.4 + i);
+        rings = Math.pow(rings, 2.0);
+
+        // iris: heldere rand rond een donkere pupil
+        let lid = Math.max(0, 1 - rad / 0.34);          // begrenzing van de lens
+        let irisEdge = Math.exp(-Math.pow((rad - e.ap) * 14.0, 2.0)); // gloeiende irisrand
+        let pupil = rad < e.ap * 0.45 ? -0.06 : 0;       // donkere pupil
+
+        let lens = lid * (0.25 * rings + 0.9 * irisEdge) + pupil;
+        v = Math.max(v, lens * (0.7 + 0.5 * focus));
+      }
+
+      v = Math.max(0, Math.min(1, v));
+
+      // klinisch koel palet: staalblauw/cyaan, steriel wit op de irisranden
+      let r = 12 + 90 * v + 90 * Math.pow(v, 3.0);
+      let g = 20 + 150 * v + 70 * Math.pow(v, 3.0);
+      let b = 30 + 170 * v + 50 * Math.pow(v, 3.0);
+
+      let p = (y * BW + x) * 4;
+      buf.pixels[p] = r;
+      buf.pixels[p + 1] = g;
+      buf.pixels[p + 2] = b;
+      buf.pixels[p + 3] = 255;
+    }
+  }
+  buf.updatePixels();
+  image(buf, 0, 0, width, height);
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  buildBuffer();
+}
+</script>
+</body>
+</html>

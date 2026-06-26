@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v92 — VLOERKLEED (medaillon). Een ouderwets geknoopt tapijt: rand-banden,
+// een centraal medaillon en gespiegelde motieven op een geweven knoop-raster.
+// Alles is 4-voudig symmetrisch (als een echt kleed) en evolueert heel traag:
+// motieven verschuiven, het palet draait, de knopen "herweven" onmerkbaar.
+
+const SPEED = 2000; // 1 = uren-traag. Hoog (bv. 2000) om de reis snel te zien.
+const TIME_SCALE = 0.0000007 * SPEED;
+
+// traditioneel tapijt-palet
+const PAL = [
+  [150,30,32],   // 0 diep rood (veld)
+  [28,40,86],    // 1 indigo
+  [224,202,150], // 2 crème
+  [198,150,44],  // 3 goud
+  [38,112,92],   // 4 teal
+  [176,78,40],   // 5 terracotta
+  [18,18,24]     // 6 bijna-zwart (omlijning)
+];
+
+let buf, GW, GH, OFFX, OFFY, CELL;
+
+function setup(){ pixelDensity(1); createCanvas(windowWidth, windowHeight); frameRate(30); noSmooth(); buildBuffer(); }
+function buildBuffer(){
+  // tapijt-raster: staand, met marge rond het kleed
+  GH = 112; GW = Math.round(GH * 0.66);
+  const m = 0.92;
+  CELL = Math.floor(Math.min(width * m / GW, height * m / GH));
+  CELL = Math.max(2, CELL);
+  OFFX = Math.floor((width  - GW * CELL) / 2);
+  OFFY = Math.floor((height - GH * CELL) / 2);
+  buf = createGraphics(GW, GH);
+  buf.pixelDensity(1);
+  buf.noStroke();
+}
+function windowResized(){ resizeCanvas(windowWidth, windowHeight); buildBuffer(); }
+
+// kies een palet-index voor knoop (x,y); qx,qy zijn de gespiegelde kwadrant-coords
+function knot(x, y, t){
+  // 4-voudige symmetrie
+  const qx = Math.min(x, GW - 1 - x);
+  const qy = Math.min(y, GH - 1 - y);
+  const fx = qx / (GW / 2);   // 0..1 vanaf rand naar midden (horizontaal)
+  const fy = qy / (GH / 2);
+  const edge = Math.min(fx, fy);
+
+  // ---- RANDEN ----
+  if (edge < 0.04) return 6;                 // donkere bies
+  if (edge < 0.10){                          // hoofdrand met lopend motief
+    const run = (Math.floor(qx * 0.5) + Math.floor(qy * 0.5)) % 2;
+    return run === 0 ? 3 : 1;
+  }
+  if (edge < 0.13) return 6;
+  if (edge < 0.155) return 2;                // crème-lijn
+
+  // ---- VELD ----
+  const cx = (x - GW / 2), cy = (y - GH / 2);
+  const r = Math.sqrt(cx * cx + cy * cy);
+  const ang = Math.atan2(cy, cx);
+
+  // centraal medaillon (ster/ruit), traag pulserend
+  const medR = GW * (0.30 + 0.03 * Math.sin(t * 0.6));
+  const petal = 1 + 0.32 * Math.cos(ang * 8 + t * 0.5);
+  if (r < medR * petal){
+    if (r < medR * petal * 0.42) return (Math.floor(r * 0.7 + t * 2) % 2) ? 3 : 2; // hart
+    return (Math.floor(ang / (Math.PI / 8) + t) % 2) ? 1 : 6;
+  }
+
+  // herhalend motief-rooster in het veld (ruiten + haakjes), traag schuivend
+  const gx = 9, gy = 9;
+  const u = ((qx + t * 1.5) % gx) / gx - 0.5;
+  const v = ((qy + t * 1.0) % gy) / gy - 0.5;
+  const dia = Math.abs(u) + Math.abs(v);
+  const motif = noise(Math.floor((qx) / gx) * 0.6, Math.floor((qy) / gy) * 0.6, t * 0.3);
+  if (dia < 0.22) return motif > 0.5 ? 3 : 4;        // ruit-kern
+  if (dia < 0.34) return 6;                          // omlijning
+  if (dia < 0.46) return motif > 0.5 ? 2 : 5;        // ruit-rand
+  return 0;                                          // rode grond
+}
+
+function draw(){
+  const t = millis() * TIME_SCALE;
+  // donkere vloer rondom
+  background(14, 13, 16);
+
+  buf.loadPixels();
+  const hueShift = Math.floor(t * 0.8) % PAL.length;  // heel traag "verschietende" kleuren
+  for (let y = 0; y < GH; y++){
+    for (let x = 0; x < GW; x++){
+      let pi = knot(x, y, t);
+      // subtiele garen-variatie + traag kleurverschuiven
+      const c = PAL[pi];
+      const j = (noise(x * 0.5, y * 0.5) - 0.5) * 14;
+      const k = 4 * (y * GW + x);
+      buf.pixels[k]     = constrain(c[0] + j, 0, 255);
+      buf.pixels[k + 1] = constrain(c[1] + j, 0, 255);
+      buf.pixels[k + 2] = constrain(c[2] + j, 0, 255);
+      buf.pixels[k + 3] = 255;
+    }
+  }
+  buf.updatePixels();
+  // scherp uitvergroten -> geweven knopen
+  image(buf, OFFX, OFFY, GW * CELL, GH * CELL);
+}
+</script>
+</body>
+</html>

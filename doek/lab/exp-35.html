@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v36 — INKT IN WATER. Druppels kleurstof bloeien open en diffunderen op
+// een kleine buffer: het veld wordt elke frame zacht geadvecteerd door een
+// traag noise-stromingsveld en vervaagd, met af en toe een nieuwe druppel.
+// Tendrils krullen en mengen, kleuren bloeden samen tot een zachte wolk.
+const SPEED = 2000; // 1 = uren-traag. Hoog (bv. 2000) om de reis snel te zien.
+const TIME_SCALE = 0.0000007 * SPEED;
+
+let buf;       // accumulatie-buffer (rgb dye)
+const BW = 150;
+let BH;
+let next, cur; // float-velden per kanaal
+let dropTimer = 0;
+
+function setup() {
+  pixelDensity(1);
+  createCanvas(windowWidth, windowHeight);
+  frameRate(30);
+  BH = Math.max(1, Math.round(BW * height / width));
+  buf = createGraphics(BW, BH);
+  buf.pixelDensity(1);
+  cur = new Float32Array(BW * BH * 3);
+  next = new Float32Array(BW * BH * 3);
+}
+
+function injectDrop(t) {
+  const cx = random(BW);
+  const cy = random(BH);
+  const rad = random(5, 12);
+  // kleur uit traag driftend palet
+  const hue = (t * 0.3 + random(0.2)) % 1;
+  const col = paletteColor(hue);
+  const R = Math.ceil(rad);
+  const cyi = Math.floor(cy), cxi = Math.floor(cx);
+  for (let y = Math.max(0, cyi - R); y < Math.min(BH, cyi + R); y++) {
+    for (let x = Math.max(0, cxi - R); x < Math.min(BW, cxi + R); x++) {
+      const d = Math.hypot(x - cx, y - cy);
+      if (d < rad) {
+        const f = (1 - d / rad);
+        const i = (x + y * BW) * 3;
+        cur[i]     += col[0] * f;
+        cur[i + 1] += col[1] * f;
+        cur[i + 2] += col[2] * f;
+      }
+    }
+  }
+}
+
+function paletteColor(hue) {
+  // diep inkt-palet: indigo -> magenta -> cyaan -> oker
+  const stops = [
+    [40, 30, 130],
+    [200, 40, 140],
+    [30, 150, 170],
+    [180, 130, 50]
+  ];
+  const n = stops.length;
+  const p = hue * n;
+  const i0 = Math.floor(p) % n;
+  const i1 = (i0 + 1) % n;
+  const f = p - Math.floor(p);
+  return [
+    stops[i0][0] + (stops[i1][0] - stops[i0][0]) * f,
+    stops[i0][1] + (stops[i1][1] - stops[i0][1]) * f,
+    stops[i0][2] + (stops[i1][2] - stops[i0][2]) * f
+  ];
+}
+
+function sample(field, x, y, c) {
+  // bilineaire sampling met clamp
+  if (x < 0) x = 0; if (x > BW - 1) x = BW - 1;
+  if (y < 0) y = 0; if (y > BH - 1) y = BH - 1;
+  const x0 = Math.floor(x), y0 = Math.floor(y);
+  const x1 = Math.min(BW - 1, x0 + 1), y1 = Math.min(BH - 1, y0 + 1);
+  const fx = x - x0, fy = y - y0;
+  const i00 = (x0 + y0 * BW) * 3 + c;
+  const i10 = (x1 + y0 * BW) * 3 + c;
+  const i01 = (x0 + y1 * BW) * 3 + c;
+  const i11 = (x1 + y1 * BW) * 3 + c;
+  const a = field[i00] + (field[i10] - field[i00]) * fx;
+  const b = field[i01] + (field[i11] - field[i01]) * fx;
+  return a + (b - a) * fy;
+}
+
+function draw() {
+  const t = millis() * TIME_SCALE;
+  const flowT = millis() * 0.00004; // kalme constante stroming
+
+  // af en toe een nieuwe druppel
+  dropTimer--;
+  if (dropTimer <= 0) {
+    injectDrop(t);
+    dropTimer = Math.round(random(8, 18));
+  }
+
+  // advectie + diffusie -> next
+  for (let y = 0; y < BH; y++) {
+    for (let x = 0; x < BW; x++) {
+      // stromingsveld uit noise (krullende tendrils)
+      const a = noise(x * 0.03, y * 0.03, flowT) * Math.PI * 4;
+      const vx = Math.cos(a) * 0.8;
+      const vy = Math.sin(a) * 0.8 - 0.15; // lichte opwaartse drift
+      const sx = x - vx;
+      const sy = y - vy;
+      const i = (x + y * BW) * 3;
+      for (let c = 0; c < 3; c++) {
+        // geadvecteerde waarde + buur-gemiddelde voor diffusie
+        const adv = sample(cur, sx, sy, c);
+        const xl = sample(cur, x - 1, y, c);
+        const xr = sample(cur, x + 1, y, c);
+        const yu = sample(cur, x, y - 1, c);
+        const yd = sample(cur, x, y + 1, c);
+        const diff = (xl + xr + yu + yd) * 0.25;
+        let v = adv * 0.82 + diff * 0.18;
+        v *= 0.997; // hele zachte fade, nooit hard wissen
+        next[i + c] = v;
+      }
+    }
+  }
+  // swap
+  const tmp = cur; cur = next; next = tmp;
+
+  // naar buffer
+  buf.loadPixels();
+  for (let p = 0; p < BW * BH; p++) {
+    const i = p * 3;
+    const idx = p * 4;
+    buf.pixels[idx]     = Math.min(255, 4 + cur[i] * 1.7);
+    buf.pixels[idx + 1] = Math.min(255, 6 + cur[i + 1] * 1.7);
+    buf.pixels[idx + 2] = Math.min(255, 10 + cur[i + 2] * 1.7);
+    buf.pixels[idx + 3] = 255;
+  }
+  buf.updatePixels();
+
+  noSmooth();
+  image(buf, 0, 0, width, height);
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  BH = Math.max(1, Math.round(BW * height / width));
+  buf = createGraphics(BW, BH);
+  buf.pixelDensity(1);
+  cur = new Float32Array(BW * BH * 3);
+  next = new Float32Array(BW * BH * 3);
+}
+</script>
+</body>
+</html>

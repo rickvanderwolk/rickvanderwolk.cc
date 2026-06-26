@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v51 — ADEMHALING (ademhaling).
+// Het hele doek ademt langzaam in en uit: een rustige globale zwelling
+// en ontspanning, velden die uitzetten en krimpen, helderheid die rijst
+// en daalt als adem. Sereen, meditatief, heel traag. Een stil ritme.
+
+const SPEED = 2000; // 1 = uren-traag. Hoog (bv. 2000) om de reis snel te zien.
+const TIME_SCALE = 0.0000007 * SPEED;
+
+let buf;
+let BW, BH;
+
+function buildBuffer() {
+  BW = 150;
+  BH = Math.max(40, Math.round(BW * windowHeight / windowWidth));
+  buf = createImage(BW, BH);
+}
+
+function setup() {
+  pixelDensity(1);
+  createCanvas(windowWidth, windowHeight);
+  frameRate(30);
+  noSmooth();
+  buildBuffer();
+}
+
+function draw() {
+  let t = millis() * TIME_SCALE;        // trage drift van het veld
+  // een enkele, kalme ademhaling — langzame in/uit cyclus
+  let breathPhase = frameCount * 0.0125; // ~8 sec per ademhaling bij 30fps
+  // zachte, longachtige curve: trager uitademen dan inademen
+  let raw = Math.sin(breathPhase);
+  let breath = 0.5 + 0.5 * Math.sin(breathPhase + 0.35 * raw);
+
+  // adem stuurt schaal (in/uit zetten) en helderheid (rijzen/dalen)
+  let scale = 1.18 - 0.30 * breath;     // veld zet uit bij inademen
+  let bright = 0.62 + 0.30 * breath;    // helderheid rijst met de adem
+  // langzaam wandelend palet-midden
+  let hue = 0.5 + 0.5 * Math.sin(t * 0.4);
+
+  buf.loadPixels();
+  for (let y = 0; y < BH; y++) {
+    let ny = (y / BH - 0.5);
+    for (let x = 0; x < BW; x++) {
+      let nx = (x / BW - 0.5);
+
+      // veld zet uit/krimpt rond het midden met de adem
+      let sx = nx * scale;
+      let sy = ny * scale;
+      let rad = Math.sqrt(sx * sx + sy * sy);
+
+      // zacht ademend veld uit trage noise
+      let field = noise(sx * 2.0 + 5, sy * 2.0 + 5, t * 0.6);
+      // globale radiale zwelling: een ademende koepel van licht
+      let dome = Math.cos(Math.min(1, rad * 1.6) * Math.PI * 0.5);
+      dome = Math.max(0, dome);
+
+      let v = (0.45 + 0.55 * field) * (0.4 + 0.6 * dome) * bright;
+      v = Math.max(0, Math.min(1, v));
+
+      // sereen, koel-warm palet: diepblauw -> zacht teal -> warm crème
+      let r = 14 + 200 * Math.pow(v, 1.2) * (0.6 + 0.4 * hue);
+      let g = 20 + 190 * Math.pow(v, 1.1);
+      let b = 38 + 150 * Math.pow(v, 1.0) * (1.1 - 0.4 * hue);
+
+      let p = (y * BW + x) * 4;
+      buf.pixels[p] = r;
+      buf.pixels[p + 1] = g;
+      buf.pixels[p + 2] = b;
+      buf.pixels[p + 3] = 255;
+    }
+  }
+  buf.updatePixels();
+  image(buf, 0, 0, width, height);
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  buildBuffer();
+}
+</script>
+</body>
+</html>

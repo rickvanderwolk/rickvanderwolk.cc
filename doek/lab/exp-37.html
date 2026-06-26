@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v38 — FIRE / FLAME FIELD.
+// Een klassiek vuur-effect: een hittebuffer stijgt op en koelt af,
+// gemapt door zwart->rood->oranje->geel->wit. Flikkert en likt eeuwig omhoog.
+
+const SPEED = 2000; // 1 = uren-traag. Hoog (bv. 2000) om de reis snel te zien.
+const TIME_SCALE = 0.0000007 * SPEED;
+
+let buf;            // offscreen hittebuffer beeld
+let BW, BH;         // buffer breedte/hoogte
+let heat;           // Float32Array van hittewaarden
+let pal;            // palet lookup (256 kleuren)
+
+function buildBuffer() {
+  BW = 150;
+  BH = Math.max(40, Math.round(BW * windowHeight / windowWidth));
+  buf = createImage(BW, BH);
+  heat = new Float32Array(BW * BH);
+}
+
+function buildPalette() {
+  // 256-stappen palet: zwart -> rood -> oranje -> geel -> wit
+  pal = new Uint8Array(256 * 3);
+  for (let i = 0; i < 256; i++) {
+    let t = i / 255;
+    let r, g, b;
+    if (t < 0.25) { let u = t / 0.25; r = 60 * u; g = 0; b = 0; }
+    else if (t < 0.5) { let u = (t - 0.25) / 0.25; r = 60 + 195 * u; g = 30 * u; b = 0; }
+    else if (t < 0.75) { let u = (t - 0.5) / 0.25; r = 255; g = 30 + 165 * u; b = 0; }
+    else { let u = (t - 0.75) / 0.25; r = 255; g = 195 + 60 * u; b = 255 * u; }
+    pal[i * 3] = r; pal[i * 3 + 1] = g; pal[i * 3 + 2] = b;
+  }
+}
+
+function setup() {
+  pixelDensity(1);
+  createCanvas(windowWidth, windowHeight);
+  frameRate(30);
+  noSmooth();
+  buildPalette();
+  buildBuffer();
+}
+
+function draw() {
+  let t = millis() * TIME_SCALE;
+  // langzame drift van vuur-intensiteit en kleurschuif
+  let intensity = 0.75 + 0.25 * Math.sin(t * 0.9);
+  let hueShift = 0.06 * Math.sin(t * 0.55);
+
+  // 1) zaai onderste rij met flikkerende hitte
+  let base = (frameCount * 0.18);
+  for (let x = 0; x < BW; x++) {
+    let n = noise(x * 0.08, base);
+    let spark = random() < 0.55 ? 1 : 0.4;
+    let h = (0.55 + 0.45 * n) * spark * intensity;
+    heat[(BH - 1) * BW + x] = h;
+    // extra hete plekken die langzaam over de breedte schuiven
+    let cx = (0.5 + 0.4 * Math.sin(t * 1.3 + x)) * BW;
+    if (Math.abs(x - cx) < 6) heat[(BH - 1) * BW + x] = Math.min(1.2, h + 0.4);
+  }
+
+  // 2) propageer omhoog met afkoeling (gemiddelde van buren onder)
+  for (let y = 0; y < BH - 1; y++) {
+    let row = y * BW;
+    let below = (y + 1) * BW;
+    for (let x = 0; x < BW; x++) {
+      let l = x > 0 ? x - 1 : x;
+      let r = x < BW - 1 ? x + 1 : x;
+      let sum = heat[below + l] + heat[below + x] + heat[below + r] + heat[(y + 1 < BH - 1 ? below + BW + x : below + x)];
+      let avg = sum / 4;
+      // afkoeling neemt toe naar boven
+      let cool = 0.012 + 0.02 * (1 - y / BH);
+      heat[row + x] = Math.max(0, avg - cool);
+    }
+  }
+
+  // 3) schrijf naar buffer via palet
+  buf.loadPixels();
+  for (let y = 0; y < BH; y++) {
+    for (let x = 0; x < BW; x++) {
+      let h = heat[y * BW + x] + hueShift;
+      let idx = Math.max(0, Math.min(255, Math.floor(h * 255)));
+      let p = (y * BW + x) * 4;
+      buf.pixels[p] = pal[idx * 3];
+      buf.pixels[p + 1] = pal[idx * 3 + 1];
+      buf.pixels[p + 2] = pal[idx * 3 + 2];
+      buf.pixels[p + 3] = 255;
+    }
+  }
+  buf.updatePixels();
+
+  image(buf, 0, 0, width, height);
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  buildBuffer();
+}
+</script>
+</body>
+</html>

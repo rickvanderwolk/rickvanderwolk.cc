@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v70 — SCHEVE SYMMETRIE. Bijna perfecte spiegeling die subtiel, fout
+// gebroken is en traag verder uit lijn drijft, dan bijna weer samenvalt. De
+// ene helft wordt licht verschoven en vervormd t.o.v. de andere -> de uncanny
+// valley van patroon: je verwacht symmetrie maar krijgt hem net niet.
+
+const SPEED = 2000; // 1 = uren-traag. Hoog (bv. 2000) om de reis snel te zien.
+const TIME_SCALE = 0.0000007 * SPEED;
+
+let img, BW, BH;
+
+function setup() {
+  pixelDensity(1);
+  createCanvas(windowWidth, windowHeight);
+  frameRate(30);
+  buildBuffer();
+}
+
+function buildBuffer() {
+  BW = 150;
+  BH = Math.max(1, Math.floor(BW * windowHeight / windowWidth));
+  img = createImage(BW, BH);
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  buildBuffer();
+}
+
+// onderliggend driftend veld
+function pattern(x, y, t) {
+  let n = noise(x * 2.2, y * 2.2, t * 0.6);
+  n += 0.5 * noise(x * 5.5 + 4.0, y * 5.5, t * 0.9);
+  n += 0.25 * noise(x * 11.0, y * 11.0, t * 1.2);
+  return n / 1.75;
+}
+
+function draw() {
+  const slow = millis() * TIME_SCALE;
+  const t = frameCount * 0.004;
+
+  // de "fout": misalignment groeit en krimpt langzaam (drift weg, bijna terug)
+  const breath = Math.sin(slow * 0.5);
+  const offX = breath * 0.06;                 // horizontale verschuiving van rechterhelft
+  const offY = 0.02 * Math.sin(slow * 0.37);  // verticale slip
+  const warp = 0.04 + 0.05 * (0.5 + 0.5 * Math.sin(slow * 0.43)); // vervorming rechterhelft
+  const skew = 0.03 * Math.sin(slow * 0.29);  // scheefheid
+
+  // palet drift, koel en klinisch
+  const baseR = 90 + 60 * Math.sin(slow * 0.6);
+  const baseG = 100 + 40 * Math.sin(slow * 0.8 + 1.5);
+  const baseB = 120 + 60 * Math.sin(slow * 0.5 + 3.0);
+
+  img.loadPixels();
+  const px = img.pixels;
+  const halfU = 0.5;
+
+  for (let j = 0; j < BH; j++) {
+    const v = j / BH;
+    for (let i = 0; i < BW; i++) {
+      let u = i / BW;
+      let val;
+      if (u <= halfU) {
+        // linkerhelft: het "origineel"
+        val = pattern(u, v, t);
+      } else {
+        // rechterhelft: gespiegeld maar net fout uitgelijnd + vervormd
+        let mu = 1.0 - u;              // spiegel
+        mu += offX;                    // schuif
+        let mv = v + offY + skew * (u - 0.5);
+        // lokale warp zodat het patroon "ademt" weg van symmetrie
+        mu += warp * (noise(mu * 6.0, mv * 6.0, slow * 0.5) - 0.5);
+        mv += warp * (noise(mu * 6.0 + 9.0, mv * 6.0, slow * 0.5) - 0.5);
+        val = pattern(mu, mv, t);
+      }
+
+      // reliefachtige schaduw zodat de breuk voelbaar is
+      const sh = 0.35 + 0.65 * val;
+      const idx = (i + j * BW) * 4;
+      px[idx]   = constrain(baseR * sh, 0, 255);
+      px[idx+1] = constrain(baseG * sh, 0, 255);
+      px[idx+2] = constrain(baseB * sh, 0, 255);
+      px[idx+3] = 255;
+    }
+  }
+  img.updatePixels();
+
+  noSmooth();
+  image(img, 0, 0, width, height);
+}
+</script>
+</body>
+</html>

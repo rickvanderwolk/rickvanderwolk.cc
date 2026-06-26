@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v52 — ENTROPIE (entropie).
+// Orde lost op in ruis: een gestructureerd patroon van banden brokkelt
+// heel langzaam af tot statische wanorde, en hercoaguleert dan zwakjes
+// elders. De trage warmtedood en herzaaiing van structuur.
+
+const SPEED = 2000; // 1 = uren-traag. Hoog (bv. 2000) om de reis snel te zien.
+const TIME_SCALE = 0.0000007 * SPEED;
+
+let buf;
+let BW, BH;
+
+function buildBuffer() {
+  BW = 150;
+  BH = Math.max(40, Math.round(BW * windowHeight / windowWidth));
+  buf = createImage(BW, BH);
+}
+
+function setup() {
+  pixelDensity(1);
+  createCanvas(windowWidth, windowHeight);
+  frameRate(30);
+  noSmooth();
+  buildBuffer();
+}
+
+function draw() {
+  let t = millis() * TIME_SCALE;        // trage drift
+  let flow = frameCount * 0.012;         // kalme constante beweging
+
+  // entropie ademt langzaam op en neer: orde -> wanorde -> orde
+  let entropy = 0.5 + 0.5 * Math.sin(t * 0.7);   // 0 = orde, 1 = chaos
+  // de orde verschuift langzaam van plek (her-zaaiing elders)
+  let seedX = noise(t * 0.4) - 0.5;
+  let seedY = noise(t * 0.4 + 50) - 0.5;
+  // de structuur draait heel traag
+  let ang = t * 0.5;
+  let ca = Math.cos(ang), sa = Math.sin(ang);
+
+  buf.loadPixels();
+  for (let y = 0; y < BH; y++) {
+    let ny = y / BH - 0.5;
+    for (let x = 0; x < BW; x++) {
+      let nx = x / BW - 0.5;
+
+      // geroteerde coördinaten rond het verschuivende zaaipunt
+      let ox = nx - seedX, oy = ny - seedY;
+      let rx = ox * ca - oy * sa;
+
+      // geordende banden (de structuur)
+      let band = 0.5 + 0.5 * Math.sin(rx * 26.0 + flow * 2.0);
+      // sterke orde = harde, crispe banden
+      band = Math.pow(band, 1.5);
+
+      // ruis/statisch: lokale wanorde
+      let stat = noise(nx * 60 + flow * 5, ny * 60, t * 4.0);
+      stat = stat * 0.5 + random(0.0, 0.5);   // p5 random voor korrelige ruis
+
+      // orde valt sterker uit naar de randen / vroeger bij hoge entropie
+      let cx = nx - seedX, cy = ny - seedY;
+      let rad = Math.sqrt(cx * cx + cy * cy);
+      let local = Math.max(0, Math.min(1, entropy + (rad - 0.3) * 0.8));
+
+      // meng orde en ruis volgens lokale entropie
+      let v = band * (1 - local) + stat * local;
+      v = Math.max(0, Math.min(1, v));
+
+      // koel, asgrijs palet met een zwakke warme gloed waar orde overleeft
+      let order = 1 - local;
+      let r = 18 + 200 * v + 30 * order * v;
+      let g = 20 + 190 * v + 10 * order * v;
+      let b = 26 + 185 * v;
+
+      let p = (y * BW + x) * 4;
+      buf.pixels[p] = r;
+      buf.pixels[p + 1] = g;
+      buf.pixels[p + 2] = b;
+      buf.pixels[p + 3] = 255;
+    }
+  }
+  buf.updatePixels();
+  image(buf, 0, 0, width, height);
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  buildBuffer();
+}
+</script>
+</body>
+</html>

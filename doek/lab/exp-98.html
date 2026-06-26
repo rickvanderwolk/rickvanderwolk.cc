@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v99 — ABSTRACTE LICHTJES (schoon, geen gloed). Clusters scherpe
+// lichtpuntjes die rustig aan en uit gaan tegen een diepe gradient -- geen waas
+// of bloom eromheen. Suggestie van een skyline; het veld drift heel traag en de
+// lampjes toggelen op een kalm echt-tijd tempo.
+
+const SPEED = 2000; // 1 = uren-traag. Hoog (bv. 2000) om de reis snel te zien.
+const TIME_SCALE = 0.0000007 * SPEED;
+
+let lights = [], stars = [], baseY = 0;
+
+const LIGHTS = [
+  [255,198,134],[255,178,100],[255,224,180],[255,208,152],
+  [156,200,255],[184,255,226]
+];
+function pickLight(){ const i = random() < 0.82 ? Math.floor(random(4)) : 4 + Math.floor(random(2)); return LIGHTS[i]; }
+const sstep = (e0, e1, x) => { let v = (x - e0) / (e1 - e0); v = v < 0 ? 0 : v > 1 ? 1 : v; return v * v * (3 - 2 * v); };
+
+function setup(){ pixelDensity(1); createCanvas(windowWidth, windowHeight); frameRate(30); genField(); }
+function windowResized(){ resizeCanvas(windowWidth, windowHeight); genField(); }
+
+function genField(){
+  lights = []; stars = [];
+  baseY = Math.floor(height * 0.72);
+  let x = -random(0, 60);
+  while (x < width + 40){
+    const cw = random(width * 0.03, width * 0.085);
+    const ch = height * random(0.14, 0.6);
+    const top = baseY - ch;
+    const cell = constrain(cw * 0.2, 9, 20);
+    const cols = Math.max(1, Math.floor(cw / cell));
+    const rows = Math.max(1, Math.floor(ch / cell));
+    for (let r = 0; r < rows; r++){
+      for (let ci = 0; ci < cols; ci++){
+        if (random() < 0.30) continue;
+        const jx = (random() - 0.5) * cell * 0.4;
+        const jy = (random() - 0.5) * cell * 0.4;
+        const rad = cell * random(0.16, 0.26);
+        lights.push({
+          x: x + ci * cell + jx, y: top + r * cell + jy,
+          r: Math.max(1.5, rad), col: pickLight(), seed: random(1000),
+          thr: random(0.40, 0.74), dim: random(0.7, 1)
+        });
+      }
+    }
+    x += cw * random(0.5, 0.85);
+  }
+  for (let i = 0; i < 80; i++) stars.push({ x: random(width), y: random(baseY * 0.7), s: random(0.6, 1.6), tw: random(1000) });
+}
+
+function draw(){
+  const t = millis() * TIME_SCALE;
+
+  // diepe gradient (geen harde horizon)
+  const warm = noise(7, t * 0.3);
+  const topC = [12, 14, 32], botC = [lerp(30, 52, warm), lerp(24, 32, warm), lerp(44, 54, warm)];
+  noStroke();
+  for (let y = 0; y < height; y += 2){
+    const f = y / height;
+    fill(lerp(topC[0], botC[0], f * f), lerp(topC[1], botC[1], f * f), lerp(topC[2], botC[2], f * f));
+    rect(0, y, width, 2);
+  }
+  for (const s of stars){
+    const tw = 0.4 + 0.6 * noise(s.tw, frameCount * 0.02);
+    fill(210, 218, 235, 180 * tw);
+    rect(s.x, s.y, s.s, s.s);
+  }
+
+  const dx = Math.sin(frameCount * 0.004) * 8 + Math.sin(t) * 4;
+
+  for (const w of lights){
+    const v = noise(w.seed, frameCount * 0.005 + t * 0.3);
+    let on = sstep(w.thr - 0.06, w.thr + 0.06, v);
+    if (on >= 0.02) on *= (0.85 + 0.15 * noise(w.seed + 9, frameCount * 0.12)) * w.dim; else on = 0;
+    if (on <= 0) continue;
+    const c = w.col, wx = w.x + dx;
+    // schoon, scherp lichtpuntje -- geen gloed
+    fill(c[0], c[1], c[2], 255 * on);
+    ellipse(wx, w.y, w.r * 1.7, w.r * 1.7);
+    // heel zwakke, scherpe spiegeling (geen waas)
+    const ry = baseY + (baseY - w.y) * 0.6;
+    if (ry < height){ fill(c[0], c[1], c[2], 50 * on); ellipse(wx, ry, w.r * 1.4, w.r * 1.7); }
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v9 — AQUAREL. Compleet andere richting dan v0..v8.
+//
+// Geen donkere chiaroscuro met penseelstreken, maar natte wassingen op LICHT
+// papier. Elke wassing is een doorzichtige, onregelmatig gerande plas pigment
+// die in MULTIPLY over de vorige zakt -> kleuren bloeden door elkaar zoals
+// echte aquarel. De rand van een plas is iets donkerder/verzadigder (het
+// "watercolor edge"-effect waar pigment naar de buitenkant trekt).
+//
+// Het palet drift heel traag over de uren, dus verse plassen wijken steeds
+// een tikje af. Zo nu en dan trekt een lichte papier-veil heel zacht over het
+// doek, zodat het niet dichtslibt tot modder maar blijft ademen.
+//
+// Puur additief, harmonieus, uren-traag. Niets om te bedienen.
+
+const SPEED      = 1;                 // 1 = uren-traag. Hoog (bv. 2000) om snel te zien.
+const TIME_SCALE = 0.0000006 * SPEED;
+
+let buf;          // never-cleared papier-buffer waar de plassen op stapelen
+let paperHue;     // basis-tint van het palet (drift hiervandaan)
+
+function setup() {
+  pixelDensity(1);
+  createCanvas(windowWidth, windowHeight);
+  frameRate(30);
+  colorMode(HSL, 360, 100, 100, 1);
+  paperHue = random(360);
+
+  buf = createGraphics(windowWidth, windowHeight);
+  buf.colorMode(HSL, 360, 100, 100, 1);
+  buf.noStroke();
+  paintPaper();
+}
+
+function paintPaper() {
+  buf.blendMode(BLEND);
+  buf.background(40, 16, 95);   // warm, licht aquarelpapier
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  buf.resizeCanvas(windowWidth, windowHeight);
+  paintPaper();
+}
+
+const lerp1 = (a, b, t) => a + (b - a) * t;
+
+// Eén onregelmatige plas pigment, in MULTIPLY zodat ze door elkaar bloeden.
+function layWash(cx, cy, r, h, s, l, alpha) {
+  buf.blendMode(MULTIPLY);
+  const sides = 26;
+  const seed  = random(1000);
+  // body
+  buf.fill(h, s, l, alpha);
+  ringPolygon(cx, cy, r, sides, seed, 0.28);
+  // iets kleinere, vollere kern
+  buf.fill(h, constrain(s + 8, 0, 100), constrain(l - 4, 0, 100), alpha * 0.7);
+  ringPolygon(cx, cy, r * 0.62, sides, seed + 5, 0.22);
+  // donkerder/verzadigder randaccent -> watercolor edge
+  buf.fill(h, constrain(s + 18, 0, 100), constrain(l - 12, 0, 100), alpha * 0.5);
+  ringPolygon(cx, cy, r * 1.02, sides, seed + 11, 0.34, true);
+}
+
+// Gesloten, met noise vervormde veelhoek. ring=true tekent een dunne band.
+function ringPolygon(cx, cy, r, sides, seed, wobble, ring) {
+  const inner = ring ? 0.88 : 0;
+  buf.beginShape();
+  for (let i = 0; i <= sides; i++) {
+    const a  = (i / sides) * TWO_PI;
+    const rr = r * (1 + (noise(seed + Math.cos(a) * 1.3, seed + Math.sin(a) * 1.3) - 0.5) * 2 * wobble);
+    buf.vertex(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr);
+  }
+  if (ring) {
+    for (let i = sides; i >= 0; i--) {
+      const a  = (i / sides) * TWO_PI;
+      const rr = r * inner * (1 + (noise(seed + Math.cos(a) * 1.3, seed + Math.sin(a) * 1.3) - 0.5) * 2 * wobble);
+      buf.vertex(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr);
+    }
+  }
+  buf.endShape(CLOSE);
+}
+
+function draw() {
+  const t = millis() * TIME_SCALE;
+  const drift = (k, seed) => noise(seed, t * k);
+
+  // traag driftend palet
+  const hueCenter = (paperHue + t * 26) % 360;
+  const hueSpread = lerp1(20, 120, drift(0.4, 11));
+  const satLevel  = lerp1(42, 78,  drift(0.5, 23));
+  const lightLvl  = lerp1(48, 72,  drift(0.3, 37));
+  const sizeBase  = lerp1(0.10, 0.34, drift(0.35, 51)); // plas-grootte t.o.v. scherm
+
+  // regelmatig een nieuwe plas -> de wassingen bouwen zichtbaar op
+  if (random() < 0.06) {
+    const cx = random(width);
+    const cy = random(height);
+    const r  = min(width, height) * sizeBase * random(0.5, 1.5);
+    const h  = (hueCenter + (random() - 0.5) * hueSpread + 360) % 360;
+    const s  = constrain(satLevel + random(-10, 10), 0, 100);
+    const l  = constrain(lightLvl + random(-8, 8), 0, 100);
+    layWash(cx, cy, r, h, s, l, random(0.12, 0.26));
+  }
+
+  // heel zelden een lichte papier-veil zodat het doek blijft ademen
+  if (random() < 0.0018) {
+    buf.blendMode(BLEND);
+    buf.fill(40, 14, 95, 0.06);
+    buf.rect(0, 0, width, height);
+  }
+
+  image(buf, 0, 0);
+}
+</script>
+</body>
+</html>

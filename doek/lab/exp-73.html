@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v74 — FOCUS-PULL (scherptediepte). Een zacht kleurveld dat traag
+// racet tussen vlijmscherp en diep onscherp: detail komt op en smelt weg,
+// als een lens die naar focus zoekt. De blur ademt over tijd.
+
+const SPEED = 2000; // 1 = uren-traag. Hoog (bv. 2000) om de reis snel te zien.
+const TIME_SCALE = 0.0000007 * SPEED;
+
+let buf;          // scherp kleurveld op lage resolutie
+const BW = 220;   // bufferbreedte
+let blobs = [];
+const N = 14;
+
+function makeBuf() {
+  const h = Math.max(2, Math.floor(BW * windowHeight / windowWidth));
+  buf = createGraphics(BW, h);
+  buf.pixelDensity(1);
+  buf.noStroke();
+}
+
+function setup() {
+  pixelDensity(1);
+  createCanvas(windowWidth, windowHeight);
+  frameRate(30);
+  makeBuf();
+  for (let i = 0; i < N; i++) {
+    blobs.push({
+      x: random(1), y: random(1),
+      r: random(0.18, 0.5),
+      sp: random(0.0008, 0.0026),
+      dir: random(TWO_PI),
+      ph: random(TWO_PI),
+      hueOff: random(1)
+    });
+  }
+}
+
+function draw() {
+  const t = frameCount * 0.004;
+  const slow = millis() * TIME_SCALE;
+
+  // teken het scherpe kleurveld in de buffer
+  buf.push();
+  buf.blendMode(BLEND);
+  buf.background(6, 8, 16);
+  buf.blendMode(SCREEN);
+  for (let i = 0; i < N; i++) {
+    const b = blobs[i];
+    const dx = cos(b.dir) * (t * b.sp * 50) + sin(t * 0.3 + b.ph) * 0.06;
+    const dy = sin(b.dir) * (t * b.sp * 50) + cos(t * 0.27 + b.ph) * 0.06;
+    let xx = ((b.x + dx) % 1.2 + 1.2) % 1.2 - 0.1;
+    let yy = ((b.y + dy) % 1.2 + 1.2) % 1.2 - 0.1;
+    const hue = (slow * 30 + b.hueOff * 360 + sin(t * 0.2 + b.ph) * 40) % 360;
+    const col = hsl(hue, 65, 55);
+    const rad = b.r * buf.width * (0.85 + 0.2 * sin(t * 0.4 + b.ph));
+    drawSoft(buf, xx * buf.width, yy * buf.height, rad, col, 0.5);
+  }
+  buf.pop();
+
+  // focus-pull: blur ademt traag tussen 0 (scherp) en ~14px (diep onscherp)
+  const focus = 0.5 - 0.5 * cos(slow * 9 + frameCount * 0.0009);
+  const blurPx = focus * 14;
+
+  background(0);
+  drawingContext.filter = 'blur(' + blurPx.toFixed(2) + 'px)';
+  imageMode(CORNER);
+  image(buf, 0, 0, width, height);
+  drawingContext.filter = 'none';
+}
+
+function drawSoft(g, cx, cy, r, col, a) {
+  const ctx = g.drawingContext;
+  const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+  grad.addColorStop(0, 'rgba(' + col[0] + ',' + col[1] + ',' + col[2] + ',' + a + ')');
+  grad.addColorStop(0.6, 'rgba(' + col[0] + ',' + col[1] + ',' + col[2] + ',' + (a * 0.35) + ')');
+  grad.addColorStop(1, 'rgba(' + col[0] + ',' + col[1] + ',' + col[2] + ',0)');
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function hsl(h, s, l) {
+  s /= 100; l /= 100;
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const hp = (((h % 360) + 360) % 360) / 60;
+  const x = c * (1 - Math.abs(hp % 2 - 1));
+  let r = 0, g = 0, b = 0;
+  if (hp < 1) { r = c; g = x; }
+  else if (hp < 2) { r = x; g = c; }
+  else if (hp < 3) { g = c; b = x; }
+  else if (hp < 4) { g = x; b = c; }
+  else if (hp < 5) { r = x; b = c; }
+  else { r = c; b = x; }
+  const m = l - c / 2;
+  return [Math.round((r + m) * 255), Math.round((g + m) * 255), Math.round((b + m) * 255)];
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  makeBuf();
+}
+</script>
+</body>
+</html>

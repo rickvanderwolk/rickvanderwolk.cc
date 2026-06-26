@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v90 — CONFETTI. Variabele blok-mozaiek (zelfde techniek als v86), bron =
+// een wemelend veld van veel kleine vormpjes (stippen en streepjes) in een fel,
+// gekozen palet. Fijn gelezen = ruisige textuur, grof gelezen = grote kleurvlakken.
+
+const SPEED = 2000; // 1 = uren-traag. Hoog (bv. 2000) om de reis snel te zien.
+const TIME_SCALE = 0.0000007 * SPEED;
+
+const PAL = [[235,64,98],[64,196,210],[250,196,72],[150,96,200],[244,244,236],[40,180,140]];
+const BG  = [22,24,34];
+const minB = 2, maxB = 92;
+
+let src;
+function setup(){ pixelDensity(1); createCanvas(windowWidth, windowHeight); frameRate(30); noSmooth(); buildSource(); }
+function buildSource(){ src = createGraphics(windowWidth, windowHeight); src.pixelDensity(1); src.noSmooth(); }
+function windowResized(){ resizeCanvas(windowWidth, windowHeight); buildSource(); }
+
+function paintSource(t){
+  const g = src; g.push(); g.noStroke();
+  g.background(BG[0], BG[1], BG[2]);
+  const N = 150;
+  for (let i = 0; i < N; i++){
+    // langzaam driftende positie per stukje
+    const sx = (noise(i * 0.7, frameCount * 0.005) * 1.2 - 0.1) * g.width;
+    const sy = (noise(i * 0.7 + 33, frameCount * 0.005) * 1.2 - 0.1) * g.height;
+    const sz = g.width * (0.012 + 0.03 * noise(i * 1.1 + 9));
+    const c = PAL[i % PAL.length];
+    g.fill(c[0], c[1], c[2]);
+    g.push();
+    g.translate(sx, sy);
+    g.rotate(noise(i + 5, frameCount * 0.006) * TWO_PI * 2);
+    if (i % 2 === 0) g.ellipse(0, 0, sz, sz);
+    else { g.rectMode(CENTER); g.rect(0, 0, sz * 2.4, sz * 0.7); }
+    g.pop();
+  }
+  g.pop();
+}
+
+function draw(){
+  const t = millis() * TIME_SCALE;
+  paintSource(t);
+  src.loadPixels();
+
+  const ang = frameCount * 0.003 + t * 0.4;
+  const nx = Math.cos(ang), ny = Math.sin(ang);
+  const cx0 = width / 2, cy0 = height / 2;
+  const diag = Math.sqrt(width * width + height * height);
+  const shift = 0.5 + 0.5 * Math.sin(frameCount * 0.006 + t);
+
+  const sp = src.pixels, sw = src.width, shh = src.height;
+  noStroke();
+  let by = 0;
+  while (by < height){
+    let bx = 0;
+    while (bx < width){
+      let p = ((bx - cx0) * nx + (by - cy0) * ny) / diag + 0.5;
+      p = constrain(p + (shift - 0.5) * 0.6, 0, 1);
+      const B = Math.max(1, Math.floor(minB + p * p * (maxB - minB)));
+      const cx = Math.min(sw - 1, Math.floor(bx + B / 2));
+      const cy = Math.min(shh - 1, Math.floor(by + B / 2));
+      const idx = 4 * (cy * sw + cx);
+      fill(sp[idx], sp[idx + 1], sp[idx + 2]);
+      rect(bx, by, B, B);
+      bx += B;
+    }
+    let pe = ((0 - cx0) * nx + (by - cy0) * ny) / diag + 0.5;
+    pe = constrain(pe + (shift - 0.5) * 0.6, 0, 1);
+    by += Math.max(1, Math.floor(minB + pe * pe * (maxB - minB)));
+  }
+}
+</script>
+</body>
+</html>

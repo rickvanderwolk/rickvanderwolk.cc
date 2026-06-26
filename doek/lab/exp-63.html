@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v64 — een BEELD verborgen IN de ruis.
+//
+// Er is altijd een beeld aanwezig, maar het zit diep onder de statische korrel.
+// Je ziet het nooit helemaal: per pixel flikkert de sluier open en dicht, dus
+// je vángt het beeld in glimpen op -- een gezicht in de mist, een vorm die er
+// wel en niet is. Het verborgen beeld morft heel traag, dus wat je meent te
+// zien blijft veranderen. Korrel leeft elk frame; beeld drift traag (SPEED).
+
+const SPEED      = 2000;             // 1 = uren-traag. Hoog (bv. 2000) om de reis snel te zien.
+const TIME_SCALE = 0.0000007 * SPEED;
+const TAU = Math.PI * 2;
+
+let buf, BW, BH;
+
+function buildBuffer() {
+  BW = 150;
+  BH = Math.max(40, Math.round(BW * windowHeight / windowWidth));
+  buf = createImage(BW, BH);
+}
+function setup() {
+  pixelDensity(1);
+  createCanvas(windowWidth, windowHeight);
+  frameRate(30);
+  noSmooth();
+  noiseDetail(4, 0.5);
+  buildBuffer();
+}
+function windowResized() { resizeCanvas(windowWidth, windowHeight); buildBuffer(); }
+
+function cosPal(p, o) {
+  o[0] = (0.55 + 0.45 * Math.cos(TAU * (p + 0.00))) * 255;
+  o[1] = (0.55 + 0.45 * Math.cos(TAU * (p + 0.33))) * 255;
+  o[2] = (0.55 + 0.45 * Math.cos(TAU * (p + 0.66))) * 255;
+}
+
+function draw() {
+  const t  = millis() * TIME_SCALE;
+  const az = frameCount * 0.003 + t * 0.25;
+  const scale = 0.02, warp = 2.0;
+  const hueShift = (t * 0.05) % 1;
+
+  // de sluier ademt licht op en neer, maar blijft rond het midden -> altijd half zichtbaar
+  const veil = 0.40 + 0.12 * Math.sin(t * 0.6);
+  const sharp = 4.5;
+  const col = [0, 0, 0];
+
+  buf.loadPixels();
+  const px = buf.pixels;
+  for (let y = 0; y < BH; y++) {
+    for (let x = 0; x < BW; x++) {
+      const sx = x * scale, sy = y * scale;
+      const q = noise(sx, sy, az);
+      const r = noise(sx + warp * q + 1.3, sy + warp * q, az);
+      const v = noise(sx + warp * r + 2.7, sy + warp * r, az);
+      cosPal(hueShift + v * 0.85, col);
+      const sh = 0.35 + 0.65 * v;
+      const ir = col[0] * sh, ig = col[1] * sh, ib = col[2] * sh;
+
+      // per-pixel flikker: nu eens laat de sluier het beeld door, dan weer niet
+      const sp = noise(x * 0.05, y * 0.05, frameCount * 0.02);
+      const flick = (random() - 0.5) * 0.5;
+      let co = (sp + flick - (1 - veil)) * sharp;
+      co = co < 0 ? 0 : co > 1 ? 1 : co;
+
+      const g = random(255);
+      const p = (y * BW + x) * 4;
+      px[p]     = g + (ir - g) * co;
+      px[p + 1] = g + (ig - g) * co;
+      px[p + 2] = g + (ib - g) * co;
+      px[p + 3] = 255;
+    }
+  }
+  buf.updatePixels();
+  image(buf, 0, 0, width, height);
+}
+</script>
+</body>
+</html>

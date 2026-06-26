@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v83 — SCHERP & BLOK NAAST ELKAAR. Scherpe en zwaar gepixelde zones
+// bestaan tegelijk, gescheiden door een langzaam driftende grens, zodat een
+// deel van het doek vlijmscherp is en een deel grof, en de scheiding wandelt.
+
+const SPEED = 2000; // 1 = uren-traag. Hoog (bv. 2000) om de reis snel te zien.
+const TIME_SCALE = 0.0000007 * SPEED;
+
+let src;
+const BLOCK = 56;
+
+function setup() {
+  pixelDensity(1);
+  createCanvas(windowWidth, windowHeight);
+  frameRate(30);
+  noSmooth();
+  buildSource();
+}
+
+function buildSource() {
+  src = createGraphics(windowWidth, windowHeight);
+  src.pixelDensity(1);
+  src.noSmooth();
+}
+
+function paintSource(t) {
+  const g = src;
+  g.push();
+  g.noStroke();
+  g.background(10, 12, 18);
+  g.translate(g.width / 2, g.height / 2);
+  g.rotate(frameCount * 0.002 + t * 0.2);
+  const maxR = Math.max(g.width, g.height) * 1.5;
+
+  // scherpe wig-vormen / harde driehoeken, sterk contrast
+  const n = 24;
+  for (let i = 0; i < n; i++) {
+    const a0 = (i / n) * TWO_PI;
+    const a1 = a0 + TWO_PI / n;
+    const hue = (t * 25 + i * 15 + frameCount * 0.08) % 360;
+    g.fill(...hsv(hue, 0.7, i % 2 === 0 ? 0.95 : 0.22));
+    g.beginShape();
+    g.vertex(0, 0);
+    g.vertex(Math.cos(a0) * maxR, Math.sin(a0) * maxR);
+    g.vertex(Math.cos(a1) * maxR, Math.sin(a1) * maxR);
+    g.endShape(CLOSE);
+  }
+  // harde concentrische ringen
+  g.noFill();
+  for (let r = 40; r < maxR; r += 80) {
+    g.stroke(245, 240, 220);
+    g.strokeWeight(r % 160 < 80 ? 10 : 2);
+    g.ellipse(0, 0, r * 2, r * 2);
+  }
+  g.pop();
+}
+
+function hsv(h, s, v) {
+  h = ((h % 360) + 360) % 360;
+  const c = v * s, x = c * (1 - Math.abs(((h / 60) % 2) - 1)), m = v - c;
+  let r = 0, gg = 0, b = 0;
+  if (h < 60) { r = c; gg = x; }
+  else if (h < 120) { r = x; gg = c; }
+  else if (h < 180) { gg = c; b = x; }
+  else if (h < 240) { gg = x; b = c; }
+  else if (h < 300) { r = x; b = c; }
+  else { r = c; b = x; }
+  return [(r + m) * 255, (gg + m) * 255, (b + m) * 255];
+}
+
+function draw() {
+  const t = millis() * TIME_SCALE;
+  paintSource(t);
+  src.loadPixels();
+
+  // eerst overal het scherpe beeld
+  image(src, 0, 0);
+
+  // driftende grens: hoek + offset bewegen langzaam.
+  // basismotie uit frameCount (beweegt ook bij SPEED=1).
+  const ang = frameCount * 0.004 + t * 0.5;
+  const nx = Math.cos(ang), ny = Math.sin(ang);
+  const diag = Math.sqrt(width * width + height * height);
+  const off = (0.5 + 0.4 * Math.sin(frameCount * 0.008 + t)) * diag - diag * 0.5;
+  // golvende grens via lichte sinus-vervorming
+  const sp = src.pixels;
+  const sw = src.width, shh = src.height;
+
+  noStroke();
+  for (let by = 0; by < height; by += BLOCK) {
+    for (let bx = 0; bx < width; bx += BLOCK) {
+      const ccx = bx + BLOCK / 2 - width / 2;
+      const ccy = by + BLOCK / 2 - height / 2;
+      const d = ccx * nx + ccy * ny - off + 70 * Math.sin((ccx * ny - ccy * nx) * 0.006 + t * 2);
+      if (d > 0) {
+        // gepixelde zone: vul blok met representatieve kleur
+        const cx = Math.min(sw - 1, Math.floor(bx + BLOCK / 2));
+        const cy = Math.min(shh - 1, Math.floor(by + BLOCK / 2));
+        const idx = 4 * (cy * sw + cx);
+        fill(sp[idx], sp[idx + 1], sp[idx + 2]);
+        rect(bx, by, BLOCK, BLOCK);
+      }
+    }
+  }
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  buildSource();
+}
+</script>
+</body>
+</html>

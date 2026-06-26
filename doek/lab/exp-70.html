@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v71 — HUID. Een vleeskleurig golvend oppervlak met poriën, plooien en
+// vouwen dat ademt. Reliefveld met subdermale kleur en zachte glans. Intiem
+// maar onplaatsbaar lichaamsdeel; het palet blijft onbehaaglijk (niet mooi),
+// net te bleek of te rauw.
+
+const SPEED = 2000; // 1 = uren-traag. Hoog (bv. 2000) om de reis snel te zien.
+const TIME_SCALE = 0.0000007 * SPEED;
+
+let img, BW, BH;
+
+function setup() {
+  pixelDensity(1);
+  createCanvas(windowWidth, windowHeight);
+  frameRate(30);
+  buildBuffer();
+}
+
+function buildBuffer() {
+  BW = 150;
+  BH = Math.max(1, Math.floor(BW * windowHeight / windowWidth));
+  img = createImage(BW, BH);
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  buildBuffer();
+}
+
+// huidreliëf: brede vouwen + plooien + fijne poriën
+function skin(x, y, t, breath) {
+  let h = 0;
+  // brede ondulatie (het "lichaamsdeel")
+  h += noise(x * 1.4, y * 1.4, t * 0.4) * 1.0;
+  // plooien / creases: scherpe valleien
+  const fold = noise(x * 3.2 + 5.0, y * 3.2, t * 0.5);
+  h -= Math.pow(Math.abs(fold - 0.5) * 2.0, 2.0) * 0.5;
+  // poriën: hoge frequentie pits
+  const pore = noise(x * 22.0, y * 22.0, t * 0.3);
+  h -= Math.max(0, pore - 0.62) * 0.6;
+  // ademen
+  h += 0.05 * breath;
+  return h;
+}
+
+function draw() {
+  const slow = millis() * TIME_SCALE;
+  const t = frameCount * 0.004;
+  const breath = Math.sin(frameCount * 0.02); // trage ademhaling, zichtbaar
+
+  // onbehaaglijk vleespalet, drift langzaam tussen bleek en rauw
+  const m = 0.5 + 0.5 * Math.sin(slow * 0.6);
+  const baseR = 200 - 20 * m;
+  const baseG = 150 - 50 * m;
+  const baseB = 140 - 30 * m;
+  // subdermaal: roodpaars in de diepte
+  const subR = 150, subG = 40, subB = 70;
+
+  img.loadPixels();
+  const px = img.pixels;
+  const inv = 1.0 / BW;
+  const eps = inv * 1.2;
+
+  const la = slow * 0.3 + 0.4;
+  const lx = Math.cos(la) * 0.4, ly = Math.sin(la) * 0.4, lz = 0.85;
+
+  for (let j = 0; j < BH; j++) {
+    for (let i = 0; i < BW; i++) {
+      const u = i * inv, v = j * inv;
+      const c  = skin(u, v, t, breath);
+      const hx = skin(u + eps, v, t, breath);
+      const hy = skin(u, v + eps, t, breath);
+      let nx = (c - hx) * 8.0;
+      let ny = (c - hy) * 8.0;
+      let nz = 1.0;
+      const il = 1.0 / Math.sqrt(nx*nx + ny*ny + nz*nz);
+      nx *= il; ny *= il; nz *= il;
+
+      let diff = nx*lx + ny*ly + nz*lz;
+      if (diff < 0) diff = 0;
+      const sh = 0.3 + 0.7 * diff;
+
+      // zachte glans (sheen), niet te nat
+      let spec = nz * lz;
+      if (spec < 0) spec = 0;
+      spec = Math.pow(spec, 8.0) * 0.35;
+
+      // subdermale doorbloeding in de diepere delen
+      const depth = constrain(1.0 - c, 0, 1);
+      const sub = depth * 0.5;
+
+      let r = (baseR * (1 - sub) + subR * sub) * sh + spec * 200;
+      let g = (baseG * (1 - sub) + subG * sub) * sh + spec * 190;
+      let b = (baseB * (1 - sub) + subB * sub) * sh + spec * 185;
+
+      const idx = (i + j * BW) * 4;
+      px[idx]   = constrain(r, 0, 255);
+      px[idx+1] = constrain(g, 0, 255);
+      px[idx+2] = constrain(b, 0, 255);
+      px[idx+3] = 255;
+    }
+  }
+  img.updatePixels();
+
+  noSmooth();
+  image(img, 0, 0, width, height);
+}
+</script>
+</body>
+</html>

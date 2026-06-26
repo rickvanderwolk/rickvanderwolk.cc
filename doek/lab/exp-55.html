@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v56 — GEBOORTE. Iets dat vormt en ontluikt: cellen die delen, een zaad dat
+// splitst en zich vermenigvuldigt, structuur die uit het niets samenklontert en
+// zich ontvouwt. Hoopvol, organisch — bouwt complexiteit op en lost zacht weer op.
+
+const SPEED = 2000; // 1 = uren-traag. Hoog (bv. 2000) om de reis snel te zien.
+const TIME_SCALE = 0.0000007 * SPEED;
+
+let buf;
+let bw, bh;
+let cells = [];
+const MAX_CELLS = 700;
+
+function setup() {
+  pixelDensity(1);
+  createCanvas(windowWidth, windowHeight);
+  frameRate(30);
+  buildBuffer();
+  seed();
+}
+
+function buildBuffer() {
+  bw = 150;
+  bh = Math.max(1, Math.round(bw * windowHeight / windowWidth));
+  buf = createImage(bw, bh);
+}
+
+function seed() {
+  cells = [];
+  cells.push({
+    x: 0.5, y: 0.5,
+    r: 0.012,
+    hue: random(140, 200),
+    age: 0,
+    divAt: random(40, 90)
+  });
+}
+
+let cyclePhase = 0; // 0 = groeien/delen, 1 = oplossen
+
+function draw() {
+  const t = millis() * TIME_SCALE;
+  const baseT = millis() * 0.001;
+
+  // levenscyclus voortgang gestuurd door trage drift
+  const cyc = (Math.sin(t * 0.5) * 0.5 + 0.5); // 0..1 ademend
+  const dissolving = cyc < 0.18;
+
+  // celdynamiek
+  for (let k = cells.length - 1; k >= 0; k--) {
+    const c = cells[k];
+    c.age += 1;
+
+    // zachte organische drift
+    const a = noise(c.x * 3.0, c.y * 3.0, t * 0.4) * TWO_PI * 2.0;
+    c.x += Math.cos(a) * 0.0006;
+    c.y += Math.sin(a) * 0.0006;
+
+    // groeien naar volwassen straal
+    const target = 0.020 + 0.5 * noise(k * 1.7, t) * 0.02;
+    c.r += (target - c.r) * 0.02;
+
+    if (dissolving) {
+      c.r *= 0.985; // zacht oplossen
+      if (c.r < 0.004) cells.splice(k, 1);
+    } else {
+      // delen wanneer rijp en er ruimte is
+      if (c.age > c.divAt && cells.length < MAX_CELLS) {
+        const ang = random(TWO_PI);
+        const off = c.r * 1.4;
+        const nx = constrain(c.x + Math.cos(ang) * off, 0.05, 0.95);
+        const ny = constrain(c.y + Math.sin(ang) * off, 0.05, 0.95);
+        cells.push({
+          x: nx, y: ny,
+          r: c.r * 0.6,
+          hue: (c.hue + random(-12, 18) + 360) % 360,
+          age: 0,
+          divAt: random(50, 110)
+        });
+        c.r *= 0.78;
+        c.age = 0;
+        c.divAt = random(60, 120);
+      }
+    }
+  }
+
+  // opnieuw beginnen als veld bijna leeg is
+  if (cells.length === 0) seed();
+
+  // render: zachte additieve cellen op buffer
+  buf.loadPixels();
+  const px = buf.pixels;
+  // donkere organische achtergrond
+  for (let p = 0; p < bw * bh; p++) {
+    const ii = p * 4;
+    px[ii] = 6;
+    px[ii + 1] = 8;
+    px[ii + 2] = 12;
+    px[ii + 3] = 255;
+  }
+
+  for (let k = 0; k < cells.length; k++) {
+    const c = cells[k];
+    const ccx = c.x * bw;
+    const ccy = c.y * bh;
+    const rr = c.r * bw;
+    const rad = Math.max(1, Math.ceil(rr * 2.2));
+    const x0 = Math.max(0, Math.floor(ccx - rad));
+    const x1 = Math.min(bw - 1, Math.ceil(ccx + rad));
+    const y0 = Math.max(0, Math.floor(ccy - rad));
+    const y1 = Math.min(bh - 1, Math.ceil(ccy + rad));
+
+    // hue -> rgb (eenvoudige conversie)
+    const h = c.hue / 60;
+    const x = 1 - Math.abs((h % 2) - 1);
+    let rc = 0, gc = 0, bc = 0;
+    if (h < 1) { rc = 1; gc = x; }
+    else if (h < 2) { rc = x; gc = 1; }
+    else if (h < 3) { gc = 1; bc = x; }
+    else if (h < 4) { gc = x; bc = 1; }
+    else if (h < 5) { rc = x; bc = 1; }
+    else { rc = 1; bc = x; }
+
+    for (let j = y0; j <= y1; j++) {
+      for (let i = x0; i <= x1; i++) {
+        const dx = (i + 0.5 - ccx);
+        const dy = (j + 0.5 - ccy);
+        const d2 = dx * dx + dy * dy;
+        const fall = Math.exp(-d2 / (rr * rr * 0.8 + 0.001));
+        const glow = fall * 200;
+        const idx = 4 * (i + j * bw);
+        px[idx] = Math.min(255, px[idx] + rc * glow);
+        px[idx + 1] = Math.min(255, px[idx + 1] + gc * glow);
+        px[idx + 2] = Math.min(255, px[idx + 2] + bc * glow);
+      }
+    }
+  }
+
+  buf.updatePixels();
+  push();
+  image(buf, 0, 0, width, height);
+  pop();
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  buildBuffer();
+}
+</script>
+</body>
+</html>

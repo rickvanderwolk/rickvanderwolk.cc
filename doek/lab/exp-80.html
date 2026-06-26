@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v81 — ROOKPLUIMEN. Bollende rookpluimen via domain-warped dichtheid,
+// gelaagd en doorschijnend, die opzwellen en in zichzelf vouwen. Grotendeels
+// monochroom met een flauwe kleurzweem.
+
+const SPEED = 2000;        // 1 = uren-traag. Hoog (bv. 2000) om de reis snel te zien.
+const TIME_SCALE = 0.0000007 * SPEED;
+
+let buf;
+let BW, BH;
+const BUF_W = 150;
+
+// pluimlagen: ver=klein/zacht achterin, dichtbij=groot/dicht vooraan
+const LAYERS = [
+  { scale: 0.040, warp: 1.0, drift: 0.12, alpha: 0.30, lift: 1.8, tone: 0.55, seed: 5,   floor: 0.48 },
+  { scale: 0.026, warp: 1.5, drift: 0.22, alpha: 0.44, lift: 2.2, tone: 0.74, seed: 90,  floor: 0.50 },
+  { scale: 0.017, warp: 2.0, drift: 0.38, alpha: 0.56, lift: 2.6, tone: 1.00, seed: 175, floor: 0.52 },
+];
+
+function setup() {
+  pixelDensity(1);
+  createCanvas(windowWidth, windowHeight);
+  frameRate(30);
+  buildBuffer();
+}
+
+function buildBuffer() {
+  BW = BUF_W;
+  BH = Math.floor(BW * (windowHeight / windowWidth));
+  if (BH < 1) BH = 1;
+  buf = createImage(BW, BH);
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  buildBuffer();
+}
+
+function fbm(x, y, z) {
+  let v = 0, amp = 0.5, f = 1.0;
+  for (let o = 0; o < 4; o++) {
+    v += amp * noise(x * f, y * f, z);
+    f *= 2.02;
+    amp *= 0.5;
+  }
+  return v;
+}
+
+function draw() {
+  const t = millis() * TIME_SCALE;
+  const base = frameCount * 0.006;
+
+  // flauwe kleurzweem, traag wisselend
+  const castR = 1.04 + 0.05 * Math.sin(t * 0.5);
+  const castG = 1.00;
+  const castB = 1.06 + 0.05 * Math.sin(t * 0.5 + 2.0);
+  const bg = 15 + 5 * Math.sin(t * 0.4);
+
+  buf.loadPixels();
+  const px = buf.pixels;
+
+  for (let j = 0; j < BH; j++) {
+    for (let i = 0; i < BW; i++) {
+      let r = bg, g = bg, b = bg + 3;
+
+      for (let L = 0; L < LAYERS.length; L++) {
+        const ly = LAYERS[L];
+        const oy = base * ly.drift + ly.seed;            // opstijgend
+        const ox = ly.seed + Math.sin(t * 0.2 + L) * 0.5;
+        const zz = ly.seed * 0.015 + t * 0.5;            // opzwellen/vouwen in z
+
+        // domain-warp: pluimen vouwen in zichzelf
+        const wx = fbm((i + ox * 55) * ly.scale, (j - oy * 55) * ly.scale, zz + 3.0);
+        const wy = fbm((i + ox * 55) * ly.scale + 7.3, (j - oy * 55) * ly.scale + 2.1, zz + 8.0);
+        const nx = (i + ox * 55 + (wx - 0.5) * ly.warp * 110) * ly.scale;
+        const ny = (j - oy * 55 + (wy - 0.5) * ly.warp * 110) * ly.scale;
+
+        const d0 = fbm(nx, ny, zz);
+        let dens = (d0 - ly.floor) / (1 - ly.floor);
+        if (dens < 0) dens = 0;
+        dens = dens * dens * (3 - 2 * dens);
+
+        // pluim breder/dichter onderaan, dunner bovenin
+        const vfade = 0.30 + 0.70 * (j / BH);
+        dens *= vfade;
+
+        if (dens > 0.001) {
+          // top-licht via verticale gradiënt -> bollend volume
+          const dUp = fbm(nx, ny - 2 * ly.scale, zz);
+          let shade = 0.58 + ly.lift * (d0 - dUp);
+          if (shade < 0.22) shade = 0.22;
+          if (shade > 1.5) shade = 1.5;
+
+          const lum = ly.tone * shade;
+          const a = ly.alpha * dens;
+          const cr = (200 * lum + 22) * castR;
+          const cg = (200 * lum + 22) * castG;
+          const cb = (200 * lum + 24) * castB;
+          r = r + (cr - r) * a;
+          g = g + (cg - g) * a;
+          b = b + (cb - b) * a;
+        }
+      }
+
+      const idx = (j * BW + i) * 4;
+      px[idx]   = r;
+      px[idx+1] = g;
+      px[idx+2] = b;
+      px[idx+3] = 255;
+    }
+  }
+  buf.updatePixels();
+
+  noSmooth();
+  image(buf, 0, 0, width, height);
+}
+</script>
+</body>
+</html>

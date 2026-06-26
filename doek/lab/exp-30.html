@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v31 — PHYLLOTAXIS. Een zonnebloem-/zaadveld in de gulden hoek.
+// Aantal punten, stipgrootte, spreiding en kleur driften traag zodat de
+// spiraal groeit, ademt en weer oplost. Direct getekend, zacht gelaagd.
+
+const SPEED = 2000; // 1 = uren-traag. Hoog (bv. 2000) om de reis snel te zien.
+const TIME_SCALE = 0.0000007 * SPEED;
+
+const GOLDEN = Math.PI * (3 - Math.sqrt(5)); // gulden hoek ~2.39996 rad
+let baseRot = 0;
+
+function setup() {
+  pixelDensity(1);
+  createCanvas(windowWidth, windowHeight);
+  frameRate(30);
+  colorMode(HSB, 360, 100, 100, 1);
+  noStroke();
+}
+
+function draw() {
+  const t = millis() * TIME_SCALE;
+
+  // zachte trail: half doorzichtige donkere laag erover voor naijl-effect
+  blendMode(BLEND);
+  noStroke();
+  fill(0, 0, 0, 0.14);
+  rect(0, 0, width, height);
+
+  baseRot += 0.0008 + 0.0010 * noise(t * 0.5);
+
+  const cx = width / 2, cy = height / 2;
+  const minDim = Math.min(width, height);
+
+  // driftende parameters
+  const count = Math.floor(420 + 360 * (0.5 + 0.5 * Math.sin(t * 0.7)));
+  const spread = minDim * (0.012 + 0.006 * (0.5 + 0.5 * Math.sin(t * 0.45 + 1)));
+  const dotMax = minDim * (0.010 + 0.006 * noise(t * 0.6 + 10));
+  const hueBase = (t * 22) % 360;
+  const hueSpan = 60 + 80 * noise(t * 0.4 + 5);
+
+  blendMode(ADD);
+  for (let i = 0; i < count; i++) {
+    const a = i * GOLDEN + baseRot;
+    const r = spread * Math.sqrt(i);
+    const x = cx + r * Math.cos(a);
+    const y = cy + r * Math.sin(a);
+    if (x < -20 || x > width + 20 || y < -20 || y > height + 20) continue;
+
+    const frac = i / count;
+    const hue = (hueBase + frac * hueSpan + 12 * Math.sin(t + i * 0.01)) % 360;
+    const sat = 55 + 35 * frac;
+    const bri = 28 + 50 * (1 - frac) + 10 * Math.sin(t * 2 + i * 0.05);
+    const sz = dotMax * (0.25 + 0.75 * (1 - frac * 0.6));
+
+    fill(hue, sat, bri, 0.5);
+    circle(x, y, sz);
+    // zachte gloed-kern
+    fill(hue, sat * 0.5, bri, 0.18);
+    circle(x, y, sz * 1.9);
+  }
+  blendMode(BLEND);
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+}
+</script>
+</body>
+</html>

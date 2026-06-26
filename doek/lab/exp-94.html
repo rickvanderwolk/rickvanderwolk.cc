@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v95 — MORFEND VLOERKLEED. Full-screen geknoopt tapijt dat ECHT evolueert
+// (geen slideshow/crossfade). Eén parametrisch motief waarvan de vorm continu
+// vervormt -> een ster wordt een ruit wordt een rozet, zonder ooit te wisselen.
+// De kleuren komen uit één traag draaiend kleurenwiel (de rollen houden hun
+// onderlinge afstand), dus het hele kleed schuift vloeiend door kleurfamilies.
+// Niets om te bedienen.
+
+const SPEED = 2000; // 1 = uren-traag. Hoog (bv. 2000) om de reis snel te zien.
+const TIME_SCALE = 0.0000007 * SPEED;
+
+let buf, GW, GH;
+let RC = [];      // rol-kleuren deze frame (RGB)
+let P = {};       // morf-parameters deze frame
+
+// het kleed verandert traag -> herweef 1x per RECALC frames (soepel, identiek beeld)
+const RECALC = 5;
+let woven = false;
+
+function setup(){ pixelDensity(1); createCanvas(windowWidth, windowHeight); frameRate(30); noSmooth(); buildBuffer(); }
+function buildBuffer(){
+  const c = Math.max(4, Math.floor(width / 160));
+  GW = Math.max(10, Math.round(width / c));
+  GH = Math.max(10, Math.round(height / c));
+  buf = createGraphics(GW, GH); buf.pixelDensity(1); buf.noStroke();
+}
+function windowResized(){ resizeCanvas(windowWidth, windowHeight); buildBuffer(); }
+
+function hsl(h, s, l){
+  h = ((h % 360) + 360) % 360; s /= 100; l /= 100;
+  const c = (1 - Math.abs(2 * l - 1)) * s, x = c * (1 - Math.abs(((h / 60) % 2) - 1)), m = l - c / 2;
+  let r = 0, g = 0, b = 0;
+  if (h < 60){ r = c; g = x; } else if (h < 120){ r = x; g = c; }
+  else if (h < 180){ g = c; b = x; } else if (h < 240){ g = x; b = c; }
+  else if (h < 300){ r = x; b = c; } else { r = c; b = x; }
+  return [(r + m) * 255, (g + m) * 255, (b + m) * 255];
+}
+
+const sstep = (e0, e1, x) => { let v = (x - e0) / (e1 - e0); v = v < 0 ? 0 : v > 1 ? 1 : v; return v * v * (3 - 2 * v); };
+
+function knotRole(x, y){
+  const qx = Math.min(x, GW - 1 - x), qy = Math.min(y, GH - 1 - y);
+  const fx = qx / (GW / 2), fy = qy / (GH / 2), edge = Math.min(fx, fy);
+
+  // ----- RANDEN (morfend patroon) -----
+  if (edge < 0.018) return 6;
+  let be = edge - 0.018;
+  if (be < P.bw){
+    // band-motief dat morft tussen ruiten <-> zigzag <-> meander via P.bMorph
+    const z = qx * 0.5 + Math.abs((qy % P.bP) - P.bP / 2) * P.bShear;
+    const cell = Math.floor(z / P.bStep);
+    if ((qx % P.bP) < 1 || (qy % P.bP) < 1) return 6;
+    return (cell % 2) ? 3 : 1;
+  }
+  if (be < P.bw + 0.012) return 6;
+  if (be < P.bw + 0.026) return 2;
+
+  // ----- MEDAILLON (groeit/krimpt zacht) -----
+  if (P.medR > 0.5){
+    const cx = x - GW / 2, cy = y - GH / 2;
+    const r = Math.sqrt(cx * cx + cy * cy);
+    const ang = Math.atan2(cy, cx);
+    const rr = r * (1 + P.point * 0.6 * Math.cos(ang * P.lobes + P.phase));
+    if (rr < P.medR){
+      if (rr < P.medR * 0.40) return 3;
+      if (rr < P.medR * 0.52) return 6;
+      if (rr < P.medR * 0.82) return (Math.floor(ang / (Math.PI / P.lobes) + P.phase) % 2) ? 1 : 4;
+      if (rr < P.medR * 0.90) return 6;
+      return 2;
+    }
+  }
+
+  // ----- VELD: één parametrisch motief, continu vervormend -----
+  const T = P.T;
+  const u = (((qx % T) / T) - 0.5) * 2, v = (((qy % T) / T) - 0.5) * 2;
+  const ang = Math.atan2(v, u);
+  const euc = Math.sqrt(u * u + v * v);
+  const dia = Math.abs(u) + Math.abs(v);
+  const base = euc * (1 - P.metric) + dia * P.metric;        // cirkel <-> ruit
+  const rr = base * (1 + P.point * Math.cos(ang * P.lobes + P.phase));  // bladen morfen
+  const par = (Math.floor(qx / T) + Math.floor(qy / T)) % 2;
+
+  if (rr < P.t0) return 3;                                   // hart (goud)
+  if (rr < P.t1) return 6;                                   // omlijning
+  if (rr < P.t2) return par ? 1 : 4;                         // motiefkleur
+  if (rr < P.t3) return 6;
+  // verbindende lattice-armen (dikte morft)
+  if (Math.abs(u) < P.arm || Math.abs(v) < P.arm) return 5;
+  return 0;                                                  // grond
+}
+
+function weave(){
+  const t = millis() * TIME_SCALE;
+  const nz = (s, k) => noise(s, t * k);
+
+  // ---- morf-parameters (continu, traag) ----
+  P.T      = Math.max(9, Math.floor(GW * (0.11 + 0.05 * nz(2, 0.05))));
+  P.lobes  = 4 + 6 * nz(3, 0.04);                          // 4..10 bladen (continu -> geen plop)
+  P.metric = nz(4, 0.05);                                   // 0=cirkel .. 1=ruit
+  P.point  = 0.12 + 0.42 * nz(5, 0.06);                     // puntigheid
+  P.phase  = t * 0.4;                                       // bladen draaien traag
+  P.t0     = 0.30 + 0.14 * nz(6, 0.05);
+  P.t1     = P.t0 + 0.14;
+  P.t2     = P.t1 + 0.22 + 0.16 * nz(8, 0.05);
+  P.t3     = P.t2 + 0.16;
+  P.arm    = 0.05 + 0.12 * nz(10, 0.06);                    // armdikte morft
+  P.medR   = GW * 0.30 * sstep(0.45, 0.62, nz(9, 0.03));    // medaillon groeit/krimpt
+  // rand-morf
+  P.bw     = 0.05;
+  P.bP     = 4 + Math.round(6 * nz(12, 0.04));
+  P.bStep  = 2 + Math.round(3 * nz(13, 0.05));
+  P.bShear = nz(14, 0.05) * 1.4;
+
+  // ---- kleuren: één draaiend wiel, rollen houden hun afstand ----
+  const baseHue = (t * 24) % 360;
+  RC[0] = hsl(baseHue,        66, 32);   // grond
+  RC[1] = hsl(baseHue + 150,  52, 44);   // motief-A
+  RC[2] = hsl(baseHue + 42,   34, 82);   // licht/crème
+  RC[3] = hsl(baseHue + 48,   72, 56);   // goud-accent
+  RC[4] = hsl(baseHue + 95,   50, 46);   // motief-B
+  RC[5] = hsl(baseHue + 22,   60, 50);   // secundair
+  RC[6] = hsl(baseHue,        42, 10);   // donkere omlijning
+
+  buf.loadPixels();
+  for (let y = 0; y < GH; y++){
+    for (let x = 0; x < GW; x++){
+      const c = RC[knotRole(x, y)];
+      const jt = (((x * 7 + y * 13) % 5) - 2) * 3;           // goedkope garen-variatie (geen noise)
+      const k = 4 * (y * GW + x);
+      buf.pixels[k]     = constrain(c[0] + jt, 0, 255);
+      buf.pixels[k + 1] = constrain(c[1] + jt, 0, 255);
+      buf.pixels[k + 2] = constrain(c[2] + jt, 0, 255);
+      buf.pixels[k + 3] = 255;
+    }
+  }
+  buf.updatePixels();
+}
+
+function draw(){
+  if (!woven || frameCount % RECALC === 0){ weave(); woven = true; }
+  image(buf, 0, 0, width, height);
+}
+</script>
+</body>
+</html>

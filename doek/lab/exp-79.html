@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v80 — NEVELBANKEN. Horizontale mist-/nevelbanken gestapeld in diepte met
+// atmosferische uitdoving, lagen die langzaam langs elkaar schuiven, met een
+// zacht oplichtende horizongloed erachter.
+
+const SPEED = 2000;        // 1 = uren-traag. Hoog (bv. 2000) om de reis snel te zien.
+const TIME_SCALE = 0.0000007 * SPEED;
+
+let buf;
+let BW, BH;
+const BUF_W = 150;
+
+// nevelbanken: ver/hoog = bleek & dun, dichtbij/laag = warmer & dichter
+const LAYERS = [
+  { scale: 0.045, yband: 0.30, thick: 0.16, drift: 0.10, alpha: 0.26, tone: 0.55, seed: 0 },
+  { scale: 0.030, yband: 0.48, thick: 0.20, drift: 0.18, alpha: 0.34, tone: 0.72, seed: 70 },
+  { scale: 0.020, yband: 0.66, thick: 0.24, drift: 0.30, alpha: 0.42, tone: 0.88, seed: 140 },
+  { scale: 0.013, yband: 0.84, thick: 0.30, drift: 0.46, alpha: 0.50, tone: 1.00, seed: 210 },
+];
+
+function setup() {
+  pixelDensity(1);
+  createCanvas(windowWidth, windowHeight);
+  frameRate(30);
+  buildBuffer();
+}
+
+function buildBuffer() {
+  BW = BUF_W;
+  BH = Math.floor(BW * (windowHeight / windowWidth));
+  if (BH < 1) BH = 1;
+  buf = createImage(BW, BH);
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  buildBuffer();
+}
+
+function fbm(x, y, z) {
+  let v = 0, amp = 0.5, f = 1.0;
+  for (let o = 0; o < 3; o++) {
+    v += amp * noise(x * f, y * f, z);
+    f *= 2.05;
+    amp *= 0.5;
+  }
+  return v;
+}
+
+function draw() {
+  const t = millis() * TIME_SCALE;
+  const base = frameCount * 0.006;
+
+  // horizongloed-kleur, traag wisselend (warm <-> koel)
+  const warm = 0.5 + 0.5 * Math.sin(t * 0.4);
+  const glowR = 60 + 90 * warm;
+  const glowG = 50 + 60 * warm;
+  const glowB = 70 + 40 * (1 - warm);
+  const horizon = 0.62 + 0.06 * Math.sin(t * 0.3); // verticale positie horizon
+
+  buf.loadPixels();
+  const px = buf.pixels;
+
+  for (let j = 0; j < BH; j++) {
+    const vy = j / BH;
+    // lucht-gradiënt + horizongloed (gloed het sterkst bij horizon)
+    const dh = Math.abs(vy - horizon);
+    const glow = Math.exp(-dh * dh * 26);
+    const skyBase = 18 + 22 * (1 - vy);
+    let bgR = skyBase * 0.8 + glowR * glow;
+    let bgG = skyBase * 0.85 + glowG * glow;
+    let bgB = skyBase * 1.15 + 10 + glowB * glow;
+
+    for (let i = 0; i < BW; i++) {
+      let r = bgR, g = bgG, b = bgB;
+
+      for (let L = 0; L < LAYERS.length; L++) {
+        const ly = LAYERS[L];
+        // verticale begrenzing van de bank (zachte band rond yband)
+        const dy = (vy - ly.yband) / ly.thick;
+        let band = Math.exp(-dy * dy * 2.0);
+        if (band < 0.004) continue;
+
+        // banken schuiven horizontaal langs elkaar
+        const ox = base * ly.drift + ly.seed + Math.sin(t * 0.2 + L) * 0.5;
+        const zz = ly.seed * 0.01 + t * 0.45;
+        // sterk uitgerekt in x -> horizontale slierten
+        const d0 = fbm((i + ox * 70) * ly.scale, (j) * ly.scale * 2.6, zz);
+
+        let dens = (d0 - 0.42) / 0.58;
+        if (dens < 0) dens = 0;
+        dens = dens * dens * (3 - 2 * dens);
+        dens *= band;
+
+        if (dens > 0.001) {
+          const lum = ly.tone;
+          const a = ly.alpha * dens;
+          const cr = 200 * lum + 26;
+          const cg = 198 * lum + 26;
+          const cb = 204 * lum + 32;
+          r = r + (cr - r) * a;
+          g = g + (cg - g) * a;
+          b = b + (cb - b) * a;
+        }
+      }
+
+      const idx = (j * BW + i) * 4;
+      px[idx]   = r;
+      px[idx+1] = g;
+      px[idx+2] = b;
+      px[idx+3] = 255;
+    }
+  }
+  buf.updatePixels();
+
+  noSmooth();
+  image(buf, 0, 0, width, height);
+}
+</script>
+</body>
+</html>

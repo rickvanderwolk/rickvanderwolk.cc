@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v33 — VLOEIBAAR LICHT. Olie-projector lichtshow uit de jaren '60.
+// Grote doorschijnende klodders warme verzadigde olie zwellen, driften en
+// bloeden in elkaar over (additief) op een donkere grond -> psychedelisch
+// nat licht. Zacht, gloeiend.
+
+const SPEED = 2000; // 1 = uren-traag. Hoog (bv. 2000) om de reis snel te zien.
+const TIME_SCALE = 0.0000007 * SPEED;
+
+let buf;
+const BW = 150;     // bufferbreedte
+let BH;             // bufferhoogte (op ratio)
+
+const N = 9;        // aantal olie-klodders
+let blobs = [];
+
+function setup() {
+  pixelDensity(1);
+  createCanvas(windowWidth, windowHeight);
+  frameRate(30);
+  BH = Math.max(1, Math.round(BW * windowHeight / windowWidth));
+  buf = createGraphics(BW, BH);
+  buf.pixelDensity(1);
+  for (let i = 0; i < N; i++) {
+    blobs.push({
+      px: random(1000), py: random(1000),
+      pr: random(1000), ph: random(1000),
+      spd: random(0.6, 1.5),
+      hue: random(1000)
+    });
+  }
+  noSmooth();
+}
+
+function draw() {
+  const t = millis() * TIME_SCALE;
+
+  // huidige klodder-eigenschappen
+  let bx = [], by = [], brad = [], br = [], bg = [], bb = [];
+  for (let i = 0; i < N; i++) {
+    let o = blobs[i];
+    bx.push(noise(o.px, t * o.spd) * BW);
+    by.push(noise(o.py, t * o.spd + 40) * BH);
+    let rad = (0.18 + 0.22 * noise(o.pr, t * 0.6)) * BW;
+    brad.push(rad);
+    // warme verzadigde olietinten (rood-oranje-magenta-paars-amber)
+    let h = (noise(o.hue, t * 0.5) * 130 + t * 12) % 360;
+    if (h > 70 && h < 250) h = (h + 200) % 360; // duw weg van koud groen/blauw
+    let c = hsl(h, 0.9, 0.5);
+    br.push(c[0]); bg.push(c[1]); bb.push(c[2]);
+  }
+
+  buf.loadPixels();
+  const d = buf.pixelDensity();
+  for (let y = 0; y < BH; y++) {
+    for (let x = 0; x < BW; x++) {
+      let r = 6, g = 3, b = 10; // donkere grond
+      for (let i = 0; i < N; i++) {
+        let dx = x - bx[i], dy = y - by[i];
+        let dd = Math.sqrt(dx * dx + dy * dy) / brad[i];
+        // zachte radiale val-off, gloeiend
+        let a = Math.exp(-dd * dd * 1.6);
+        r += br[i] * a;
+        g += bg[i] * a;
+        b += bb[i] * a;
+      }
+      let idx = 4 * (x + y * BW) * d * d;
+      buf.pixels[idx] = Math.min(255, r);
+      buf.pixels[idx + 1] = Math.min(255, g);
+      buf.pixels[idx + 2] = Math.min(255, b);
+      buf.pixels[idx + 3] = 255;
+    }
+  }
+  buf.updatePixels();
+
+  image(buf, 0, 0, width, height);
+}
+
+function hsl(h, s, l) {
+  h = ((h % 360) + 360) % 360 / 360;
+  let r, g, b;
+  if (s === 0) { r = g = b = l; }
+  else {
+    let q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    let p = 2 * l - q;
+    r = hue2rgb(p, q, h + 1 / 3);
+    g = hue2rgb(p, q, h);
+    b = hue2rgb(p, q, h - 1 / 3);
+  }
+  return [r * 255, g * 255, b * 255];
+}
+function hue2rgb(p, q, t) {
+  if (t < 0) t += 1;
+  if (t > 1) t -= 1;
+  if (t < 1 / 6) return p + (q - p) * 6 * t;
+  if (t < 1 / 2) return q;
+  if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+  return p;
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  BH = Math.max(1, Math.round(BW * windowHeight / windowWidth));
+  buf = createGraphics(BW, BH);
+  buf.pixelDensity(1);
+}
+</script>
+</body>
+</html>

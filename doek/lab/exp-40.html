@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v41 — OP-ART MOVING LINES (Bridget Riley).
+// Een veld parallelle strepen, vervormd door een langzaam driftend
+// verplaatsingsveld zodat ze buigen, knijpen en rimpelen. Hypnotiserend.
+
+const SPEED = 2000; // 1 = uren-traag. Hoog (bv. 2000) om de reis snel te zien.
+const TIME_SCALE = 0.0000007 * SPEED;
+
+let buf;
+let BW, BH;
+
+function buildBuffer() {
+  BW = 150;
+  BH = Math.max(40, Math.round(BW * windowHeight / windowWidth));
+  buf = createImage(BW, BH);
+}
+
+function setup() {
+  pixelDensity(1);
+  createCanvas(windowWidth, windowHeight);
+  frameRate(30);
+  noSmooth();
+  buildBuffer();
+}
+
+function draw() {
+  let t = millis() * TIME_SCALE;
+  // duotone die heel langzaam drift (meestal zwart/wit)
+  let drift = 0.5 + 0.5 * Math.sin(t * 0.6);
+  let cA = [12 + 18 * drift, 12 + 10 * drift, 18 + 22 * (1 - drift)];        // donker
+  let cB = [235 - 20 * drift, 235 - 10 * (1 - drift), 230 - 15 * drift];     // licht
+
+  let stripeFreq = 9.0;           // aantal strepen-perioden over de breedte
+  let baseFlow = frameCount * 0.02; // kalme constante beweging
+  let warpAmt = 18 + 10 * Math.sin(t * 0.8); // sterkte van vervorming
+
+  buf.loadPixels();
+  for (let y = 0; y < BH; y++) {
+    let ny = y / BH;
+    for (let x = 0; x < BW; x++) {
+      let nx = x / BW;
+      // verplaatsingsveld uit gelaagde noise + langzame drift
+      let dx = (noise(nx * 1.6 + 5, ny * 2.2, t * 0.5 + baseFlow) - 0.5);
+      let dy = (noise(nx * 2.4 + 30, ny * 1.4, t * 0.4) - 0.5);
+      let warp = (dx + 0.5 * dy) * warpAmt;
+      // strepen-fase langs x, lokaal verschoven door warp + zachte golf in y
+      let phase = (x + warp) * (stripeFreq * Math.PI * 2 / BW)
+        + 0.6 * Math.sin(ny * 6.2831 + t);
+      // crisp strepen: harde drempel met smalle anti-alias rand
+      let s = Math.sin(phase);
+      let edge = 0.12;
+      let m = (s + edge) / (2 * edge);
+      m = Math.max(0, Math.min(1, m));
+      let r = cA[0] + (cB[0] - cA[0]) * m;
+      let g = cA[1] + (cB[1] - cA[1]) * m;
+      let b = cA[2] + (cB[2] - cA[2]) * m;
+      let p = (y * BW + x) * 4;
+      buf.pixels[p] = r;
+      buf.pixels[p + 1] = g;
+      buf.pixels[p + 2] = b;
+      buf.pixels[p + 3] = 255;
+    }
+  }
+  buf.updatePixels();
+  image(buf, 0, 0, width, height);
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  buildBuffer();
+}
+</script>
+</body>
+</html>

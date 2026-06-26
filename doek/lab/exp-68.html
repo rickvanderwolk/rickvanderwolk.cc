@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v69 — VERKEERDE ZWAARTEKRACHT. Geadvecteerde verf op een klein
+// buffertje stroomt en "valt" in tegenstrijdige richtingen: dingen drijven
+// omhoog, opzij, naar binnen tegen de verwachting in. Het oog kan de beweging
+// niet rijmen -> stille desorientatie.
+
+const SPEED = 2000; // 1 = uren-traag. Hoog (bv. 2000) om de reis snel te zien.
+const TIME_SCALE = 0.0000007 * SPEED;
+
+let BW, BH;
+let dye, dye2; // dichtheid/kleur velden (ping-pong)
+let img;
+
+function setup() {
+  pixelDensity(1);
+  createCanvas(windowWidth, windowHeight);
+  frameRate(30);
+  buildBuffer();
+}
+
+function buildBuffer() {
+  BW = 150;
+  BH = Math.max(1, Math.floor(BW * windowHeight / windowWidth));
+  dye  = new Float32Array(BW * BH * 3);
+  dye2 = new Float32Array(BW * BH * 3);
+  img  = createImage(BW, BH);
+  // zachte zaden
+  for (let k = 0; k < 6; k++) seedBlob(random(BW), random(BH));
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  buildBuffer();
+}
+
+function seedBlob(cx, cy) {
+  cx = Math.floor(cx); cy = Math.floor(cy);
+  const r = 12;
+  const cr = random(0.4, 1.0), cg = random(0.2, 0.7), cb = random(0.5, 1.0);
+  for (let dy = -r; dy <= r; dy++) {
+    for (let dx = -r; dx <= r; dx++) {
+      const x = cx + dx, y = cy + dy;
+      if (x < 0 || x >= BW || y < 0 || y >= BH) continue;
+      const d = Math.sqrt(dx*dx + dy*dy);
+      if (d > r) continue;
+      const a = (1 - d / r) * 0.8;
+      const idx = (x + y * BW) * 3;
+      dye[idx]   += cr * a;
+      dye[idx+1] += cg * a;
+      dye[idx+2] += cb * a;
+    }
+  }
+}
+
+// tegenstrijdig zwaartekrachtveld: geen enkele consistente "onder"
+function flow(u, v, t, slow) {
+  // grote draaiende cellen
+  const a = noise(u * 1.6, v * 1.6, t * 0.5) * TWO_PI * 2.0;
+  let fx = Math.cos(a), fy = Math.sin(a);
+  // valse zwaartekracht die per regio omkeert (omhoog/omlaag wisselt)
+  const g = Math.sin(v * 3.14159 * 2.0 + slow) * Math.sin(u * 3.14159 + slow * 0.7);
+  fy += g * 0.9;
+  // naar-binnen-trekkende component (tegen verwachting in)
+  fx += (0.5 - u) * 0.5 * Math.sin(slow * 0.6);
+  return [fx, fy];
+}
+
+function draw() {
+  const slow = millis() * TIME_SCALE;
+  const t = frameCount * 0.004;
+
+  // af en toe nieuwe verf injecteren zodat het blijft leven
+  if (random() < 0.04) seedBlob(random(BW), random(BH));
+
+  const dt = 0.9;
+  for (let j = 0; j < BH; j++) {
+    for (let i = 0; i < BW; i++) {
+      const u = i / BW, v = j / BH;
+      const f = flow(u, v, t, slow);
+      // semi-lagrangiaans terug-traceren
+      let sx = i - f[0] * dt;
+      let sy = j - f[1] * dt;
+      sx = constrain(sx, 0, BW - 1.001);
+      sy = constrain(sy, 0, BH - 1.001);
+      const x0 = Math.floor(sx), y0 = Math.floor(sy);
+      const fxp = sx - x0, fyp = sy - y0;
+      const x1 = Math.min(x0 + 1, BW - 1), y1 = Math.min(y0 + 1, BH - 1);
+      const i00 = (x0 + y0 * BW) * 3;
+      const i10 = (x1 + y0 * BW) * 3;
+      const i01 = (x0 + y1 * BW) * 3;
+      const i11 = (x1 + y1 * BW) * 3;
+      const out = (i + j * BW) * 3;
+      for (let c = 0; c < 3; c++) {
+        const top = dye[i00+c] * (1-fxp) + dye[i10+c] * fxp;
+        const bot = dye[i01+c] * (1-fxp) + dye[i11+c] * fxp;
+        let val = top * (1-fyp) + bot * fyp;
+        val *= 0.992; // heel traag vervagen
+        dye2[out+c] = val;
+      }
+    }
+  }
+  // swap
+  const tmp = dye; dye = dye2; dye2 = tmp;
+
+  // render: kleur drift langzaam, een onbehaaglijk koel-warm contrast
+  img.loadPixels();
+  const px = img.pixels;
+  const tintR = 0.5 + 0.5 * Math.sin(slow * 0.8);
+  const tintB = 0.5 + 0.5 * Math.sin(slow * 0.8 + 2.0);
+  for (let p = 0; p < BW * BH; p++) {
+    const s = p * 3;
+    let r = dye[s]   * (140 + 90 * tintR);
+    let g = dye[s+1] * 90;
+    let b = dye[s+2] * (150 + 90 * tintB);
+    const idx = p * 4;
+    px[idx]   = constrain(r + 6, 0, 255);
+    px[idx+1] = constrain(g + 8, 0, 255);
+    px[idx+2] = constrain(b + 12, 0, 255);
+    px[idx+3] = 255;
+  }
+  img.updatePixels();
+
+  noSmooth();
+  image(img, 0, 0, width, height);
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v47 — AI DIE ALLES OVERNEEMT.
+// Een koude geometrische orde — raster, circuit, scanlines — die langzaam
+// een warm organisch veld kolonialiseert en overschrijft. Helder cyaan/wit
+// kruipt over de zachte warmte, cel voor cel, en keert nooit terug.
+
+const SPEED = 2000; // 1 = uren-traag. Hoog (bv. 2000) om de reis snel te zien.
+const TIME_SCALE = 0.0000007 * SPEED;
+
+let buf;
+let BW, BH;
+let takeover; // per-cel: hoe ver de AI dit gebied heeft overgenomen (groeit, daalt nooit)
+let seedX, seedY; // groeicentrum van de kolonisatie
+let lastT = 0;
+
+function buildBuffer() {
+  BW = 150;
+  BH = Math.max(40, Math.round(BW * windowHeight / windowWidth));
+  buf = createImage(BW, BH);
+  takeover = new Float32Array(BW * BH);
+  seedX = random(0.2, 0.8);
+  seedY = random(0.2, 0.8);
+  lastT = 0;
+}
+
+function setup() {
+  pixelDensity(1);
+  createCanvas(windowWidth, windowHeight);
+  frameRate(30);
+  noSmooth();
+  buildBuffer();
+}
+
+function draw() {
+  let t = millis() * TIME_SCALE;
+  let dt = Math.max(0, t - lastT);
+  lastT = t;
+  let warmFlow = frameCount * 0.01; // kalme constante beweging van het warme veld
+  let scan = frameCount * 0.08;
+
+  // de overname-frontlinie zet langzaam uit vanuit het zaadpunt
+  // (gestuurd door t, dus SPEED schaalt de reis)
+  let front = (t * 0.18) % 3.0; // wraps zacht zodat het oneindig blijft groeien/golven
+
+  buf.loadPixels();
+  for (let y = 0; y < BH; y++) {
+    let ny = y / BH;
+    for (let x = 0; x < BW; x++) {
+      let nx = x / BW;
+      let idx = y * BW + x;
+
+      // afstand tot het kolonisatie-centrum, met onregelmatige rand
+      let dx = nx - seedX, dy = ny - seedY;
+      let dist = Math.sqrt(dx * dx + dy * dy);
+      let edge = 0.18 * (noise(nx * 4.0, ny * 4.0) - 0.5);
+      let reach = front - dist + edge;
+
+      // takeover groeit gestaag waar het front voorbij is; nooit terug
+      let target = reach > 0 ? 1.0 : 0.0;
+      if (target > takeover[idx]) {
+        takeover[idx] = Math.min(1.0, takeover[idx] + dt * 6.0);
+      }
+      let ai = takeover[idx];
+
+      // ---- warm organisch veld (eronder) ----
+      let wn = noise(nx * 2.4 + 7, ny * 2.4 + warmFlow, warmFlow * 0.3);
+      let wr = 90 + 110 * wn;
+      let wg = 50 + 60 * wn;
+      let wb = 30 + 30 * (1 - wn);
+
+      // ---- koude geometrische orde (erboven) ----
+      // raster van cellen
+      let gx = (nx * 14.0) % 1.0;
+      let gy = (ny * 14.0) % 1.0;
+      let gridLine = Math.min(Math.min(gx, 1 - gx), Math.min(gy, 1 - gy));
+      let grid = gridLine < 0.06 ? 1.0 : 0.0;
+
+      // circuit-knooppunten: af en toe een fellere cel
+      let cellId = Math.floor(nx * 14.0) * 31 + Math.floor(ny * 14.0) * 17;
+      let node = (Math.sin(cellId * 1.7) * 0.5 + 0.5);
+      let nodeLit = node > 0.82 ? 1.0 : 0.0;
+
+      // scanlines die door de structuur lopen
+      let scl = 0.5 + 0.5 * Math.sin(ny * BH * 0.9 + scan);
+      let scanlamp = 0.7 + 0.3 * scl;
+
+      // cyaan/wit structuur
+      let base = 18; // donkere achtergrond van het circuit
+      let cr = base + grid * 60 + nodeLit * 160;
+      let cg = base + grid * 150 + nodeLit * 220;
+      let cb = base + grid * 175 + nodeLit * 230;
+      cr *= scanlamp; cg *= scanlamp; cb *= scanlamp;
+
+      // pulserende cyaan-flikker langs het groeifront (de rand "verwerkt")
+      let frontGlow = Math.max(0, 1.0 - Math.abs(reach) * 9.0) * (0.5 + 0.5 * Math.sin(scan + cellId));
+      cr += frontGlow * 30;
+      cg += frontGlow * 120;
+      cb += frontGlow * 140;
+
+      // meng warm -> koud volgens overname, met harde maar dunne grens
+      let m = Math.max(0, Math.min(1, ai));
+      let r = wr + (cr - wr) * m;
+      let g = wg + (cg - wg) * m;
+      let b = wb + (cb - wb) * m;
+
+      let p = idx * 4;
+      buf.pixels[p] = Math.min(255, r);
+      buf.pixels[p + 1] = Math.min(255, g);
+      buf.pixels[p + 2] = Math.min(255, b);
+      buf.pixels[p + 3] = 255;
+    }
+  }
+  buf.updatePixels();
+  image(buf, 0, 0, width, height);
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  buildBuffer();
+}
+</script>
+</body>
+</html>

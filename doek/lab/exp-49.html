@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v50 — KOORTS (koorts).
+// Een warm, ziekelijk veld dat schemert en vervormt door domain-warp.
+// Oranje/rood zwemt en golft; een kloppende druk die niet wil bedaren.
+// Wazig, onwel, nooit in rust.
+
+const SPEED = 2000; // 1 = uren-traag. Hoog (bv. 2000) om de reis snel te zien.
+const TIME_SCALE = 0.0000007 * SPEED;
+
+let buf;
+let BW, BH;
+
+function buildBuffer() {
+  BW = 150;
+  BH = Math.max(40, Math.round(BW * windowHeight / windowWidth));
+  buf = createImage(BW, BH);
+}
+
+function setup() {
+  pixelDensity(1);
+  createCanvas(windowWidth, windowHeight);
+  frameRate(30);
+  noSmooth();
+  buildBuffer();
+}
+
+function draw() {
+  let t = millis() * TIME_SCALE;          // trage drift
+  let beat = frameCount * 0.045;           // kalme, kloppende basisritme
+
+  // koortsachtige polsslag: druk die zwelt en wegtrekt
+  let throb = 0.5 + 0.5 * Math.sin(beat * 1.7) * Math.sin(beat * 0.31);
+  let warpAmt = 0.12 + 0.10 * throb;       // sterkte van de vervorming
+  let hueShift = Math.sin(t * 0.5) * 0.08; // langzaam glijdende warmte
+
+  buf.loadPixels();
+  for (let y = 0; y < BH; y++) {
+    let ny = y / BH;
+    for (let x = 0; x < BW; x++) {
+      let nx = x / BW;
+
+      // domain-warp: brekend, refractie-achtig veld in twee lagen
+      let q1 = noise(nx * 2.3 + 11, ny * 2.3, t * 0.6 + beat * 0.02);
+      let q2 = noise(nx * 2.3 + 70, ny * 2.3 + 40, t * 0.5 + beat * 0.02);
+      let wx = nx + (q1 - 0.5) * warpAmt * 2.0;
+      let wy = ny + (q2 - 0.5) * warpAmt * 2.0;
+
+      // tweede brekingslaag bovenop de eerste
+      let r1 = noise(wx * 3.1 + 3, wy * 3.1, t * 0.8 + beat * 0.03);
+      let r2 = noise(wx * 3.1 + 90, wy * 3.1 + 12, t * 0.7);
+      let fx = wx + (r1 - 0.5) * warpAmt;
+      let fy = wy + (r2 - 0.5) * warpAmt;
+
+      // het warme veld zelf
+      let field = noise(fx * 2.6, fy * 2.6, t * 0.9 + beat * 0.04);
+      // schemerende heat-haze: hoogfrequent rimpelen
+      let haze = 0.5 + 0.5 * Math.sin((fx + fy) * 22.0 + beat * 3.0 + field * 6.0);
+      let v = field * 0.78 + haze * 0.22;
+      // kloppende drukgolf vanuit het midden
+      let cx = nx - 0.5, cy = ny - 0.5;
+      let rad = Math.sqrt(cx * cx + cy * cy);
+      let pulse = 0.5 + 0.5 * Math.sin(rad * 16.0 - beat * 2.4);
+      v = v * (0.85 + 0.15 * pulse) * (0.9 + 0.2 * throb);
+      v = Math.max(0, Math.min(1, v));
+
+      // ziekelijk warm palet: diep bordeaux -> rood -> koortsig oranje/geel
+      let warm = v + hueShift;
+      let r = 30 + 225 * Math.pow(Math.max(0, warm), 0.85);
+      let g = 6 + 150 * Math.pow(Math.max(0, warm - 0.18), 1.5);
+      let b = 8 + 40 * Math.pow(Math.max(0, warm - 0.45), 2.4);
+
+      let p = (y * BW + x) * 4;
+      buf.pixels[p] = r;
+      buf.pixels[p + 1] = g;
+      buf.pixels[p + 2] = b;
+      buf.pixels[p + 3] = 255;
+    }
+  }
+  buf.updatePixels();
+  image(buf, 0, 0, width, height);
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  buildBuffer();
+}
+</script>
+</body>
+</html>

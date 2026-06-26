@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v54 — DROOM. Zachte hypnagogische morphing: domein-vervormde pastels
+// die langzaam bleeden en hercombineren, kleuren die niet passen maar toch kloppen,
+// een logica net buiten bereik. Gewichtloos, vloeiend, dromerig.
+
+const SPEED = 2000; // 1 = uren-traag. Hoog (bv. 2000) om de reis snel te zien.
+const TIME_SCALE = 0.0000007 * SPEED;
+
+let buf;
+let bw, bh;
+
+function setup() {
+  pixelDensity(1);
+  createCanvas(windowWidth, windowHeight);
+  frameRate(30);
+  buildBuffer();
+  colorMode(HSB, 360, 100, 100, 100);
+}
+
+function buildBuffer() {
+  bw = 150;
+  bh = Math.max(1, Math.round(bw * windowHeight / windowWidth));
+  buf = createImage(bw, bh);
+}
+
+// domein-vervorming: vloeiende plooien
+function fbm(x, y, t) {
+  let v = 0, amp = 0.5, freq = 1;
+  for (let i = 0; i < 4; i++) {
+    v += amp * noise(x * freq + t, y * freq - t, t * 0.5 + i * 11.3);
+    amp *= 0.5;
+    freq *= 2.0;
+  }
+  return v;
+}
+
+function draw() {
+  const t = millis() * TIME_SCALE;
+  const baseT = millis() * 0.00004; // kalme vaste grondbeweging
+  const T = t + baseT;
+
+  buf.loadPixels();
+  const px = buf.pixels;
+
+  for (let j = 0; j < bh; j++) {
+    for (let i = 0; i < bw; i++) {
+      const u = i / bw;
+      const v = j / bh;
+
+      // dubbele domein-warp voor dromerig bleeden
+      const q1 = fbm(u * 2.2, v * 2.2, T * 0.8);
+      const q2 = fbm(u * 2.2 + 5.2, v * 2.2 + 1.3, T * 0.8);
+
+      const r1 = fbm(u * 2.6 + 4.0 * q1 + 1.7, v * 2.6 + 4.0 * q2 - 0.9, T);
+      const r2 = fbm(u * 2.6 + 4.0 * q1 - 3.1, v * 2.6 + 4.0 * q2 + 6.4, T * 1.1);
+
+      const f = fbm(u * 1.8 + 3.0 * r1, v * 1.8 + 3.0 * r2, T * 0.6);
+
+      // kleuren die niet passen maar toch kloppen
+      const hue = (200 + 160 * f + 80 * r1 + 40 * Math.sin(T * 0.7 + q1 * 6.0)) % 360;
+      const sat = 28 + 26 * r2;
+      const bri = 62 + 30 * f - 14 * q2;
+
+      const c = color((hue + 360) % 360, sat, bri, 100);
+      const idx = 4 * (i + j * bw);
+      px[idx] = red(c);
+      px[idx + 1] = green(c);
+      px[idx + 2] = blue(c);
+      px[idx + 3] = 255;
+    }
+  }
+
+  buf.updatePixels();
+  push();
+  image(buf, 0, 0, width, height);
+  pop();
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  buildBuffer();
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v97 — ABSTRACTE SKYLINE. Gelaagde, onregelmatige torens als silhouet
+// tegen een traag driftende avondlucht; een raster van raampjes/lampjes gaat
+// rustig aan en uit (warm en koel, elk eigen ritme), met een vage spiegeling in
+// het water eronder. Niet letterlijk een stad -- overlappend en abstract.
+// De lampjes toggelen zichtbaar (frameCount); de lucht drift uren-traag (SPEED).
+
+const SPEED = 2000; // 1 = uren-traag. Hoog (bv. 2000) om de reis snel te zien.
+const TIME_SCALE = 0.0000007 * SPEED;
+
+let buildings = [], windows = [], stars = [], horizon = 0;
+
+const LIGHTS = [
+  [255,196,130],[255,176,96],[255,222,176],[255,206,150],  // warm (vaak)
+  [150,196,255],[180,255,224]                               // koel (zelden)
+];
+function pickLight(){ const i = random() < 0.82 ? Math.floor(random(4)) : 4 + Math.floor(random(2)); return LIGHTS[i]; }
+
+const sstep = (e0, e1, x) => { let v = (x - e0) / (e1 - e0); v = v < 0 ? 0 : v > 1 ? 1 : v; return v * v * (3 - 2 * v); };
+
+function setup(){ pixelDensity(1); createCanvas(windowWidth, windowHeight); frameRate(30); genCity(); }
+function windowResized(){ resizeCanvas(windowWidth, windowHeight); genCity(); }
+
+function genCity(){
+  buildings = []; windows = []; stars = [];
+  horizon = Math.floor(height * 0.74);
+  const layers = [
+    { dim: 0.42, hmin: 0.16, hmax: 0.32, tint: [40, 50, 84] },
+    { dim: 0.68, hmin: 0.24, hmax: 0.48, tint: [24, 30, 54] },
+    { dim: 1.00, hmin: 0.32, hmax: 0.64, tint: [10, 12, 24] }
+  ];
+  for (let L = 0; L < layers.length; L++){
+    const ly = layers[L];
+    let x = -random(0, 40);
+    while (x < width + 20){
+      const w = random(width * 0.045, width * 0.11);
+      const h = height * random(ly.hmin, ly.hmax);
+      const top = horizon - h;
+      buildings.push({ x, w, top, h, tint: ly.tint, layer: L });
+
+      const cell = constrain(w * 0.16, 7, 16);
+      const cols = Math.floor((w - cell) / cell);
+      const rows = Math.floor((h - cell) / cell);
+      const ox = x + (w - cols * cell) / 2 + cell * 0.25;
+      for (let r = 0; r < rows; r++){
+        for (let ci = 0; ci < cols; ci++){
+          if (random() < 0.22) continue;                 // niet elk vak heeft een raam
+          windows.push({
+            x: Math.floor(ox + ci * cell),
+            y: Math.floor(top + cell * 0.6 + r * cell),
+            w: Math.max(2, Math.floor(cell * 0.5)),
+            h: Math.max(2, Math.floor(cell * 0.6)),
+            col: pickLight(),
+            seed: random(1000),
+            thr: random(0.42, 0.72),
+            dim: ly.dim
+          });
+        }
+      }
+      x += w * random(0.55, 0.92);                        // overlappen -> abstract
+    }
+  }
+  for (let i = 0; i < 90; i++) stars.push({ x: random(width), y: random(horizon * 0.8), s: random(0.6, 1.8), tw: random(1000) });
+}
+
+function draw(){
+  const t = millis() * TIME_SCALE;
+
+  // ---- avondlucht (traag driftend van diep indigo naar een warme horizon) ----
+  const hueT = noise(7, t * 0.3);
+  const topC = [lerp(14, 26, hueT), lerp(16, 22, hueT), lerp(40, 54, hueT)];
+  const horC = [lerp(70, 120, hueT), lerp(54, 70, hueT), lerp(60, 78, hueT)];
+  noStroke();
+  for (let y = 0; y < horizon; y += 2){
+    const f = y / horizon;
+    fill(lerp(topC[0], horC[0], f * f), lerp(topC[1], horC[1], f * f), lerp(topC[2], horC[2], f * f));
+    rect(0, y, width, 2);
+  }
+  // sterren
+  for (const s of stars){
+    const tw = 0.4 + 0.6 * noise(s.tw, frameCount * 0.03);
+    fill(220, 225, 240, 200 * tw);
+    rect(s.x, s.y, s.s, s.s);
+  }
+  // water onder de horizon (iets donkerder, koeler)
+  fill(topC[0] * 0.5, topC[1] * 0.5, topC[2] * 0.6);
+  rect(0, horizon, width, height - horizon);
+
+  // ---- gebouwen (achter -> voor) ----
+  for (const b of buildings){
+    fill(b.tint[0], b.tint[1], b.tint[2]);
+    rect(b.x, b.top, b.w, horizon - b.top + 1);
+    // donkere spiegeling
+    fill(b.tint[0] * 0.6, b.tint[1] * 0.6, b.tint[2] * 0.6, 150);
+    rect(b.x, horizon, b.w, b.h * 0.5);
+  }
+
+  // ---- lampjes ----
+  // 1) aan-heid berekenen
+  for (const w of windows){
+    const v = noise(w.seed, frameCount * 0.012 + t * 0.5);
+    let on = sstep(w.thr - 0.05, w.thr + 0.05, v);
+    if (on >= 0.02) on *= (0.82 + 0.18 * noise(w.seed + 9, frameCount * 0.25)) * w.dim; else on = 0;
+    w._on = on;
+  }
+  // 2) alle gloed + spiegelingen in één ADD-pass (i.p.v. blendMode wisselen per lamp)
+  blendMode(ADD); noStroke();
+  for (const w of windows){
+    if (w._on <= 0) continue;
+    const c = w.col;
+    fill(c[0] * 0.45, c[1] * 0.45, c[2] * 0.45, 150 * w._on);
+    rect(w.x - w.w * 0.7, w.y - w.h * 0.7, w.w * 2.4, w.h * 2.4);
+    const ry = horizon + (horizon - w.y) + Math.sin(frameCount * 0.05 + w.x * 0.12) * 2.5;
+    if (ry < height){
+      fill(c[0], c[1], c[2], 70 * w._on);
+      rect(w.x, ry, w.w, w.h * 1.4);
+    }
+  }
+  // 3) alle kernen in één BLEND-pass
+  blendMode(BLEND);
+  for (const w of windows){
+    if (w._on <= 0) continue;
+    const c = w.col;
+    fill(c[0], c[1], c[2], 255 * w._on);
+    rect(w.x, w.y, w.w, w.h);
+  }
+}
+</script>
+</body>
+</html>

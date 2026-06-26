@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v93 — VLOERKLEED FULL-SCREEN (all-over). Een geknoopt tapijt dat het hele
+// doek vult: rand-banden aan de schermranden en een doorlopend rooster van
+// ster-medaillons (güls). 4-voudig symmetrisch, en traag evoluerend: de sterren
+// ademen, de garenkleuren verschieten onmerkbaar.
+
+const SPEED = 2000; // 1 = uren-traag. Hoog (bv. 2000) om de reis snel te zien.
+const TIME_SCALE = 0.0000007 * SPEED;
+
+const PAL = [
+  [150,30,32], [28,40,86], [224,202,150], [198,150,44],
+  [38,112,92], [176,78,40], [18,18,24]
+];
+
+let buf, GW, GH;
+function setup(){ pixelDensity(1); createCanvas(windowWidth, windowHeight); frameRate(30); noSmooth(); buildBuffer(); }
+function buildBuffer(){
+  const c = Math.max(4, Math.floor(width / 150));
+  GW = Math.max(8, Math.round(width / c));
+  GH = Math.max(8, Math.round(height / c));
+  buf = createGraphics(GW, GH); buf.pixelDensity(1); buf.noStroke();
+}
+function windowResized(){ resizeCanvas(windowWidth, windowHeight); buildBuffer(); }
+
+function knot(x, y, t){
+  const qx = Math.min(x, GW - 1 - x), qy = Math.min(y, GH - 1 - y);
+  const fx = qx / (GW / 2), fy = qy / (GH / 2), edge = Math.min(fx, fy);
+  if (edge < 0.025) return 6;
+  if (edge < 0.07){ const run = (Math.floor(qx / 3) + Math.floor(qy / 3)) % 2; return run ? 3 : 1; }
+  if (edge < 0.092) return 6;
+  if (edge < 0.108) return 2;
+
+  // doorlopend rooster van ster-medaillons
+  const T = Math.max(10, Math.floor(GW * 0.16));
+  const ti = Math.floor(qx / T) + Math.floor(qy / T);
+  const u = ((qx % T) / T) - 0.5, v = ((qy % T) / T) - 0.5;
+  const d = Math.abs(u) + Math.abs(v);
+  const star = d + 0.12 * Math.cos(Math.atan2(v, u) * 8 + t * 0.4);  // ademende sterpunten
+  const par = ti % 2;
+  const mn = noise(Math.floor(qx / T) * 0.5, Math.floor(qy / T) * 0.5, t * 0.25);
+
+  if (star < 0.14) return par ? 3 : 2;
+  if (star < 0.20) return 6;
+  if (star < 0.32) return mn > 0.5 ? (par ? 1 : 4) : (par ? 4 : 1);
+  if (Math.max(Math.abs(u), Math.abs(v)) > 0.40 && Math.min(Math.abs(u), Math.abs(v)) < 0.10) return 2; // hoek-haakjes
+  return 0; // rode grond
+}
+
+// traag kleed -> raster maar 1x per RECALC frames herweven (soepeler, identiek beeld)
+const RECALC = 6;
+let woven = false;
+function draw(){
+  if (!woven || frameCount % RECALC === 0){ weave(); woven = true; }
+  image(buf, 0, 0, width, height);
+}
+function weave(){
+  const t = millis() * TIME_SCALE;
+  buf.loadPixels();
+  for (let y = 0; y < GH; y++){
+    for (let x = 0; x < GW; x++){
+      const c = PAL[knot(x, y, t)];
+      const j = (noise(x * 0.5, y * 0.5) - 0.5) * 14;   // garen-variatie
+      const k = 4 * (y * GW + x);
+      buf.pixels[k]     = constrain(c[0] + j, 0, 255);
+      buf.pixels[k + 1] = constrain(c[1] + j, 0, 255);
+      buf.pixels[k + 2] = constrain(c[2] + j, 0, 255);
+      buf.pixels[k + 3] = 255;
+    }
+  }
+  buf.updatePixels();
+  image(buf, 0, 0, width, height);
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v44 — PIJN. Een donker, gespannen veld waar diepe rode pulsen
+// opzwellen en wegebben — een kloppend ritme van spanning en ontlading.
+// Soms schiet er een scherpe felle flits doorheen die meteen weer dooft.
+
+// 1 = uren-traag. Hoog (bv. 2000) om de reis snel te zien.
+const SPEED = 2000;
+const TIME_SCALE = 0.0000007 * SPEED;
+
+const BW = 150;
+let BH;
+let buf;
+
+// klopcentra (bronnen van pijn) die heel traag verschuiven
+const SOURCES = 3;
+let flareT = 0;     // tijd van laatste flits
+let flareX = 0, flareY = 0, flareLife = 0;
+
+function setup() {
+  pixelDensity(1);
+  createCanvas(windowWidth, windowHeight);
+  frameRate(30);
+  buildBuffer();
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  buildBuffer();
+}
+
+function buildBuffer() {
+  BH = Math.max(60, Math.round(BW * (windowHeight / windowWidth)));
+  buf = createGraphics(BW, BH);
+  buf.colorMode(HSB, 360, 100, 100, 1);
+  buf.noStroke();
+}
+
+function draw() {
+  const t = millis() * TIME_SCALE;        // trage drift van de bronnen
+  const beat = millis() * 0.001;          // kalm vast kloptempo
+
+  // bronposities driften traag; SPEED versnelt alleen dat wandelen
+  const src = [];
+  for (let i = 0; i < SOURCES; i++) {
+    src.push({
+      x: noise(i * 10 + 1, t * 0.4) * BW,
+      y: noise(i * 10 + 5, t * 0.4) * BH,
+      // elke bron klopt op eigen frequentie -> onregelmatige pijn
+      ph: i * 1.7,
+      fr: 0.7 + i * 0.25
+    });
+  }
+
+  // FLITS: af en toe een scherpe, jagged felle uitbarsting die dooft
+  if (flareLife <= 0 && random() < 0.012) {
+    flareX = random(BW); flareY = random(BH);
+    flareLife = 1; flareT = millis();
+  }
+  if (flareLife > 0) flareLife -= 0.06; // dooft snel weg
+
+  // donkere grondtoon eerst, met heel weinig tint -> bijna zwart
+  buf.background(0, 0, 3);
+
+  buf.noStroke();
+  for (let y = 0; y < BH; y += 1) {
+    for (let x = 0; x < BW; x += 1) {
+      let heat = 0;
+      for (const s of src) {
+        const dx = x - s.x, dy = y - s.y;
+        const d = Math.sqrt(dx * dx + dy * dy);
+        // zwellen en wegebben: sinus per bron
+        const pulse = 0.5 + 0.5 * Math.sin(beat * s.fr + s.ph);
+        const reach = 22 + 30 * pulse;
+        heat += pulse * Math.exp(-(d * d) / (2 * reach * reach));
+      }
+      // textuur zodat het kloppen niet glad maar rauw oogt
+      const grain = noise(x * 0.12, y * 0.12, beat * 0.3);
+      heat *= 0.7 + 0.6 * grain;
+      if (heat < 0.04) continue;
+
+      // diep rood, naar wit-heet in de kern
+      const k = constrain(heat, 0, 1);
+      const h = lerp(358, 16, k * k);       // rood -> oranjewit in piek
+      const s = lerp(95, 30, k * k);        // kern verbleekt
+      const b = constrain(6 + 70 * k, 6, 100);
+      buf.fill(h, s, b);
+      buf.rect(x, y, 1, 1);
+    }
+  }
+
+  // de scherpe flits: een grillige, heldere ster die meteen dooft
+  if (flareLife > 0) {
+    const a = flareLife * flareLife;
+    buf.fill(12, 18, 100, a);
+    buf.push();
+    buf.translate(flareX, flareY);
+    const spikes = 5;
+    for (let i = 0; i < spikes; i++) {
+      const ang = (i / spikes) * TWO_PI + noise(i, flareT * 0.001) * 1.2;
+      const len = 6 + 16 * noise(i + 9, flareT * 0.002);
+      buf.rect(0, 0, Math.cos(ang) * len, 1);
+      buf.push();
+      buf.rotate(ang);
+      buf.rect(0, -0.5, len, 1);
+      buf.pop();
+    }
+    buf.ellipse(0, 0, 3, 3);
+    buf.pop();
+  }
+
+  image(buf, 0, 0, width, height);
+}
+</script>
+</body>
+</html>

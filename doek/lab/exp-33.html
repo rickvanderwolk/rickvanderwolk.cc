@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v34 — COSMISCHE NEVEL. Gelaagde noise-nevelwolken in traag driftende
+// kleuren op een kleine buffer, met daarboven een veld sterren (wisselende
+// helderheid, zachte twinkel) en een trage parallax-drift: een eindeloos
+// langzaam draaiende kosmos.
+const SPEED = 2000; // 1 = uren-traag. Hoog (bv. 2000) om de reis snel te zien.
+const TIME_SCALE = 0.0000007 * SPEED;
+
+let buf;
+const BW = 150;
+let BH;
+let stars = [];
+const NSTARS = 220;
+
+function setup() {
+  pixelDensity(1);
+  createCanvas(windowWidth, windowHeight);
+  frameRate(30);
+  BH = Math.max(1, Math.round(BW * height / width));
+  buf = createGraphics(BW, BH);
+  buf.pixelDensity(1);
+  buildStars();
+}
+
+function buildStars() {
+  stars = [];
+  for (let i = 0; i < NSTARS; i++) {
+    stars.push({
+      x: random(1),
+      y: random(1),
+      depth: random(0.3, 1),         // parallax-laag
+      base: random(0.3, 1),          // basis-helderheid
+      tw: random(1000),              // twinkel-fase
+      tws: random(0.5, 2)            // twinkel-snelheid
+    });
+  }
+}
+
+function draw() {
+  const t = millis() * TIME_SCALE;
+  const baseT = millis() * 0.0001; // kalme constante twinkel/drift
+
+  // ---- nevel op kleine buffer ----
+  buf.loadPixels();
+  const dx = t * 0.6;        // trage horizontale drift
+  const dy = t * 0.25;
+  const hueShift = t * 0.4;  // traag kleurverloop
+  for (let y = 0; y < BH; y++) {
+    for (let x = 0; x < BW; x++) {
+      const nx = x * 0.012;
+      const ny = y * 0.012;
+      // twee nevellagen
+      let n1 = noise(nx + dx, ny + dy, 0.0);
+      let n2 = noise(nx * 2.1 - dx * 0.5, ny * 2.1 + dy * 0.3, 7.0);
+      let dens = Math.pow(Math.max(0, n1 * 0.7 + n2 * 0.5 - 0.45), 1.8);
+      dens = Math.min(1, dens * 2.2);
+
+      // kleur uit langzaam driftend palet (donker space-blauw -> magenta/teal)
+      const hue = (n2 + hueShift) % 1;
+      let r, g, b;
+      // simpele drie-stops kleurmix
+      const c1 = [30, 20, 70];    // diep paars
+      const c2 = [200, 60, 130];  // magenta
+      const c3 = [40, 120, 150];  // teal
+      let cr, cg, cb;
+      if (hue < 0.5) {
+        const f = hue / 0.5;
+        cr = c1[0] + (c2[0] - c1[0]) * f;
+        cg = c1[1] + (c2[1] - c1[1]) * f;
+        cb = c1[2] + (c2[2] - c1[2]) * f;
+      } else {
+        const f = (hue - 0.5) / 0.5;
+        cr = c2[0] + (c3[0] - c2[0]) * f;
+        cg = c2[1] + (c3[1] - c2[1]) * f;
+        cb = c2[2] + (c3[2] - c2[2]) * f;
+      }
+      r = 4 + cr * dens;
+      g = 6 + cg * dens;
+      b = 12 + cb * dens;
+
+      const idx = 4 * (x + y * BW);
+      buf.pixels[idx] = r;
+      buf.pixels[idx + 1] = g;
+      buf.pixels[idx + 2] = b;
+      buf.pixels[idx + 3] = 255;
+    }
+  }
+  buf.updatePixels();
+
+  noSmooth();
+  image(buf, 0, 0, width, height);
+
+  // ---- sterren ----
+  noStroke();
+  const drift = t * 0.04; // hele trage parallax-verschuiving
+  for (let i = 0; i < NSTARS; i++) {
+    const s = stars[i];
+    // parallax: diepere sterren bewegen minder
+    let sx = ((s.x + drift * s.depth) % 1);
+    if (sx < 0) sx += 1;
+    const px = sx * width;
+    const py = s.y * height;
+    const tw = 0.6 + 0.4 * Math.sin(baseT * 60 * s.tws + s.tw);
+    const bright = s.base * tw;
+    const sz = (0.6 + s.depth * 1.6) * (width / 1200 + 0.6);
+    fill(255, 250, 240, 255 * bright);
+    circle(px, py, sz);
+    if (bright > 0.7 && s.depth > 0.7) {
+      fill(180, 200, 255, 60 * bright);
+      circle(px, py, sz * 3);
+    }
+  }
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  BH = Math.max(1, Math.round(BW * height / width));
+  buf = createGraphics(BW, BH);
+  buf.pixelDensity(1);
+}
+</script>
+</body>
+</html>

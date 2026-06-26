@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v73 — BOKEH. Driftende, onscherpe schijven gekleurd licht.
+// Als lichtjes ver buiten focus door een lens: zacht, additief gloeiend,
+// langzaam zwevend, traag van kleur wisselend.
+
+const SPEED = 2000; // 1 = uren-traag. Hoog (bv. 2000) om de reis snel te zien.
+const TIME_SCALE = 0.0000007 * SPEED;
+
+let sprite;       // zachte radial-gradient schijf
+let lights = [];
+const N = 90;
+
+function makeSprite() {
+  const S = 256;
+  sprite = createGraphics(S, S);
+  sprite.clear();
+  const ctx = sprite.drawingContext;
+  const g = ctx.createRadialGradient(S/2, S/2, 0, S/2, S/2, S/2);
+  g.addColorStop(0.0, 'rgba(255,255,255,1)');
+  g.addColorStop(0.55, 'rgba(255,255,255,0.45)');
+  g.addColorStop(0.82, 'rgba(255,255,255,0.12)');
+  g.addColorStop(1.0, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, S, S);
+}
+
+function setup() {
+  pixelDensity(1);
+  createCanvas(windowWidth, windowHeight);
+  frameRate(30);
+  makeSprite();
+  for (let i = 0; i < N; i++) {
+    lights.push({
+      x: random(1), y: random(1),
+      r: random(40, 220),
+      sp: random(0.0006, 0.0028),
+      dir: random(TWO_PI),
+      hueOff: random(1),
+      ph: random(TWO_PI),
+      a: random(0.10, 0.34)
+    });
+  }
+}
+
+function draw() {
+  // zachte fade i.p.v. harde clear -> trails van licht
+  noStroke();
+  blendMode(BLEND);
+  fill(4, 5, 10, 36);
+  rect(0, 0, width, height);
+
+  const t = frameCount * 0.004;
+  const slow = millis() * TIME_SCALE;
+
+  blendMode(SCREEN);
+  imageMode(CENTER);
+  for (let i = 0; i < N; i++) {
+    const L = lights[i];
+    // langzaam zweven: basisbeweging uit frameCount zodat het zichtbaar
+    // beweegt, ook bij SPEED=1
+    const dx = cos(L.dir) * (t * L.sp * 60) + sin(t * 0.3 + L.ph) * 0.03;
+    const dy = sin(L.dir) * (t * L.sp * 60) + cos(t * 0.27 + L.ph) * 0.03;
+    let xx = ((L.x + dx) % 1.2 + 1.2) % 1.2 - 0.1;
+    let yy = ((L.y + dy) % 1.2 + 1.2) % 1.2 - 0.1;
+    const breathe = 0.85 + 0.25 * sin(t * 0.5 + L.ph);
+    const size = L.r * breathe;
+
+    // kleur: traag wandelend palet
+    const hue = (slow * 40 + L.hueOff * 360 + sin(t * 0.2 + L.ph) * 30) % 360;
+    const col = hsl(hue, 70, 60);
+    tint(col[0], col[1], col[2], 255 * L.a * (0.7 + 0.3 * breathe));
+    image(sprite, xx * width, yy * height, size, size);
+  }
+  noTint();
+  imageMode(CORNER);
+  blendMode(BLEND);
+}
+
+function hsl(h, s, l) {
+  s /= 100; l /= 100;
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const hp = (((h % 360) + 360) % 360) / 60;
+  const x = c * (1 - Math.abs(hp % 2 - 1));
+  let r = 0, g = 0, b = 0;
+  if (hp < 1) { r = c; g = x; }
+  else if (hp < 2) { r = x; g = c; }
+  else if (hp < 3) { g = c; b = x; }
+  else if (hp < 4) { g = x; b = c; }
+  else if (hp < 5) { r = x; b = c; }
+  else { r = c; b = x; }
+  const m = l - c / 2;
+  return [Math.round((r + m) * 255), Math.round((g + m) * 255), Math.round((b + m) * 255)];
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  makeSprite();
+}
+</script>
+</body>
+</html>

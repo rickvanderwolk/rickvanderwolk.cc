@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v76 — CHROMATISCH / LICHTLEK. De kleurkanalen driften traag uit
+// elkaar en weer samen (chromatische aberratie). Zachte lichtlekken wassen
+// diagonaal over als oude film. Subtiele prismatische randen, warme lekken.
+
+const SPEED = 2000; // 1 = uren-traag. Hoog (bv. 2000) om de reis snel te zien.
+const TIME_SCALE = 0.0000007 * SPEED;
+
+let field;        // monochroom-vrij grijswaarde-/kleurveld (laag-res)
+const BW = 200;
+let blobs = [];
+const N = 16;
+
+function makeBuf() {
+  const h = Math.max(2, Math.floor(BW * windowHeight / windowWidth));
+  field = createGraphics(BW, h);
+  field.pixelDensity(1);
+  field.noStroke();
+}
+
+function setup() {
+  pixelDensity(1);
+  createCanvas(windowWidth, windowHeight);
+  frameRate(30);
+  makeBuf();
+  for (let i = 0; i < N; i++) {
+    blobs.push({
+      x: random(1), y: random(1),
+      r: random(0.14, 0.42),
+      sp: random(0.0007, 0.0022),
+      dir: random(TWO_PI),
+      ph: random(TWO_PI),
+      lum: random(0.5, 1.0)
+    });
+  }
+}
+
+function draw() {
+  const t = frameCount * 0.004;
+  const slow = millis() * TIME_SCALE;
+
+  // helder, zacht veld in de buffer (wit licht; kleur komt uit kanaal-shift)
+  field.push();
+  field.background(10, 12, 20);
+  field.blendMode(SCREEN);
+  for (let i = 0; i < N; i++) {
+    const b = blobs[i];
+    const dx = cos(b.dir) * (t * b.sp * 50) + sin(t * 0.3 + b.ph) * 0.05;
+    const dy = sin(b.dir) * (t * b.sp * 50) + cos(t * 0.25 + b.ph) * 0.05;
+    let xx = ((b.x + dx) % 1.2 + 1.2) % 1.2 - 0.1;
+    let yy = ((b.y + dy) % 1.2 + 1.2) % 1.2 - 0.1;
+    const v = Math.round(b.lum * 255 * (0.7 + 0.3 * sin(t * 0.4 + b.ph)));
+    const rad = b.r * field.width * (0.85 + 0.2 * sin(t * 0.35 + b.ph));
+    softDisc(field, xx * field.width, yy * field.height, rad, v);
+  }
+  field.pop();
+
+  // chromatische aberratie: drie kanalen met traag driftende offset
+  const amp = 6 + 9 * (0.5 - 0.5 * cos(slow * 7 + frameCount * 0.0006));
+  const ang = slow * 60 + frameCount * 0.0015;
+  const ox = Math.cos(ang) * amp;
+  const oy = Math.sin(ang) * amp;
+
+  background(0);
+  imageMode(CORNER);
+  blendMode(ADD);
+  drawingContext.filter = 'blur(0.6px)';
+  // rood
+  push(); tint(255, 0, 0); image(field, -ox, -oy, width, height); pop();
+  // groen (centraal)
+  push(); tint(0, 255, 0); image(field, 0, 0, width, height); pop();
+  // blauw
+  push(); tint(0, 0, 255); image(field, ox, oy, width, height); pop();
+  drawingContext.filter = 'none';
+  noTint();
+
+  // warme diagonale lichtlek, traag schuivend
+  const leakP = (slow * 18 + frameCount * 0.0007) % 1;
+  drawLeak(leakP, slow);
+  blendMode(BLEND);
+}
+
+function drawLeak(p, slow) {
+  // diagonale band die over het doek wast
+  const cx = width * (1.4 * p - 0.2);
+  const cy = height * (1.0 - 1.2 * p + 0.1);
+  const r = Math.max(width, height) * 0.7;
+  const ctx = drawingContext;
+  const hueShift = Math.sin(slow * 4) * 0.5 + 0.5; // warm: oranje<->rose
+  const r1 = 255;
+  const g1 = Math.round(120 + 60 * hueShift);
+  const b1 = Math.round(60 + 50 * hueShift);
+  const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+  grad.addColorStop(0, 'rgba(' + r1 + ',' + g1 + ',' + b1 + ',0.16)');
+  grad.addColorStop(0.5, 'rgba(' + r1 + ',' + Math.round(g1 * 0.7) + ',' + b1 + ',0.06)');
+  grad.addColorStop(1, 'rgba(' + r1 + ',' + g1 + ',' + b1 + ',0)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, width, height);
+}
+
+function softDisc(g, cx, cy, r, v) {
+  const ctx = g.drawingContext;
+  const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+  grad.addColorStop(0, 'rgba(' + v + ',' + v + ',' + v + ',0.5)');
+  grad.addColorStop(0.6, 'rgba(' + v + ',' + v + ',' + v + ',0.18)');
+  grad.addColorStop(1, 'rgba(' + v + ',' + v + ',' + v + ',0)');
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  makeBuf();
+}
+</script>
+</body>
+</html>

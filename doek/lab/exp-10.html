@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v11 — INKT / SUMINAGASHI. Compleet andere richting.
+//
+// Geen vlekken of streken, maar lange DOORLOPENDE filamenten. Honderden
+// inkt-deeltjes drijven door een flow-field en trekken haarfijne lijnen na
+// zich aan. Waar veel filamenten langs elkaar strijken ontstaan de marmer-
+// /houtnerf-aderen van suminagashi (Japans inkt-op-water-marmeren).
+//
+// Het flow-field draait heel traag rond, dus de stroming verlegt zich over de
+// uren en het patroon herorganiseert onmerkbaar. De inkt drift langzaam van
+// indigo naar andere gedempte tinten. Heel zelden trekt een lichte veil over
+// het doek zodat oude aderen vervagen en er ruimte komt voor nieuwe.
+//
+// Never-cleared buffer, puur additief, uren-traag. Niets om te bedienen.
+
+const SPEED      = 1;                 // 1 = uren-traag. Hoog (bv. 1500) om snel te zien.
+const TIME_SCALE = 0.0000008 * SPEED;
+const N_PART     = 240;               // aantal filament-deeltjes
+const STEP       = 1.1;              // staplengte per frame (px) -> rustige aangroei
+
+let buf, inkHue, parts;
+
+function setup() {
+  pixelDensity(1);
+  createCanvas(windowWidth, windowHeight);
+  frameRate(30);
+  inkHue = random(360);
+
+  buf = createGraphics(windowWidth, windowHeight);
+  buf.colorMode(HSL, 360, 100, 100, 1);
+  buf.strokeCap(ROUND);
+  paintGround();
+
+  parts = [];
+  for (let i = 0; i < N_PART; i++) parts.push(spawn());
+}
+
+function paintGround() {
+  buf.noStroke();
+  buf.background(38, 14, 92);          // bleek, warm papier
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  buf.resizeCanvas(windowWidth, windowHeight);
+  paintGround();
+}
+
+function spawn() {
+  return {
+    x: random(width), y: random(height),
+    px: 0, py: 0, fresh: true,
+    life: random(120, 520)             // frames voor reset
+  };
+}
+
+const lerp1 = (a, b, t) => a + (b - a) * t;
+
+function draw() {
+  const t = millis() * TIME_SCALE;
+
+  // traag draaiend flow-field + driftende inkt
+  const fScale = lerp1(0.0014, 0.0032, noise(11, t * 0.3));
+  const turns  = lerp1(1.4, 3.2, noise(23, t * 0.25));
+  const hue    = (inkHue + t * 20) % 360;
+  const sat    = lerp1(30, 58, noise(37, t * 0.4));
+  const baseL  = lerp1(20, 40, noise(51, t * 0.35));
+
+  buf.strokeWeight(0.8);
+  for (const p of parts) {
+    p.px = p.x; p.py = p.y;
+    const a  = noise(p.x * fScale, p.y * fScale, t * 0.10) * TWO_PI * turns;
+    p.x += Math.cos(a) * STEP;
+    p.y += Math.sin(a) * STEP;
+    p.life--;
+
+    const off = p.x < 0 || p.x > width || p.y < 0 || p.y > height;
+    if (p.life <= 0 || off) { Object.assign(p, spawn()); continue; }
+    if (p.fresh) { p.fresh = false; continue; }   // geen sprong-lijn na reset
+
+    // lichte tint-variatie per deeltje -> levendige aderen
+    const l = constrain(baseL + (noise(p.x * 0.01, p.y * 0.01) - 0.5) * 24, 6, 70);
+    buf.stroke(hue, sat, l, 0.05);
+    buf.line(p.px, p.py, p.x, p.y);
+  }
+
+  // heel zelden een bleke veil zodat oude aderen vervagen
+  if (random() < 0.0016) {
+    buf.noStroke();
+    buf.fill(38, 12, 92, 0.05);
+    buf.rect(0, 0, width, height);
+  }
+
+  image(buf, 0, 0);
+}
+</script>
+</body>
+</html>

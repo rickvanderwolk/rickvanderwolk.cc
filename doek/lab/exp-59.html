@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v60 — GETIJ. Een traag tij dat opkomt en terugtrekt: gelaagde doorschijnende
+// vellen water spoelen op en wijken terug, laten vage sporen na en wissen ze weer.
+// Horizontaal, ritmisch, blauwgrijs met schuim-licht. Heel langzaam.
+
+const SPEED = 2000; // 1 = uren-traag. Hoog (bv. 2000) om de reis snel te zien.
+const TIME_SCALE = 0.0000007 * SPEED;
+
+let buf;
+let bw, bh;
+let wetMark; // achtergebleven natte sporen op het zand
+
+function setup() {
+  pixelDensity(1);
+  createCanvas(windowWidth, windowHeight);
+  frameRate(30);
+  colorMode(RGB, 255);
+  buildBuffer();
+}
+
+function buildBuffer() {
+  bw = 150;
+  bh = Math.max(1, Math.round(bw * windowHeight / windowWidth));
+  buf = createImage(bw, bh);
+  wetMark = new Float32Array(bw * bh);
+}
+
+function draw() {
+  const t = millis() * TIME_SCALE;
+  const fixed = millis() * 0.0002; // kalme golfslag
+
+  // tij-niveau (0..1, fractie van hoogte): traag op en neer
+  const tide = 0.5 + 0.34 * Math.sin(t * 0.6);
+  // gelaagde golf-randen die op en neer wassen
+  const swash = 0.06 * Math.sin(fixed * 5.0) + 0.04 * Math.sin(fixed * 8.3 + 1.7);
+
+  buf.loadPixels();
+  const px = buf.pixels;
+
+  for (let j = 0; j < bh; j++) {
+    const v = j / bh;
+    for (let i = 0; i < bw; i++) {
+      const u = i / bw;
+      const idx = i + j * bw;
+      const o = 4 * idx;
+
+      // golfrand met horizontale wiebel
+      const ripple = 0.03 * noise(u * 3.0, fixed * 2.0) + swash;
+      const waterLevel = tide + ripple;
+      const depth = waterLevel - v; // >0 onder water
+
+      // zand-textuur
+      const sand = noise(u * 5.0, v * 9.0, 0.5);
+      let r = 150 + 22 * sand;
+      let g = 142 + 20 * sand;
+      let b = 128 + 18 * sand;
+
+      // natte sporen: water dat geweest is laat donkerder zand na
+      if (depth > 0) {
+        const m = Math.min(1, depth * 3.0);
+        if (m > wetMark[idx]) wetMark[idx] += (m - wetMark[idx]) * 0.2;
+      } else {
+        wetMark[idx] *= 0.998; // sporen drogen heel langzaam en worden gewist
+      }
+      const wet = wetMark[idx];
+      r = lerp(r, r * 0.72, wet);
+      g = lerp(g, g * 0.74, wet);
+      b = lerp(b, b * 0.78, wet);
+
+      if (depth > 0) {
+        // doorschijnend blauwgrijs water, dieper = donkerder/blauwer
+        const dd = Math.min(1, depth * 1.6);
+        const wr = lerp(120, 60, dd);
+        const wg = lerp(140, 84, dd);
+        const wb = lerp(150, 110, dd);
+        const alpha = Math.min(0.85, 0.35 + depth * 2.0);
+        r = lerp(r, wr, alpha);
+        g = lerp(g, wg, alpha);
+        b = lerp(b, wb, alpha);
+
+        // schuim-licht aan de waterrand
+        const edge = 1 - Math.min(1, Math.abs(depth) * 18.0);
+        const foam = edge * (0.5 + 0.5 * noise(u * 30.0, v * 30.0, fixed * 12.0));
+        r = lerp(r, 230, foam * 0.7);
+        g = lerp(g, 238, foam * 0.7);
+        b = lerp(b, 240, foam * 0.7);
+      }
+
+      px[o] = r;
+      px[o + 1] = g;
+      px[o + 2] = b;
+      px[o + 3] = 255;
+    }
+  }
+
+  buf.updatePixels();
+  push();
+  image(buf, 0, 0, width, height);
+  pop();
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  buildBuffer();
+}
+</script>
+</body>
+</html>

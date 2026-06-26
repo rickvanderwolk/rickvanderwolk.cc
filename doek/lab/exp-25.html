@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v26 — SMOOTH LIFE. Een continu raster waar cellen volgens een zachte
+// buurtregel groeien en vervallen. Daaruit ontstaan organische blobjes die
+// kruipen, splitsen en vervloeien, als microscopisch leven onder glas.
+
+const SPEED = 2000;        // 1 = uren-traag. Hoog (bv. 2000) om de reis snel te zien.
+const TIME_SCALE = 0.0000007 * SPEED;
+
+let buf;
+let GW, GH;                // grid breedte / hoogte
+let grid, next;            // continu-state buffers (0..1)
+let blurA, blurB;          // tijdelijke buffers voor scheidbare blur
+let kernSmall, kernBig;    // straal van binnen/buiten ring
+let palT = 0;
+
+// SmoothLife-achtige groeiparameters (worden traag gemoduleerd)
+function setup() {
+  pixelDensity(1);
+  createCanvas(windowWidth, windowHeight);
+  frameRate(30);
+  buildBuffers();
+}
+
+function buildBuffers() {
+  GW = 150;
+  GH = max(60, round(GW * (windowHeight / windowWidth)));
+  buf = createGraphics(GW, GH);
+  buf.pixelDensity(1);
+  buf.noStroke();
+
+  grid = new Float32Array(GW * GH);
+  next = new Float32Array(GW * GH);
+  blurA = new Float32Array(GW * GH);
+  blurB = new Float32Array(GW * GH);
+
+  kernSmall = 3;
+  kernBig = 9;
+
+  // willekeurige zaadvlekken
+  for (let i = 0; i < grid.length; i++) grid[i] = 0;
+  let seeds = 40;
+  for (let s = 0; s < seeds; s++) {
+    let cx = random(GW), cy = random(GH), r = random(3, 8);
+    for (let y = -r; y <= r; y++) {
+      for (let x = -r; x <= r; x++) {
+        if (x * x + y * y > r * r) continue;
+        let gx = (floor(cx + x) + GW) % GW;
+        let gy = (floor(cy + y) + GH) % GH;
+        grid[gy * GW + gx] = random(0.6, 1);
+      }
+    }
+  }
+}
+
+// scheidbare box-blur met gegeven straal (toroidaal), src -> dst
+function boxBlur(src, dst, rad) {
+  let inv = 1 / (2 * rad + 1);
+  // horizontaal -> blurA
+  for (let y = 0; y < GH; y++) {
+    let row = y * GW;
+    let sum = 0;
+    for (let k = -rad; k <= rad; k++) sum += src[row + ((k + GW) % GW)];
+    for (let x = 0; x < GW; x++) {
+      blurA[row + x] = sum * inv;
+      let addX = (x + rad + 1) % GW;
+      let subX = (x - rad + GW) % GW;
+      sum += src[row + addX] - src[row + subX];
+    }
+  }
+  // verticaal -> dst
+  for (let x = 0; x < GW; x++) {
+    let sum = 0;
+    for (let k = -rad; k <= rad; k++) sum += blurA[((k + GH) % GH) * GW + x];
+    for (let y = 0; y < GH; y++) {
+      dst[y * GW + x] = sum * inv;
+      let addY = ((y + rad + 1) % GH) * GW;
+      let subY = ((y - rad + GH) % GH) * GW;
+      sum += blurA[addY + x] - blurA[subY + x];
+    }
+  }
+}
+
+// zachte sigmoid
+function sig(x, a, w) {
+  return 1 / (1 + Math.exp(-(x - a) * 4 / w));
+}
+
+// SmoothLife overgangsfunctie: n = buitenring-dichtheid, m = binnenvulling
+function transition(n, m, b1, b2, d1, d2) {
+  let alphaN = 0.028, alphaM = 0.147;
+  let aliveThreshold = sig(m, 0.5, alphaM);
+  let lo = b1 + (d1 - b1) * aliveThreshold;
+  let hi = b2 + (d2 - b2) * aliveThreshold;
+  return sig(n, lo, alphaN) * (1 - sig(n, hi, alphaN));
+}
+
+function stepLife(t) {
+  // parameters drijven traag -> de "soort" verandert continu
+  // canonieke SmoothLife (Rafler), licht gemoduleerd zodat de "soort" drift
+  let b1 = 0.257 + 0.012 * Math.sin(t * 1.3);
+  let b2 = 0.336 + 0.015 * Math.sin(t * 0.9 + 1.0);
+  let d1 = 0.365 + 0.012 * Math.sin(t * 0.7 + 2.0);
+  let d2 = 0.549 + 0.015 * Math.sin(t * 1.1 + 0.5);
+
+  boxBlur(grid, blurB, kernSmall);   // binnen (m)
+  boxBlur(grid, blurA, kernBig);     // groter gemiddelde (voor n)
+
+  // buitenring n = (groot - klein), genormaliseerd
+  for (let i = 0; i < grid.length; i++) {
+    let m = blurB[i];
+    let big = blurA[i];
+    let aS = Math.PI * (kernSmall + 0.5) * (kernSmall + 0.5);
+    let aB = Math.PI * (kernBig + 0.5) * (kernBig + 0.5);
+    let n = (big * aB - m * aS) / (aB - aS);
+    let target = transition(n, m, b1, b2, d1, d2);
+    // zachte beweging naar target -> vloeiend, geen harde stap
+    let dt = 0.16;
+    let v = grid[i] + (target * 2 - 1) * dt;
+    next[i] = v < 0 ? 0 : v > 1 ? 1 : v;
+  }
+  let tmp = grid; grid = next; next = tmp;
+}
+
+function draw() {
+  let t = millis() * TIME_SCALE;
+  // basis-evolutie op kalm tempo, parameters versnellen met SPEED
+  stepLife(t);
+
+  palT += 0.0009 * (0.2 + SPEED * 0.0005);
+  let hueA = (palT * 40) % 360;
+
+  buf.loadPixels();
+  let d = buf.pixels;
+  for (let y = 0; y < GH; y++) {
+    for (let x = 0; x < GW; x++) {
+      let v = grid[y * GW + x];
+      // kleur uit traag drijvend palet (hsl-achtig handmatig)
+      let h = (hueA + v * 80) * Math.PI / 180;
+      let s = 0.55, l = 0.04 + v * 0.6;
+      let r = l + s * l * Math.cos(h);
+      let g = l + s * l * Math.cos(h - 2.094);
+      let b = l + s * l * Math.cos(h + 2.094);
+      let idx = 4 * (y * GW + x);
+      d[idx] = constrain(r * 255, 0, 255);
+      d[idx + 1] = constrain(g * 255, 0, 255);
+      d[idx + 2] = constrain(b * 255, 0, 255);
+      d[idx + 3] = 255;
+    }
+  }
+  buf.updatePixels();
+
+  image(buf, 0, 0, width, height);
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  buildBuffers();
+}
+</script>
+</body>
+</html>

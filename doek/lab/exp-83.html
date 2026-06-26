@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v84 — DESINTEGRATIE. Vlijmscherpe geometrische vormen die periodiek
+// verbrijzelen tot grote pixels en weer samenstollen tot scherpte, als een
+// vorm die in en uit mozaiek oplost.
+
+const SPEED = 2000; // 1 = uren-traag. Hoog (bv. 2000) om de reis snel te zien.
+const TIME_SCALE = 0.0000007 * SPEED;
+
+let src;
+
+function setup() {
+  pixelDensity(1);
+  createCanvas(windowWidth, windowHeight);
+  frameRate(30);
+  noSmooth();
+  buildSource();
+}
+
+function buildSource() {
+  src = createGraphics(windowWidth, windowHeight);
+  src.pixelDensity(1);
+  src.noSmooth();
+}
+
+function paintSource(t) {
+  const g = src;
+  g.push();
+  g.noStroke();
+  g.background(8, 9, 14);
+  g.translate(g.width / 2, g.height / 2);
+  const s = Math.min(g.width, g.height);
+
+  // een paar scherpe geometrische vormen, hard contrast
+  g.rotate(frameCount * 0.003 + t * 0.3);
+  const hue = (t * 40 + frameCount * 0.12) % 360;
+
+  g.fill(...hsv(hue, 0.75, 0.95));
+  g.rectMode(CENTER);
+  g.rect(0, 0, s * 0.5, s * 0.5);
+
+  g.fill(8, 8, 12);
+  g.rect(0, 0, s * 0.34, s * 0.34);
+
+  g.fill(...hsv((hue + 140) % 360, 0.8, 0.95));
+  g.push();
+  g.rotate(QUARTER_PI + t);
+  g.rect(0, 0, s * 0.46, s * 0.13);
+  g.rect(0, 0, s * 0.13, s * 0.46);
+  g.pop();
+
+  g.fill(245, 240, 225);
+  g.ellipse(0, 0, s * 0.16, s * 0.16);
+
+  // harde randvormen
+  g.fill(...hsv((hue + 60) % 360, 0.7, 0.9));
+  for (let i = 0; i < 6; i++) {
+    g.push();
+    g.rotate((i / 6) * TWO_PI + frameCount * 0.004);
+    g.triangle(s * 0.42, 0, s * 0.55, s * 0.06, s * 0.55, -s * 0.06);
+    g.pop();
+  }
+  g.pop();
+}
+
+function hsv(h, s, v) {
+  h = ((h % 360) + 360) % 360;
+  const c = v * s, x = c * (1 - Math.abs(((h / 60) % 2) - 1)), m = v - c;
+  let r = 0, gg = 0, b = 0;
+  if (h < 60) { r = c; gg = x; }
+  else if (h < 120) { r = x; gg = c; }
+  else if (h < 180) { gg = c; b = x; }
+  else if (h < 240) { gg = x; b = c; }
+  else if (h < 300) { r = x; b = c; }
+  else { r = c; b = x; }
+  return [(r + m) * 255, (gg + m) * 255, (b + m) * 255];
+}
+
+function draw() {
+  const t = millis() * TIME_SCALE;
+  paintSource(t);
+  src.loadPixels();
+
+  // desintegratie-cyclus: blokgrootte pulseert tussen scherp en grof.
+  // basismotie uit frameCount, langzame drift uit t.
+  const pulse = 0.5 - 0.5 * Math.cos(frameCount * 0.018);
+  const env = Math.pow(pulse, 1.8);
+  const slow = 0.5 - 0.5 * Math.cos(t * 0.9);
+  const amount = constrain(0.6 * env + 0.6 * slow, 0, 1);
+  const B = Math.max(1, Math.floor(1 + amount * 90));
+
+  noStroke();
+  if (B <= 1) {
+    image(src, 0, 0);
+    return;
+  }
+
+  // eerst het scherpe beeld als basis; gepixelde blokken er overheen.
+  image(src, 0, 0);
+
+  const sp = src.pixels;
+  const sw = src.width, shh = src.height;
+  // radiaal: het midden valt eerder uiteen, de rand stolt het laatst.
+  const cx0 = width / 2, cy0 = height / 2;
+  const maxd = Math.sqrt(cx0 * cx0 + cy0 * cy0);
+  for (let by = 0; by < height; by += B) {
+    for (let bx = 0; bx < width; bx += B) {
+      const mcx = bx + B / 2, mcy = by + B / 2;
+      const rd = Math.sqrt((mcx - cx0) * (mcx - cx0) + (mcy - cy0) * (mcy - cy0)) / maxd;
+      // dichter bij het centrum desintegreert eerder; rand blijft scherp tot amount hoog is.
+      if (amount < rd - 0.05) continue;
+      const cx = Math.min(sw - 1, Math.floor(mcx));
+      const cy = Math.min(shh - 1, Math.floor(mcy));
+      const idx = 4 * (cy * sw + cx);
+      fill(sp[idx], sp[idx + 1], sp[idx + 2]);
+      rect(bx, by, B, B);
+    }
+  }
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  buildSource();
+}
+</script>
+</body>
+</html>

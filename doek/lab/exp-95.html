@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v96 — MORFEND VLOERKLEED (frisse blik). Full-screen geknoopt tapijt met
+// het strakke 8-punts gül-motief, maar nu vervormt het CONTINU ter plekke:
+// puntigheid, ring-straals en cirkel<->ruit driften, dus de ster ademt naar
+// rozet en ruit -- symmetrisch en elegant, geen slideshow/veeg. De kleuren
+// interpoleren traag dóór tien curated traditionele paletten, dus altijd mooi
+// en toch doorlopend veranderend. Niets om te bedienen.
+
+const SPEED = 2000; // 1 = uren-traag. Hoog (bv. 2000) om de reis snel te zien.
+const TIME_SCALE = 0.0000007 * SPEED;
+
+// rollen: 0 grond, 1 motief-A, 2 crème, 3 goud, 4 motief-B, 5 secundair, 6 omlijning
+const PALS = [
+  [[150,30,32],[28,40,86],[224,202,150],[198,150,44],[38,112,92],[176,78,40],[18,18,24]],
+  [[26,38,78],[150,30,32],[222,200,150],[200,150,44],[60,130,110],[176,78,40],[12,12,20]],
+  [[214,196,150],[40,60,110],[150,40,40],[180,130,40],[60,120,90],[160,70,40],[30,24,20]],
+  [[176,78,40],[40,50,90],[226,205,160],[210,160,50],[60,120,100],[140,40,38],[24,18,16]],
+  [[34,86,72],[150,34,34],[224,205,160],[206,158,50],[40,70,120],[176,80,42],[14,18,16]],
+  [[40,36,40],[150,40,44],[214,196,150],[196,150,46],[60,130,120],[176,80,46],[8,8,12]],
+  [[170,90,90],[60,70,110],[235,222,200],[206,168,80],[90,150,140],[150,70,60],[40,30,32]],
+  [[196,150,44],[40,52,96],[232,214,170],[150,34,34],[50,120,100],[176,78,40],[26,22,16]],
+  [[36,96,118],[200,80,50],[226,210,170],[210,170,60],[30,52,96],[150,60,50],[12,16,20]],
+  [[110,24,38],[34,44,80],[222,196,150],[196,146,44],[46,110,96],[170,74,44],[16,12,16]]
+];
+
+let buf, GW, GH, RC = [], P = {};
+const RECALC = 5;
+let woven = false;
+
+function setup(){ pixelDensity(1); createCanvas(windowWidth, windowHeight); frameRate(30); noSmooth(); buildBuffer(); }
+function buildBuffer(){
+  const c = Math.max(4, Math.floor(width / 160));
+  GW = Math.max(10, Math.round(width / c));
+  GH = Math.max(10, Math.round(height / c));
+  buf = createGraphics(GW, GH); buf.pixelDensity(1); buf.noStroke();
+}
+function windowResized(){ resizeCanvas(windowWidth, windowHeight); buildBuffer(); }
+
+const sstep = (e0, e1, x) => { let v = (x - e0) / (e1 - e0); v = v < 0 ? 0 : v > 1 ? 1 : v; return v * v * (3 - 2 * v); };
+
+function knotRole(x, y){
+  const qx = Math.min(x, GW - 1 - x), qy = Math.min(y, GH - 1 - y);
+  const fx = qx / (GW / 2), fy = qy / (GH / 2), edge = Math.min(fx, fy);
+
+  // ----- RANDEN (strak, traditioneel) -----
+  if (edge < 0.022) return 6;
+  if (edge < 0.075){ const run = (Math.floor(qx / 3) + Math.floor(qy / 3)) % 2; return run ? 3 : 1; }
+  if (edge < 0.097) return 6;
+  if (edge < 0.115) return 2;
+
+  // ----- MEDAILLON (8-punts ster, groeit/krimpt zacht) -----
+  if (P.medR > 0.5){
+    const cx = x - GW / 2, cy = y - GH / 2;
+    const r = Math.sqrt(cx * cx + cy * cy), a = Math.atan2(cy, cx);
+    const s = r * (1 + P.point * Math.cos(a * 8 + P.phase));
+    if (s < P.medR){
+      if (s < P.medR * 0.40) return (Math.floor(r * 0.5 + P.phase) % 2) ? 3 : 2;
+      if (s < P.medR * 0.54) return 6;
+      if (s < P.medR * 0.84) return (Math.floor(a / (Math.PI / 8) + P.phase) % 2) ? 1 : 4;
+      if (s < P.medR * 0.92) return 6;
+      return 2;
+    }
+  }
+
+  // ----- VELD: 8-punts gül dat continu ademt (ster <-> rozet <-> ruit) -----
+  const T = P.T;
+  const u = (((qx % T) / T) - 0.5) * 2, v = (((qy % T) / T) - 0.5) * 2;
+  const a = Math.atan2(v, u);
+  const base = Math.sqrt(u * u + v * v) * (1 - P.metric) + (Math.abs(u) + Math.abs(v)) * P.metric;
+  const star = base * (1 + P.point * Math.cos(a * 8 + P.phase));
+  const par = (Math.floor(qx / T) + Math.floor(qy / T)) % 2;
+
+  if (star < P.t0) return par ? 3 : 2;
+  if (star < P.t1) return 6;
+  if (star < P.t2) return par ? 1 : 4;
+  if (Math.max(Math.abs(u), Math.abs(v)) > 0.78 && Math.min(Math.abs(u), Math.abs(v)) < 0.20) return 2; // hoek-haakjes
+  return 0;
+}
+
+function weave(){
+  const t = millis() * TIME_SCALE;
+  const nz = (s, k) => noise(s, t * k);
+
+  // morf-parameters (continu, klein, smaakvol -> blijft mooi en symmetrisch)
+  P.T      = Math.max(9, Math.floor(GW * (0.12 + 0.04 * nz(2, 0.04))));
+  P.metric = 0.5 * nz(4, 0.05);                 // cirkel <-> half-ruit
+  P.point  = 0.16 + 0.34 * nz(5, 0.06);         // ster ademt naar rozet
+  P.phase  = t * 0.35;                          // punten draaien heel traag
+  P.t0     = 0.30 + 0.12 * nz(6, 0.05);
+  P.t1     = P.t0 + 0.13;
+  P.t2     = P.t1 + 0.22 + 0.12 * nz(8, 0.05);
+  P.medR   = GW * 0.30 * sstep(0.45, 0.62, nz(9, 0.03));
+
+  // kleuren: traag interpoleren dóór de curated paletten (altijd harmonieus)
+  const ps = nz(20, 0.025) * PALS.length;
+  const pa = Math.floor(ps) % PALS.length, pb = (pa + 1) % PALS.length;
+  const pf = sstep(0, 1, ps - Math.floor(ps));
+  const A = PALS[pa], B = PALS[pb];
+  for (let r = 0; r < 7; r++){
+    RC[r] = [
+      A[r][0] + (B[r][0] - A[r][0]) * pf,
+      A[r][1] + (B[r][1] - A[r][1]) * pf,
+      A[r][2] + (B[r][2] - A[r][2]) * pf
+    ];
+  }
+
+  buf.loadPixels();
+  for (let y = 0; y < GH; y++){
+    for (let x = 0; x < GW; x++){
+      const c = RC[knotRole(x, y)];
+      const jt = (((x * 7 + y * 13) % 5) - 2) * 3;  // goedkope garen-variatie
+      const k = 4 * (y * GW + x);
+      buf.pixels[k]     = constrain(c[0] + jt, 0, 255);
+      buf.pixels[k + 1] = constrain(c[1] + jt, 0, 255);
+      buf.pixels[k + 2] = constrain(c[2] + jt, 0, 255);
+      buf.pixels[k + 3] = 255;
+    }
+  }
+  buf.updatePixels();
+}
+
+function draw(){
+  if (!woven || frameCount % RECALC === 0){ weave(); woven = true; }
+  image(buf, 0, 0, width, height);
+}
+</script>
+</body>
+</html>

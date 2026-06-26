@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v43 — VERDERF. Een kruipende bederf-vlek: gezonde tinten verzuren
+// tot bruin, mosgroen en blauwpaars. Reactie-diffusie-achtige bloei die
+// traag uitwaaiert en weer dichtgroeit. Organisch, onbehaaglijk, mooi.
+
+// 1 = uren-traag. Hoog (bv. 2000) om de reis snel te zien.
+const SPEED = 2000;
+const TIME_SCALE = 0.0000007 * SPEED;
+
+const BW = 150;
+let BH;
+let buf;
+let rot;        // bederf-veld 0..1 per cel
+let nxt;        // dubbelbuffer voor diffusie
+let pix;        // p5.Image om snel pixels te schrijven
+
+function setup() {
+  pixelDensity(1);
+  createCanvas(windowWidth, windowHeight);
+  frameRate(30);
+  buildBuffer();
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  buildBuffer();
+}
+
+function buildBuffer() {
+  BH = Math.max(60, Math.round(BW * (windowHeight / windowWidth)));
+  buf = createGraphics(BW, BH);
+  buf.colorMode(HSB, 360, 100, 100, 1);
+  pix = createImage(BW, BH);
+  rot = new Float32Array(BW * BH);
+  nxt = new Float32Array(BW * BH);
+  // zaai een paar haarden van bederf in een verder gezond veld
+  for (let i = 0; i < rot.length; i++) rot[i] = random() < 0.0008 ? 1 : 0;
+}
+
+function idx(x, y) { return x + y * BW; }
+
+function draw() {
+  const t = millis() * TIME_SCALE;
+
+  // GROEI: bederf sijpelt naar buren door, met een traag tempo dat
+  // door noise wordt gemoduleerd zodat sommige randen worden weggevreten
+  // en andere stilstaan. Eén stap per frame houdt het kalm.
+  const spread = 0.06 + 0.05 * SPEED * 0.001; // schaalt mee, blijft traag bij SPEED=1
+  for (let y = 0; y < BH; y++) {
+    for (let x = 0; x < BW; x++) {
+      const c = rot[idx(x, y)];
+      let sum = 0, n = 0;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          if (!dx && !dy) continue;
+          const xx = (x + dx + BW) % BW;
+          const yy = (y + dy + BH) % BH;
+          sum += rot[idx(xx, yy)];
+          n++;
+        }
+      }
+      const neigh = sum / n;
+      // grillige vatbaarheid -> ongelijke, organische randen
+      const susc = noise(x * 0.05, y * 0.05, t * 0.2);
+      let v = c + neigh * spread * susc;
+      // heel langzaam genezen waar het bederf nog dun is (ademende vlek)
+      v -= (1 - c) * 0.0 + (c < 0.15 ? 0.004 * (0.5 + noise(x * 0.1, y * 0.1, t)) : 0);
+      nxt[idx(x, y)] = constrain(v, 0, 1);
+    }
+  }
+  // af en toe een nieuwe spore midden in het gezonde weefsel
+  if (random() < 0.04) nxt[idx(Math.floor(random(BW)), Math.floor(random(BH)))] = 1;
+
+  const tmp = rot; rot = nxt; nxt = tmp;
+
+  // KLEUR: gezond -> verziekt. Gezonde tint drijft heel traag mee met t.
+  pix.loadPixels();
+  const healthyH = (120 + 60 * noise(t * 0.1)) % 360; // groen..teal grondtoon
+  for (let y = 0; y < BH; y++) {
+    for (let x = 0; x < BW; x++) {
+      const r = rot[idx(x, y)];
+      // tint verschuift van gezond naar bruin/paars naarmate bederf stijgt
+      const grain = noise(x * 0.12, y * 0.12, t * 0.3);
+      let h, s, b;
+      if (r < 0.5) {
+        const k = r / 0.5;
+        h = lerp(healthyH, 70, k);          // naar mosgroen/oker
+        s = lerp(18, 45, k) + grain * 10;
+        b = lerp(34, 26, k);
+      } else {
+        const k = (r - 0.5) / 0.5;
+        h = lerp(70, 285, k * grain);        // bruin -> blauwpaars (kneuzing)
+        s = lerp(45, 38, k) + grain * 14;
+        b = lerp(26, 12, k);
+      }
+      const col = buf.color(h % 360, constrain(s, 0, 90), constrain(b, 4, 60));
+      const o = 4 * idx(x, y);
+      pix.pixels[o] = buf.red(col);
+      pix.pixels[o + 1] = buf.green(col);
+      pix.pixels[o + 2] = buf.blue(col);
+      pix.pixels[o + 3] = 255;
+    }
+  }
+  pix.updatePixels();
+  buf.image(pix, 0, 0);
+  image(buf, 0, 0, width, height);
+}
+</script>
+</body>
+</html>

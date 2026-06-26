@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v42 — TIJD. Een eindeloze trage afzetting: dunne lagen die zich
+// onderaan opstapelen en de oude lagen langzaam omhoog persen en laten
+// vervagen. Als sediment of jaarringen — onomkeerbaar, geologisch traag.
+
+// 1 = uren-traag. Hoog (bv. 2000) om de reis snel te zien.
+const SPEED = 2000;
+const TIME_SCALE = 0.0000007 * SPEED;
+
+const BW = 150;            // breedte offscreen buffer (Pi-vriendelijk)
+let BH;                    // hoogte, geschaald op vensteraspect
+let buf;
+let lastDeposit = 0;       // klok voor afzetting van een nieuwe laag
+
+function setup() {
+  pixelDensity(1);
+  createCanvas(windowWidth, windowHeight);
+  frameRate(30);
+  buildBuffer();
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  buildBuffer();
+}
+
+function buildBuffer() {
+  BH = Math.max(60, Math.round(BW * (windowHeight / windowWidth)));
+  buf = createGraphics(BW, BH);
+  buf.colorMode(HSB, 360, 100, 100, 1);
+  buf.noStroke();
+  buf.background(35, 20, 8);
+}
+
+// geologische tint die over de eeuwen heel traag wegdrijft
+function strataColor(seed, t) {
+  const h = (28 + 70 * noise(seed * 0.7, t * 0.15)) % 360; // oker..groengrijs
+  const s = 12 + 26 * noise(seed * 0.7 + 9, t * 0.1);
+  const b = 22 + 34 * noise(seed * 0.7 + 21, t * 0.12);
+  return [h, s, b];
+}
+
+function draw() {
+  const t = millis() * TIME_SCALE;
+
+  // PERSING: alles schuift onmerkbaar 1px omhoog zodra de klok tikt.
+  // De oudste lagen bovenaan worden zo weggeduwd en vervagen. Het
+  // tempo volgt SPEED, maar blijft ook bij SPEED=1 langzaam zichtbaar.
+  const interval = 900 / (1 + SPEED * 0.02);
+  if (millis() - lastDeposit > interval) {
+    lastDeposit = millis();
+
+    // schuif beeld 1px omhoog
+    buf.copy(buf, 0, 1, BW, BH - 1, 0, 0, BW, BH - 1);
+
+    // laat de bovenste, oudste rand vervagen naar het diepe zwart
+    buf.fill(35, 18, 6, 0.04);
+    buf.rect(0, 0, BW, BH);
+
+    // zet onderaan een nieuwe dunne laag af, met lichte golving
+    const seed = t * 3 + frameCount * 0.013;
+    const [h, s, b] = strataColor(seed, t);
+    for (let x = 0; x < BW; x++) {
+      const undul = noise(x * 0.06, seed * 0.5) * 3 - 1.5;
+      const grain = (noise(x * 0.4, seed) - 0.5) * 14;
+      buf.fill((h + grain * 0.3 + 360) % 360, s, constrain(b + grain, 4, 70), 0.9);
+      buf.rect(x, BH - 2 + undul, 1, 2 - undul);
+    }
+    // af en toe een donkere afzettingslijn (een "jaarring")
+    if (noise(seed * 0.3) > 0.74) {
+      buf.fill(30, 22, 4, 0.5);
+      buf.rect(0, BH - 1, BW, 1);
+    }
+  }
+
+  image(buf, 0, 0, width, height);
+}
+</script>
+</body>
+</html>

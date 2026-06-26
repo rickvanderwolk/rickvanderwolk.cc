@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v14 — ZACHTE VELDEN. Zelfde motor als v13 (exp-12), andere vorm.
+//
+// Dezelfde vrij zwervende zaadpunten en dezelfde harmonieuze kleurfamilie,
+// maar NIET meer "pixel hoort bij het dichtstbijzijnde punt" (harde facetten).
+// Nu is elke pixel een AFSTAND-GEWOGEN MENGING van alle zaadpunten: dichtbij
+// telt zwaar mee, veraf nauwelijks. Daardoor lossen de cellen op in zachte,
+// in elkaar overvloeiende kleurwolken die traag morfen -- als een uiterst
+// langzame lavalamp / olievlek op water.
+//
+//   • zaadpunten zwerven vrij over het hele doek (geen vaste plek),
+//   • overal vloeiende verlopen, nergens een harde rand,
+//   • alles continu -> het schilderij evolueert puur gradueel.
+//
+// Met SHARP regel je hoe "klonterig" (hoog) of "wazig/gemengd" (laag) het is.
+// Klein berekend, hard uitvergroot -> licht genoeg voor een Pi. Niets te bedienen.
+
+const SPEED      = 2000;              // 1 = uren-traag. Hoog (bv. 2000) om de reis snel te zien.
+const TIME_SCALE = 0.0000007 * SPEED;
+const N_SITE     = 14;                // aantal kleurbronnen
+const SPREAD     = 1.8;              // >1 = zaadpunten benutten het hele doek
+const SHARP      = 3.0;              // gewicht-exponent: hoog = bollere klonten, laag = meer mush
+const BW_TARGET  = 150;               // buffer-breedte (klein = goedkoop, zachte schaal)
+
+let buf, BW, BH, hueBase, sites;
+
+function setup() {
+  pixelDensity(1);
+  createCanvas(windowWidth, windowHeight);
+  frameRate(30);
+  colorMode(HSL, 360, 100, 100, 1);    // kleuren in HSL opgeven (zie draw)
+  hueBase = random(360);
+  buildBuffer();
+
+  // elk zaadpunt zwerft vrij: eigen x/y-noise-seeds én eigen tempo/richting.
+  sites = [];
+  for (let i = 0; i < N_SITE; i++) {
+    sites.push({
+      sx: random(1000),   sy: random(1000),
+      rx: random(0.18, 0.5), ry: random(0.18, 0.5),   // zwerf-tempo x/y
+      sHue: random(1000), sLum: random(1000),
+      hueOff: (random() - 0.5) * 70    // tint-afwijking binnen de familie
+    });
+  }
+}
+
+function buildBuffer() {
+  BW = BW_TARGET;
+  BH = Math.max(2, Math.round(BW * windowHeight / windowWidth));
+  buf = createGraphics(BW, BH);
+  buf.colorMode(HSL, 360, 100, 100, 1);
+  buf.pixelDensity(1);
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  buildBuffer();
+}
+
+const lerp1 = (a, b, t) => a + (b - a) * t;
+// noise klit rond 0.5; rek 'm op zodat zaadpunten het HELE doek benutten.
+const roam = (n, span) => constrain((n - 0.5) * SPREAD + 0.5, 0, 1) * span;
+
+function draw() {
+  const t = millis() * TIME_SCALE;
+
+  // traag driftende kleurfamilie
+  const hueCenter = (hueBase + t * 22) % 360;
+
+  // positie van elk zwervend zaadpunt + kleur eenmalig naar RGB.
+  const px = new Array(N_SITE), py = new Array(N_SITE);
+  const sr = new Array(N_SITE), sg = new Array(N_SITE), sb = new Array(N_SITE);
+  for (let i = 0; i < N_SITE; i++) {
+    const s = sites[i];
+    px[i] = roam(noise(s.sx, t * s.rx), BW);
+    py[i] = roam(noise(s.sy, t * s.ry), BH);
+    const h = (hueCenter + s.hueOff + (noise(s.sHue, t * 0.5) - 0.5) * 30 + 360) % 360;
+    const sat = lerp1(34, 72, noise(s.sHue + 5, t * 0.4));
+    const lum = lerp1(26, 70, noise(s.sLum, t * 0.45));
+    const c = color(h, sat, lum, 1);   // HSL in -> red()/green()/blue() geven RGB 0-255
+    sr[i] = red(c); sg[i] = green(c); sb[i] = blue(c);
+  }
+
+  // per buffer-pixel: afstand-gewogen menging van alle zaadpunten -> zachte velden
+  buf.loadPixels();
+  const d = buf.pixels;
+  const hp = SHARP * 0.5;              // werkt op d^2, dus halve exponent
+  for (let y = 0; y < BH; y++) {
+    for (let x = 0; x < BW; x++) {
+      let r = 0, g = 0, b = 0, wsum = 0;
+      for (let i = 0; i < N_SITE; i++) {
+        const dx = x - px[i], dy = y - py[i];
+        const d2 = dx * dx + dy * dy + 1;        // +1 voorkomt deling door nul
+        const w  = 1 / Math.pow(d2, hp);         // dichtbij = zwaar, veraf = licht
+        r += sr[i] * w; g += sg[i] * w; b += sb[i] * w; wsum += w;
+      }
+      const ripple = (noise(x * 0.06, y * 0.06, t * 0.2) - 0.5) * 16; // subtiele leving
+      const k = 4 * (y * BW + x);
+      d[k]     = constrain(r / wsum + ripple, 0, 255);
+      d[k + 1] = constrain(g / wsum + ripple, 0, 255);
+      d[k + 2] = constrain(b / wsum + ripple, 0, 255);
+      d[k + 3] = 255;
+    }
+  }
+  buf.updatePixels();
+
+  image(buf, 0, 0, width, height);
+}
+</script>
+</body>
+</html>

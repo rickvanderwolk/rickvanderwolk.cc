@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v27 — TRUCHET. Een raster van Truchet-tegels (kwartcirkel-verbindingen)
+// draait heel traag van stand. Het netwerk van bogen herroutet zich daardoor
+// voortdurend tot een doolhof/circuit dat zichzelf telkens opnieuw legt.
+
+const SPEED = 2000;        // 1 = uren-traag. Hoog (bv. 2000) om de reis snel te zien.
+const TIME_SCALE = 0.0000007 * SPEED;
+
+let COLS, ROWS, CELL;
+let phase;                 // per tegel een continue rotatiefase
+let flipNoise;             // per tegel een noise-offset voor de fasesnelheid
+let palT = 0;
+
+function setup() {
+  pixelDensity(1);
+  createCanvas(windowWidth, windowHeight);
+  frameRate(30);
+  buildGrid();
+}
+
+function buildGrid() {
+  CELL = max(36, round(min(width, height) / 11));
+  COLS = ceil(width / CELL) + 1;
+  ROWS = ceil(height / CELL) + 1;
+  phase = [];
+  flipNoise = [];
+  for (let i = 0; i < COLS * ROWS; i++) {
+    phase.push(random(TWO_PI));
+    flipNoise.push(random(1000));
+  }
+}
+
+function draw() {
+  let t = millis() * TIME_SCALE;
+  background(0);
+
+  // traag drijvend twee-tonen palet
+  palT += 0.0006 * (0.2 + SPEED * 0.0004);
+  let baseHue = (palT * 50) % 360;
+  let inkR, inkG, inkB;
+  {
+    let h = baseHue * Math.PI / 180;
+    inkR = 90 + 90 * Math.cos(h);
+    inkG = 110 + 80 * Math.cos(h - 2.094);
+    inkB = 140 + 90 * Math.cos(h + 2.094);
+  }
+
+  strokeCap(ROUND);
+  noFill();
+  let lw = CELL * 0.16;
+
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      let idx = r * COLS + c;
+      // elke tegel draait met een eigen, traag wisselende snelheid
+      let nz = noise(c * 0.25, r * 0.25, t * 0.6 + flipNoise[idx] * 0.001);
+      let spd = (nz - 0.5) * 0.9 * (0.3 + SPEED * 0.0006);
+      phase[idx] += spd * 0.02;
+      let p = phase[idx];
+
+      let x = c * CELL;
+      let y = r * CELL;
+
+      // bepaal de twee dichtstbijzijnde 90-graden standen en kruisvervaag
+      // via doorzichtigheid -> overgang oogt vloeiend, geen harde flip
+      let q = p / (PI / 2);            // welke kwartslag
+      let q0 = Math.floor(q);
+      let frac = q - q0;
+      let a0 = 1 - frac, a1 = frac;
+      // smoothstep voor zachtere overgang
+      a1 = a1 * a1 * (3 - 2 * a1);
+      a0 = 1 - a1;
+
+      drawTile(x, y, CELL, ((q0 % 2) + 2) % 2, a0 * 255, lw, inkR, inkG, inkB);
+      drawTile(x, y, CELL, (((q0 + 1) % 2) + 2) % 2, a1 * 255, lw, inkR, inkG, inkB);
+    }
+  }
+}
+
+// orient 0: bogen linksboven + rechtsonder. orient 1: rechtsboven + linksonder.
+function drawTile(x, y, s, orient, alpha, lw, rr, gg, bb) {
+  if (alpha < 3) return;
+  strokeWeight(lw);
+  stroke(rr, gg, bb, alpha);
+  let h = s / 2;
+  if (orient === 0) {
+    arc(x, y, s, s, 0, HALF_PI);
+    arc(x + s, y + s, s, s, PI, PI + HALF_PI);
+  } else {
+    arc(x + s, y, s, s, HALF_PI, PI);
+    arc(x, y + s, s, s, PI + HALF_PI, TWO_PI);
+  }
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  buildGrid();
+}
+</script>
+</body>
+</html>

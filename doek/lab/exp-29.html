@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v30 — VOORONOI SCHERF. Gebrandschilderd glas / gebarsten ijs.
+// Voronoi-cellen met donkere loodranden; de sites driften traag zodat
+// barsten reizen en cellen telkens opnieuw aaneengroeien. Elke cel een
+// langzaam verschuivende, harmonische kleur.
+
+const SPEED = 2000; // 1 = uren-traag. Hoog (bv. 2000) om de reis snel te zien.
+const TIME_SCALE = 0.0000007 * SPEED;
+
+let buf;
+const BW = 150;     // bufferbreedte
+let BH;             // bufferhoogte (op ratio)
+
+const N = 26;       // aantal sites
+let sites = [];
+
+function setup() {
+  pixelDensity(1);
+  createCanvas(windowWidth, windowHeight);
+  frameRate(30);
+  BH = Math.max(1, Math.round(BW * windowHeight / windowWidth));
+  buf = createGraphics(BW, BH);
+  buf.pixelDensity(1);
+  for (let i = 0; i < N; i++) {
+    sites.push({
+      bx: random(1000), by: random(1000),   // noise-offsets x
+      cx: random(1000), cy: random(1000),    // noise-offsets y
+      hue: random(1000),                     // kleur-offset
+      spd: random(0.5, 1.4)
+    });
+  }
+}
+
+function sitePos(s, t) {
+  // traag drijvende positie via noise (0..1 -> bufferruimte)
+  let x = noise(s.bx, t * s.spd) * (BW + 40) - 20;
+  let y = noise(s.cy, t * s.spd + 50) * (BH + 40) - 20;
+  return [x, y];
+}
+
+function draw() {
+  const t = millis() * TIME_SCALE;
+
+  // huidige posities + kleuren ophalen
+  let px = [], py = [], pr = [], pg = [], pb = [];
+  for (let i = 0; i < N; i++) {
+    let s = sites[i];
+    let p = sitePos(s, t);
+    px.push(p[0]); py.push(p[1]);
+    // harmonische kleur die traag verschuift
+    let h = (noise(s.hue, t * 0.6) * 360 + t * 18) % 360;
+    let sat = 0.45 + 0.35 * noise(s.hue + 9, t * 0.5);
+    let lig = 0.42 + 0.22 * noise(s.hue + 3, t * 0.4);
+    let c = hsl(h, sat, lig);
+    pr.push(c[0]); pg.push(c[1]); pb.push(c[2]);
+  }
+
+  buf.loadPixels();
+  const d = buf.pixelDensity();
+  for (let y = 0; y < BH; y++) {
+    for (let x = 0; x < BW; x++) {
+      // vind dichtstbijzijnde en op-een-na dichtstbijzijnde site
+      let m1 = 1e9, m2 = 1e9, i1 = 0;
+      for (let i = 0; i < N; i++) {
+        let dx = x - px[i], dy = y - py[i];
+        let dd = dx * dx + dy * dy;
+        if (dd < m1) { m2 = m1; m1 = dd; i1 = i; }
+        else if (dd < m2) { m2 = dd; }
+      }
+      // afstand tot celgrens (verschil eerste twee) -> loodrand
+      let edge = Math.sqrt(m2) - Math.sqrt(m1);
+      let lead = constrain(edge * 1.1, 0, 1); // 0 op rand, 1 binnenin
+      lead = lead * lead * (3 - 2 * lead);     // smoothstep
+
+      let r = pr[i1], g = pg[i1], b = pb[i1];
+      // subtiele glans binnen de cel
+      let sh = 0.85 + 0.3 * noise(x * 0.04 + 100, y * 0.04, t * 0.3);
+      r *= sh; g *= sh; b *= sh;
+      // loodrand donker maken
+      r *= 0.10 + 0.90 * lead;
+      g *= 0.10 + 0.90 * lead;
+      b *= 0.10 + 0.90 * lead;
+
+      let idx = 4 * (x + y * BW) * d * d;
+      buf.pixels[idx] = r;
+      buf.pixels[idx + 1] = g;
+      buf.pixels[idx + 2] = b;
+      buf.pixels[idx + 3] = 255;
+    }
+  }
+  buf.updatePixels();
+
+  noSmooth();
+  image(buf, 0, 0, width, height);
+}
+
+function hsl(h, s, l) {
+  h = ((h % 360) + 360) % 360 / 360;
+  let r, g, b;
+  if (s === 0) { r = g = b = l; }
+  else {
+    let q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    let p = 2 * l - q;
+    r = hue2rgb(p, q, h + 1 / 3);
+    g = hue2rgb(p, q, h);
+    b = hue2rgb(p, q, h - 1 / 3);
+  }
+  return [r * 255, g * 255, b * 255];
+}
+function hue2rgb(p, q, t) {
+  if (t < 0) t += 1;
+  if (t > 1) t -= 1;
+  if (t < 1 / 6) return p + (q - p) * 6 * t;
+  if (t < 1 / 2) return q;
+  if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+  return p;
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  BH = Math.max(1, Math.round(BW * windowHeight / windowWidth));
+  buf = createGraphics(BW, BH);
+  buf.pixelDensity(1);
+}
+</script>
+</body>
+</html>

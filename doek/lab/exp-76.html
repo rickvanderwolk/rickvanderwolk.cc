@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v77 — ZACHTE WASEM. Heel zachte gaussische kleurwolken door nevel.
+// Licht diffundeert, milde gradiënten zonder enige harde rand; kleuren
+// ademen in elkaar. Rustig, atmosferisch.
+
+const SPEED = 2000; // 1 = uren-traag. Hoog (bv. 2000) om de reis snel te zien.
+const TIME_SCALE = 0.0000007 * SPEED;
+
+let buf;          // heel lage resolutie -> upscale geeft zachte waas
+const BW = 90;    // klein = wazig
+let clouds = [];
+const N = 11;
+
+function makeBuf() {
+  const h = Math.max(2, Math.floor(BW * windowHeight / windowWidth));
+  buf = createGraphics(BW, h);
+  buf.pixelDensity(1);
+  buf.noStroke();
+}
+
+function setup() {
+  pixelDensity(1);
+  createCanvas(windowWidth, windowHeight);
+  frameRate(30);
+  makeBuf();
+  for (let i = 0; i < N; i++) {
+    clouds.push({
+      x: random(1), y: random(1),
+      r: random(0.3, 0.7),
+      sp: random(0.0005, 0.0016),
+      dir: random(TWO_PI),
+      ph: random(TWO_PI),
+      hueOff: random(1)
+    });
+  }
+}
+
+function draw() {
+  const t = frameCount * 0.004;
+  const slow = millis() * TIME_SCALE;
+
+  // zachte gradiëntwolken op heel lage resolutie
+  buf.push();
+  buf.blendMode(BLEND);
+  buf.background(18, 20, 30);
+  buf.blendMode(SCREEN);
+  for (let i = 0; i < N; i++) {
+    const c = clouds[i];
+    const dx = cos(c.dir) * (t * c.sp * 40) + sin(t * 0.25 + c.ph) * 0.07;
+    const dy = sin(c.dir) * (t * c.sp * 40) + cos(t * 0.22 + c.ph) * 0.07;
+    let xx = ((c.x + dx) % 1.3 + 1.3) % 1.3 - 0.15;
+    let yy = ((c.y + dy) % 1.3 + 1.3) % 1.3 - 0.15;
+    const hue = (slow * 22 + c.hueOff * 360 + sin(t * 0.18 + c.ph) * 35) % 360;
+    const col = hsl(hue, 45, 60);
+    const rad = c.r * buf.width * (0.9 + 0.15 * sin(t * 0.3 + c.ph));
+    softCloud(buf, xx * buf.width, yy * buf.height, rad, col);
+  }
+  buf.pop();
+
+  // upscale = zachte waas; lichte extra blur voor nevel, breathing
+  const haze = 1.0 + 1.2 * (0.5 - 0.5 * cos(slow * 6));
+  background(0);
+  drawingContext.filter = 'blur(' + haze.toFixed(2) + 'px)';
+  imageMode(CORNER);
+  image(buf, 0, 0, width, height);
+  drawingContext.filter = 'none';
+
+  // dunne nevelsluier over alles -> verzacht en verenigt
+  noStroke();
+  fill(20, 24, 36, 14);
+  rect(0, 0, width, height);
+}
+
+function softCloud(g, cx, cy, r, col) {
+  const ctx = g.drawingContext;
+  const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+  grad.addColorStop(0, 'rgba(' + col[0] + ',' + col[1] + ',' + col[2] + ',0.42)');
+  grad.addColorStop(0.5, 'rgba(' + col[0] + ',' + col[1] + ',' + col[2] + ',0.18)');
+  grad.addColorStop(1, 'rgba(' + col[0] + ',' + col[1] + ',' + col[2] + ',0)');
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function hsl(h, s, l) {
+  s /= 100; l /= 100;
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const hp = (((h % 360) + 360) % 360) / 60;
+  const x = c * (1 - Math.abs(hp % 2 - 1));
+  let r = 0, g = 0, b = 0;
+  if (hp < 1) { r = c; g = x; }
+  else if (hp < 2) { r = x; g = c; }
+  else if (hp < 3) { g = c; b = x; }
+  else if (hp < 4) { g = x; b = c; }
+  else if (hp < 5) { r = x; b = c; }
+  else { r = c; b = x; }
+  const m = l - c / 2;
+  return [Math.round((r + m) * 255), Math.round((g + m) * 255), Math.round((b + m) * 255)];
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  makeBuf();
+}
+</script>
+</body>
+</html>

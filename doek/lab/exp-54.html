@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v55 — DE LEEGTE. Bijna-leegte met een subtiele aanwezigheid: een immens
+// donker veld waar iets nauwelijks waarneembaars roert, een vage gradient die ademt,
+// de zeldzame drift van een amper zichtbare vorm. Vertrouw op het donker.
+
+const SPEED = 2000; // 1 = uren-traag. Hoog (bv. 2000) om de reis snel te zien.
+const TIME_SCALE = 0.0000007 * SPEED;
+
+let buf;
+let bw, bh;
+
+function setup() {
+  pixelDensity(1);
+  createCanvas(windowWidth, windowHeight);
+  frameRate(30);
+  buildBuffer();
+}
+
+function buildBuffer() {
+  bw = 150;
+  bh = Math.max(1, Math.round(bw * windowHeight / windowWidth));
+  buf = createImage(bw, bh);
+}
+
+function draw() {
+  const t = millis() * TIME_SCALE;
+  const baseT = millis() * 0.00002; // trage ademhaling
+  const T = t + baseT;
+
+  // de aanwezigheid drijft heel langzaam rond
+  const cx = 0.5 + 0.32 * Math.sin(T * 0.31) * Math.cos(T * 0.17);
+  const cy = 0.5 + 0.30 * Math.cos(T * 0.23) * Math.sin(T * 0.13);
+  // ademende intensiteit, soms bijna weg
+  const breath = 0.5 + 0.5 * Math.sin(T * 0.9);
+  const presence = 0.04 + 0.22 * Math.pow(breath, 2.2);
+
+  buf.loadPixels();
+  const px = buf.pixels;
+
+  for (let j = 0; j < bh; j++) {
+    for (let i = 0; i < bw; i++) {
+      const u = i / bw;
+      const v = j / bh;
+
+      // zachte vage gradient over het hele veld
+      const grad = 0.012 + 0.020 * (1.0 - v) * (0.6 + 0.4 * Math.sin(T * 0.5 + u * 2.0));
+
+      // de amper zichtbare vorm: een diffuse halo
+      const dx = (u - cx);
+      const dy = (v - cy) * (bh / bw === 0 ? 1 : 1);
+      const d2 = dx * dx + dy * dy;
+      const halo = presence * Math.exp(-d2 * 9.0);
+
+      // subtiele ruis-textuur zodat het ademt
+      const n = noise(u * 2.5 + T * 0.2, v * 2.5 - T * 0.15, T * 0.3);
+      const stir = 0.018 * (n - 0.5);
+
+      let val = grad + halo + stir;
+      if (val < 0) val = 0;
+
+      // koele, bijna zwarte tint
+      const r = val * 255 * 0.62;
+      const g = val * 255 * 0.78;
+      const b = val * 255 * 1.0;
+
+      const idx = 4 * (i + j * bw);
+      px[idx] = r;
+      px[idx + 1] = g;
+      px[idx + 2] = b;
+      px[idx + 3] = 255;
+    }
+  }
+
+  buf.updatePixels();
+  push();
+  image(buf, 0, 0, width, height);
+  pop();
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  buildBuffer();
+}
+</script>
+</body>
+</html>

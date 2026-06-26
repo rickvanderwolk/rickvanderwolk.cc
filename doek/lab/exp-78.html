@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v79 — ROOKSLIERTEN. Dunne, krullende rookfilamenten in meerdere lagen,
+// zacht en doorschijnend, gemaakt door de noise-coords te warpen en alleen de
+// smalle dichtheidsribbels te tonen. Ze krullen en rekken langzaam uit.
+
+const SPEED = 2000;        // 1 = uren-traag. Hoog (bv. 2000) om de reis snel te zien.
+const TIME_SCALE = 0.0000007 * SPEED;
+
+let buf;
+let BW, BH;
+const BUF_W = 150;
+
+// rooklagen: ver=fijn/zacht, dichtbij=grover/dichter
+const LAYERS = [
+  { scale: 0.050, warp: 0.9, drift: 0.12, alpha: 0.22, tone: 0.55, seed: 10,  ridge: 0.10 },
+  { scale: 0.034, warp: 1.3, drift: 0.22, alpha: 0.30, tone: 0.72, seed: 80,  ridge: 0.12 },
+  { scale: 0.022, warp: 1.7, drift: 0.36, alpha: 0.40, tone: 0.90, seed: 160, ridge: 0.14 },
+];
+
+function setup() {
+  pixelDensity(1);
+  createCanvas(windowWidth, windowHeight);
+  frameRate(30);
+  buildBuffer();
+}
+
+function buildBuffer() {
+  BW = BUF_W;
+  BH = Math.floor(BW * (windowHeight / windowWidth));
+  if (BH < 1) BH = 1;
+  buf = createImage(BW, BH);
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  buildBuffer();
+}
+
+function fbm(x, y, z) {
+  let v = 0, amp = 0.5, f = 1.0;
+  for (let o = 0; o < 3; o++) {
+    v += amp * noise(x * f, y * f, z);
+    f *= 2.03;
+    amp *= 0.5;
+  }
+  return v;
+}
+
+function draw() {
+  const t = millis() * TIME_SCALE;
+  const base = frameCount * 0.006;
+
+  // donkere rooklucht, traag van toon
+  const bg = 16 + 6 * Math.sin(t * 0.6);
+
+  buf.loadPixels();
+  const px = buf.pixels;
+
+  for (let j = 0; j < BH; j++) {
+    for (let i = 0; i < BW; i++) {
+      let r = bg * 0.9, g = bg, b = bg * 1.1 + 4;
+
+      for (let L = 0; L < LAYERS.length; L++) {
+        const ly = LAYERS[L];
+        const sx = ly.scale;
+        const oy = base * ly.drift + ly.seed;            // omhoog drijvende rook
+        const ox = ly.seed + Math.sin(t * 0.25 + L) * 0.6;
+        const zz = ly.seed * 0.02 + t * 0.5;
+
+        // domain-warp: verschuif coords met een ander noise-veld
+        const wx = fbm((i * 0.5 + ox * 50) * sx, (j * 0.5 - oy * 50) * sx, zz + 5.0);
+        const wy = fbm((i * 0.5 + ox * 50) * sx + 9.1, (j * 0.5 - oy * 50) * sx + 4.7, zz + 11.0);
+
+        const nx = (i + ox * 50 + (wx - 0.5) * ly.warp * 90) * sx;
+        const ny = (j - oy * 50 + (wy - 0.5) * ly.warp * 90) * sx;
+
+        const d0 = fbm(nx, ny, zz);
+        // ridge: smalle hoge-dichtheid filamenten
+        let ridge = 1 - Math.abs(d0 - 0.5) * 2;          // piek rond 0.5
+        ridge = ridge - (1 - ly.ridge * 6);
+        if (ridge < 0) ridge = 0;
+        ridge = Math.pow(ridge, 1.8);
+
+        // verticale uitdoving onderaan (rook stijgt op, dunt uit)
+        const vfade = 0.35 + 0.65 * (j / BH);
+
+        const dens = ridge * vfade;
+        if (dens > 0.001) {
+          const lum = ly.tone;
+          const a = ly.alpha * dens;
+          const cr = 210 * lum + 20;
+          const cg = 205 * lum + 20;
+          const cb = 205 * lum + 26;
+          r = r + (cr - r) * a;
+          g = g + (cg - g) * a;
+          b = b + (cb - b) * a;
+        }
+      }
+
+      const idx = (j * BW + i) * 4;
+      px[idx]   = r;
+      px[idx+1] = g;
+      px[idx+2] = b;
+      px[idx+3] = 255;
+    }
+  }
+  buf.updatePixels();
+
+  noSmooth();
+  image(buf, 0, 0, width, height);
+}
+</script>
+</body>
+</html>

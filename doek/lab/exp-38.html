@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<!-- p5.js vendored locally, geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek v39 — CRYSTAL / DENDRITE GROWTH.
+// Vorstachtige kristaltakken groeien naar buiten tot een volle ijslaag,
+// smelten dan heel langzaam weg en zaaien opnieuw: eindeloze vorst/dooi.
+
+const SPEED = 2000; // 1 = uren-traag. Hoog (bv. 2000) om de reis snel te zien.
+const TIME_SCALE = 0.0000007 * SPEED;
+
+let buf;
+let BW, BH;
+let crys;      // Float32Array: kristal-dichtheid per cel (0..1)
+let frontiers; // actieve groeipunten {x,y,ang}
+let phase;     // 0 = groeien, 1 = dooien
+let phaseT;    // teller binnen fase
+
+function buildBuffer() {
+  BW = 150;
+  BH = Math.max(40, Math.round(BW * windowHeight / windowWidth));
+  buf = createImage(BW, BH);
+  crys = new Float32Array(BW * BH);
+}
+
+function seed() {
+  frontiers = [];
+  let n = 3 + Math.floor(random(3));
+  for (let i = 0; i < n; i++) {
+    let x = random(BW * 0.2, BW * 0.8);
+    let y = random(BH * 0.2, BH * 0.8);
+    let branches = 4 + Math.floor(random(4));
+    for (let b = 0; b < branches; b++) {
+      frontiers.push({ x: x, y: y, ang: random(TWO_PI) });
+    }
+  }
+}
+
+function setup() {
+  pixelDensity(1);
+  createCanvas(windowWidth, windowHeight);
+  frameRate(30);
+  noSmooth();
+  buildBuffer();
+  phase = 0;
+  phaseT = 0;
+  seed();
+}
+
+function grow() {
+  // breid elke frontier uit volgens een noise-gestuurde hoek; vertak soms
+  let next = [];
+  for (let f of frontiers) {
+    // stuur richting met noise zodat takken kromtrekken
+    let nAng = (noise(f.x * 0.05, f.y * 0.05, frameCount * 0.01) - 0.5) * 1.4;
+    f.ang += nAng;
+    let nx = f.x + Math.cos(f.ang) * 1.0;
+    let ny = f.y + Math.sin(f.ang) * 1.0;
+    if (nx < 1 || nx >= BW - 1 || ny < 1 || ny >= BH - 1) continue;
+    let ci = (Math.floor(ny) * BW + Math.floor(nx));
+    crys[ci] = Math.min(1, crys[ci] + 0.9);
+    f.x = nx; f.y = ny;
+    next.push(f);
+    // vertakken
+    if (random() < 0.04 && next.length < 900) {
+      next.push({ x: nx, y: ny, ang: f.ang + (random() < 0.5 ? 0.9 : -0.9) });
+    }
+  }
+  frontiers = next;
+  if (frontiers.length === 0 || frontiers.length > 900) {
+    // volgroeid -> dooien
+    phase = 1;
+    phaseT = 0;
+  }
+}
+
+function thaw() {
+  // diffundeer en vervaag heel langzaam
+  for (let i = 0; i < crys.length; i++) {
+    crys[i] *= 0.985;
+  }
+  phaseT++;
+  if (phaseT > 220) {
+    crys.fill(0);
+    seed();
+    phase = 0;
+    phaseT = 0;
+  }
+}
+
+function draw() {
+  let t = millis() * TIME_SCALE;
+  // langzame koeltint-drift tussen blauw en cyaan-wit
+  let tint = 0.5 + 0.5 * Math.sin(t * 0.7);
+
+  if (phase === 0) {
+    // meerdere groeistappen per frame zodat patroon vlot vult
+    for (let s = 0; s < 3; s++) if (phase === 0) grow();
+  } else {
+    thaw();
+  }
+
+  buf.loadPixels();
+  for (let y = 0; y < BH; y++) {
+    for (let x = 0; x < BW; x++) {
+      let c = crys[y * BW + x];
+      // licht zachte gloed via noise op de donkere grond
+      let ground = 4 + 8 * noise(x * 0.06, y * 0.06, t * 0.3);
+      let v = Math.min(1, c);
+      // ijsblauw -> wit
+      let r = ground + v * (120 + 100 * (1 - tint));
+      let g = ground + v * (170 + 60 * tint);
+      let b = ground + v * (210 + 45 * tint);
+      let p = (y * BW + x) * 4;
+      buf.pixels[p] = Math.min(255, r);
+      buf.pixels[p + 1] = Math.min(255, g);
+      buf.pixels[p + 2] = Math.min(255, b);
+      buf.pixels[p + 3] = 255;
+    }
+  }
+  buf.updatePixels();
+
+  image(buf, 0, 0, width, height);
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  buildBuffer();
+  phase = 0;
+  phaseT = 0;
+  seed();
+}
+</script>
+</body>
+</html>

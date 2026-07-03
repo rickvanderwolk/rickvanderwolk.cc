@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+  #hint {
+    position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%);
+    color: rgba(255,255,255,0.35); font: 12px/1.4 'Courier New', monospace;
+    letter-spacing: 2px; pointer-events: none; transition: opacity 1.2s;
+  }
+  #hint.weg { opacity: 0; }
+  #hud {
+    position: fixed; top: 16px; left: 16px; display: none;
+    color: rgba(255,255,255,0.6); font: 12px/1.5 'Courier New', monospace;
+    white-space: pre; pointer-events: none;
+  }
+  #hud.aan { display: block; }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<div id="hint">klik = microfoon aan &nbsp;·&nbsp; d = signalen</div>
+<div id="hud"></div>
+
+<!-- p5.js vendored lokaal (staat in doek/), geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek — exp-101: signaal-gestuurd SCHILDERIJ (zachte penseeltoetsen)
+// ==================================================================
+// Zelfde opzet en echte inputs als exp-100 (BUS / BRON / MAPPING / ENGINE) en
+// dezelfde 24u-opstart. Andere visual: brede, zachte penseeltoetsen (radiale
+// gradient-dabs) die kleurmassa's opbouwen -- geen draadjes, maar 'verf'. Additief
+// zoals doek, maar zachter/olieverf-achtiger; de variatie is ruimtelijk (diepte).
+
+// ── knoppen ────────────────────────────────────────────────────────────────
+const SPEED       = 1;          // veld-tempo (1 = echt traag; puur tuning)
+const CLOCK_SPEED = 1;          // klok-tempo (1 = echte tijd)
+const LAT = 52.09, LON = 5.12;  // ~Utrecht; bepaalt de zonnebaan
+
+const PAINT_RATE = 0.0000005;   // basis-snelheid van de veld-tijd
+let paintT = 0;                 // veld-tijd (traag)
+let clockMs = 0;                // wandklok, ms sinds start (echte tijd)
+
+
+// ── SIGNAL-BUS ──────────────────────────────────────────────────────────────
+const providers = {};
+const smoothState = {};
+
+function registerSource(map) {
+  for (const k in map) if (typeof map[k] === 'function') providers[k] = map[k];
+}
+function hashSeed(name) {
+  let h = 2166136261;
+  for (let i = 0; i < name.length; i++) { h ^= name.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return ((h >>> 0) / 4294967295) * 1000;
+}
+// Vangnet: heeft een knop géén (echte) bron, dan drift 'ie op trage noise. In
+// deze versie is ALLES aan een echte bron gekoppeld, dus dit vuurt normaal nooit.
+function synth(name) { return noise(hashSeed(name), paintT * 0.35); }
+function sig(name, smoothing = 0) {
+  const p = providers[name];
+  let v = p ? p() : synth(name);
+  if (v == null || Number.isNaN(v)) v = synth(name);
+  v = v < 0 ? 0 : v > 1 ? 1 : v;
+  if (smoothing > 0) {
+    const prev = (name in smoothState) ? smoothState[name] : v;
+    v = prev + (v - prev) * (1 - smoothing);
+    smoothState[name] = v;
+  }
+  return v;
+}
+
+
+// ── BRON: zon / tijd / maan (offline, altijd aan) ──────────────────────────
+function makeAstro() {
+  const startWall = Date.now();
+  const D2R = Math.PI / 180;
+  const vDate = () => new Date(startWall + clockMs);
+
+  function sunPos(d) { // zonshoogte, kompasrichting én declinatie (seizoen)
+    const yearStart = Date.UTC(d.getUTCFullYear(), 0, 0);
+    const today = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+    const doy = (today - yearStart) / 86400000;
+    const decl = 23.45 * Math.sin(D2R * (360 / 365) * (doy - 81));
+    const utcH = d.getUTCHours() + d.getUTCMinutes() / 60 + d.getUTCSeconds() / 3600;
+    const H = 15 * (utcH + LON / 15 - 12);
+    const sinAlt = Math.sin(LAT * D2R) * Math.sin(decl * D2R)
+                 + Math.cos(LAT * D2R) * Math.cos(decl * D2R) * Math.cos(H * D2R);
+    const alt = Math.asin(Math.max(-1, Math.min(1, sinAlt))) / D2R;
+    const cosAz = (Math.sin(decl * D2R) - Math.sin(alt * D2R) * Math.sin(LAT * D2R))
+                / (Math.cos(alt * D2R) * Math.cos(LAT * D2R));
+    let az = Math.acos(Math.max(-1, Math.min(1, cosAz))) / D2R;
+    if (H > 0) az = 360 - az;
+    return { alt, az, decl };
+  }
+  function moonIllum(d) {
+    const ref = Date.UTC(2000, 0, 6, 18, 14);
+    let phase = (((d.getTime() - ref) / 86400000) % 29.530588853) / 29.530588853;
+    if (phase < 0) phase += 1;
+    return (1 - Math.cos(phase * 2 * Math.PI)) / 2;
+  }
+  const ss = (e0, e1, x) => { let v = (x - e0) / (e1 - e0); v = v < 0 ? 0 : v > 1 ? 1 : v; return v * v * (3 - 2 * v); };
+
+  return {
+    vDate,
+    sources: {
+      'sun.alt':   () => ss(-12, 60, sunPos(vDate()).alt),
+      'sun.day':   () => ss(-6, 8, sunPos(vDate()).alt),
+      'sun.az':    () => sunPos(vDate()).az / 360,
+      'season':    () => (sunPos(vDate()).decl + 23.45) / 46.9,
+      'time.frac': () => { const d = vDate(); return (d.getHours() + d.getMinutes() / 60) / 24; },
+      'moon':      () => moonIllum(vDate()),
+    },
+  };
+}
+
+
+// ── BRON: microfoon (optioneel, idle = 0) ──────────────────────────────────
+function makeMic() {
+  let analyser = null, freq = null, ready = false, level = 0, low = 0, mid = 0, high = 0;
+
+  async function enable() {
+    if (ready) return true;
+    try {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      const ctx = new Ctx();
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const src = ctx.createMediaStreamSource(stream);
+      analyser = ctx.createAnalyser();
+      analyser.fftSize = 1024;
+      analyser.smoothingTimeConstant = 0.85;
+      src.connect(analyser);
+      freq = new Uint8Array(analyser.frequencyBinCount);
+      await ctx.resume();
+      ready = true;
+      return true;
+    } catch (e) {
+      console.warn('microfoon niet beschikbaar:', e);
+      return false;
+    }
+  }
+  function update() {
+    if (!ready) return;
+    analyser.getByteFrequencyData(freq);
+    const n = freq.length;
+    const band = (a, b) => { let s = 0; for (let i = a; i < b; i++) s += freq[i]; return s / ((b - a) * 255); };
+    low = band(0, n * 0.15 | 0); mid = band(n * 0.15 | 0, n * 0.5 | 0); high = band(n * 0.5 | 0, n);
+    level = low * 0.6 + mid * 0.3 + high * 0.1;
+  }
+  return {
+    enable, update, isReady: () => ready,
+    sources: {
+      'mic.level': () => ready ? level : 0,
+      'mic.low':   () => ready ? low   : 0,
+      'mic.mid':   () => ready ? mid   : 0,
+      'mic.high':  () => ready ? high  : 0,
+    },
+  };
+}
+
+
+// ── MAPPING ("de partituur") — alles op echte bronnen, per tijdschaal ──────
+const mix = (a, b, t) => a + (b - a) * (t < 0 ? 0 : t > 1 ? 1 : t);
+
+function envelope() {
+  const day    = sig('sun.day');   // dagelijks
+  const alt    = sig('sun.alt');
+  const az     = sig('sun.az');
+  const moon   = sig('moon');      // maandelijks
+  const season = sig('season');    // jaarlijks
+  const micL   = sig('mic.level', 0.6);
+  const micH   = sig('mic.high', 0.6);
+
+  const hueBase = mix(210, 40, day); // koel 's nachts -> warm overdag
+
+  return {
+    // — DAGELIJKS (zon) —
+    hueCenter: (hueBase + 360) % 360,
+    lightCtr:  mix(20, 60, alt),
+    satBase:   mix(34, 90, 0.3 + alt * 0.5 + season * 0.2),
+    density:   Math.round(mix(4, 9, 0.4 + alt * 0.3) + micH * 3), // minder maar sterkere toetsen
+    aspect:    mix(1.6, 3.6, 0.4 + az * 0.4),          // penseel-langwerpigheid (dag-veeg)
+    alpha:     mix(0.06, 0.14, 0.4 + day * 0.3),
+    // — MAANDELIJKS (maan) —
+    hueSpread: mix(30, 110, moon),
+    structAmt: mix(0.30, 0.78, moon),
+    moonLift:  moon * (1 - day),
+    // — JAARLIJKS (seizoen) —
+    contrast:  mix(42, 92, 1 - season * 0.5),          // fors licht<->donker = diepte
+    scaleFlow: mix(0.0009, 0.0022, season),
+    turns:     mix(0.8, 2.0, season),
+    sizeBase:  mix(14, 42, 0.4 + season * 0.3) + micL * 12, // grote gebaren + kleine details
+    // — vast —
+    scaleComp: 0.0008,                                // macro-massa's (groot, traag)
+    scaleHue:  0.0016,                                // kleurzones
+  };
+}
+
+
+// ── ENGINE: schilderij (zachte penseeltoetsen) ─────────────────────────────
+// Puur additief, nooit wissen. Elke toets is een radiale gradient-dab: vol in
+// het hart, zacht uitvloeiend aan de rand -> 'verf' i.p.v. lijn. Langwerpig in
+// de veldrichting (penseelhaal). Ruimtelijke velden bepalen per plek de massa
+// (licht/donker), kleurzone, richting en rust -> diepte. Zeldzame grote glazuur-
+// lagen geven luminante kleurvelden.
+let buf, wet; // buf = het schilderij (blijvend); wet = tijdelijke laag voor infadende toetsen
+const sharpen = (v, k) => constrain((v - 0.5) * k + 0.5, 0, 1);
+
+function buildBuf() {
+  buf = createGraphics(width, height);
+  buf.colorMode(HSL, 360, 100, 100, 1);
+  buf.background(215, 24, 9); // diepe blauwgrijze ondergrond (neutraal voor warm én koel)
+  wet = createGraphics(width, height);
+  wet.colorMode(HSL, 360, 100, 100, 1); // blijft transparant; elke frame gewist
+}
+
+// Zachte, langwerpige penseeltoets via een radiale gradient, op doel-laag g.
+function dab(g, cx, cy, ang, R, aspect, h, s, l, a, core) {
+  const ctx = g.drawingContext;
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(ang);
+  ctx.scale(aspect, 1);
+  const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, R);
+  const H = h | 0, S = s | 0, L = l | 0;
+  const c = core == null ? 0.35 : core; // 0 = heel zacht ... ~0.8 = scherpe kern
+  grad.addColorStop(0, `hsla(${H},${S}%,${L}%,${a})`);
+  grad.addColorStop(c, `hsla(${H},${S}%,${L}%,${a})`);
+  grad.addColorStop(1, `hsla(${H},${S}%,${L}%,0)`);
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(0, 0, R, 0, 6.2832);
+  ctx.fill();
+  ctx.restore();
+}
+
+// Een 'toets' = 1-2 sub-dabs met vaste eigenschappen. We bepalen die éénmalig
+// (spawnMark) en faden 'm daarna over ~seconden in (drawMark met een klein deel
+// van de dekking per frame) -> langzame, vloeiende opbouw i.p.v. plops.
+function spawnMark() {
+  const e = envelope();
+  const zComp = paintT * 0.08, zHue = paintT * 0.10, zFlow = paintT * 0.10;
+  const x = random(width), y = random(height);
+
+  const m = sharpen(noise(x * e.scaleComp + 200, y * e.scaleComp + 200, zComp), 3.6);
+  const ridge = 1 - Math.abs(noise(x * 0.0022, y * 0.0022, zComp) - 0.5) * 2;
+  const keep = (1 - e.structAmt) + e.structAmt * Math.pow(ridge, 2);
+  const focus = 0.08 + 0.92 * Math.pow(m, 2.2);
+  if (random() > keep * focus) return null;
+
+  const ang = noise(x * e.scaleFlow, y * e.scaleFlow, zFlow) * TWO_PI * e.turns;
+  const hz = noise(x * e.scaleHue + 5, y * e.scaleHue + 5, zHue);
+  const h = (e.hueCenter + (hz - 0.5) * e.hueSpread + 360) % 360;
+  const s = constrain(e.satBase * (0.35 + m * 0.9), 0, 100);
+  const fine = (noise(x * 0.004 + 20, y * 0.004 + 20) - 0.5) * e.contrast;
+  const l = constrain(e.lightCtr + (m - 0.5) * e.contrast * 1.4 + fine + e.moonLift * 5, 1, 98);
+  const R = e.sizeBase * (0.5 + m * 1.4) * random(0.6, 1.5);
+
+  const sub = [{ dx: 0, dy: 0, ang, R, aspect: e.aspect, h, s, l, a: e.alpha, core: 0.35 }];
+  if (m > 0.62 && random() < 0.4) { // scherp verzadigd hoogsel
+    sub.push({ dx: Math.cos(ang) * R * 0.3, dy: Math.sin(ang) * R * 0.3, ang,
+      R: R * random(0.18, 0.42), aspect: e.aspect * 1.25, h,
+      s: constrain(s + 18, 0, 100), l: constrain(l + random(10, 26), 0, 99),
+      a: Math.min(0.55, e.alpha * 3.2), core: 0.78 });
+  } else if (m < 0.3 && random() < 0.22) { // diep donker-accent
+    sub.push({ dx: 0, dy: 0, ang, R: R * random(0.35, 0.7), aspect: e.aspect, h,
+      s: constrain(s * 0.55, 0, 100), l: constrain(l - random(8, 22), 1, 90),
+      a: e.alpha * 1.5, core: 0.5 });
+  }
+  return { x, y, sub, frames: 0 };
+}
+function drawMark(g, mk, aScale) {
+  for (const d of mk.sub) dab(g, mk.x + d.dx, mk.y + d.dy, d.ang, d.R, d.aspect, d.h, d.s, d.l, d.a * aScale, d.core);
+}
+function glaze(g) { // zeldzame grote zachte wash -> luminant kleurveld / diepte
+  const e = envelope();
+  const gx = random(width), gy = random(height);
+  const hz = noise(gx * e.scaleHue + 5, gy * e.scaleHue + 5, paintT * 0.10);
+  const h = (e.hueCenter + (hz - 0.5) * e.hueSpread + 360) % 360;
+  dab(g, gx, gy, random(TWO_PI), random(220, 460), 1.5, h, e.satBase * 0.7, e.lightCtr, 0.012, 0.08);
+}
+
+const growing = [];         // toetsen die nu aan het infaden zijn
+let spawnAcc = 0;
+const FADE_FRAMES = 70;     // ~2.3s: hoe lang een toets over infaden doet
+const SPAWN_RATE = 0.5;     // nieuwe toetsen per frame (laag = traag evoluerend)
+
+// Live: spawn traag. Infadende toetsen staan op de WET-laag (elke frame vers
+// getekend, nooit opgestapeld -> geen dither-ringen). Klaar? Dan éénmalig op buf.
+function paintLive() {
+  spawnAcc += SPAWN_RATE;
+  while (spawnAcc >= 1) { spawnAcc -= 1; const mk = spawnMark(); if (mk) growing.push(mk); }
+
+  wet.clear();
+  for (let i = growing.length - 1; i >= 0; i--) {
+    const mk = growing[i];
+    const f = ++mk.frames / FADE_FRAMES;                        // 0..1 fade-voortgang
+    if (f >= 1) { drawMark(buf, mk, 1); growing.splice(i, 1); } // afgerond -> éénmalig op het doek
+    else drawMark(wet, mk, f);                                  // aan het faden -> op de wet-laag
+  }
+  if (random() < 0.03) glaze(buf);
+
+  image(buf, 0, 0);
+  image(wet, 0, 0);
+}
+// Opstart (offscreen): direct op volle sterkte op het doek, geen fade nodig.
+function warmCommit(count) {
+  for (let k = 0; k < count; k++) { const mk = spawnMark(); if (mk) drawMark(buf, mk, 1); }
+}
+
+
+// ── p5 lifecycle ───────────────────────────────────────────────────────────
+let astro;
+const mic = makeMic();
+
+// TIJDELIJKE constructie (mag er later uit): benader bij opstart hoe het doek
+// eruit ZOU zien als het de afgelopen ~24u echt had gedraaid. Geen opslag -- we
+// spoelen de klok van 'hours' geleden naar nu, zodat de zon een echte dag/nacht
+// doorloopt (juiste datum/seizoen) en de lagen echte ochtend/dag/avond/nacht-
+// kleuren krijgen. Grof maar met juiste verhoudingen. Laadtijd ~ hours×STEPS×SUB.
+function warmStartAsIf(hours) {
+  const STEPS = 1100;             // tijd-resolutie van de zon/veld-sweep
+  const SUB   = 2;                // depositie per stap (dichtheid)
+  const totalMs = hours * 3600 * 1000;
+  const stepMs = totalMs / STEPS;
+  clockMs = -totalMs;
+  for (let i = 0; i < STEPS; i++) {
+    clockMs += stepMs;
+    paintT  += stepMs * PAINT_RATE * SPEED;
+    for (let s = 0; s < SUB; s++) warmCommit(7);
+    if (random() < 0.03) glaze(buf);
+  }
+  clockMs = 0;
+}
+
+function setup() {
+  pixelDensity(1);
+  createCanvas(windowWidth, windowHeight);
+  frameRate(30);
+  buildBuf();
+  astro = makeAstro();
+  registerSource(astro.sources);
+  registerSource(mic.sources);
+  warmStartAsIf(24); // TIJDELIJK: benader ~24u echte geschiedenis bij opstart
+}
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  buildBuf();
+}
+function draw() {
+  const dt = Math.min(deltaTime, 100); // knijp 1e frame / tab-terug af
+  paintT  += dt * PAINT_RATE * SPEED;
+  clockMs += dt * CLOCK_SPEED;
+  mic.update();
+  paintLive();
+}
+
+
+// ── UI: mic-klik + signaal-overlay (d) ─────────────────────────────────────
+const hintEl = document.getElementById('hint');
+const hudEl = document.getElementById('hud');
+
+window.addEventListener('pointerdown', async () => {
+  const ok = await mic.enable();
+  if (hintEl) hintEl.textContent = ok ? 'microfoon actief' : 'geen microfoon — doek draait door';
+  setTimeout(() => hintEl && hintEl.classList.add('weg'), 1500);
+});
+window.addEventListener('keydown', (e) => { if (e.key === 'd') hudEl.classList.toggle('aan'); });
+
+setInterval(() => {
+  if (!hudEl.classList.contains('aan')) return;
+  const rows = ['sun.day', 'sun.alt', 'sun.az', 'season', 'moon', 'mic.level'];
+  const bars = rows.map((n) => {
+    const v = sig(n);
+    return n.padEnd(10) + ' ' + '█'.repeat(Math.round(v * 20)).padEnd(20, '·') + ' ' + v.toFixed(2);
+  });
+  let head = '';
+  if (astro) {
+    const d = astro.vDate();
+    const p2 = (x) => String(x).padStart(2, '0');
+    const stamp = `${p2(d.getDate())}-${p2(d.getMonth() + 1)}-${d.getFullYear()}  ${p2(d.getHours())}:${p2(d.getMinutes())}`;
+    head = `klok  ${stamp}\n\n`;
+  }
+  hudEl.textContent = head + bars.join('\n');
+}, 200);
+</script>
+</body>
+</html>

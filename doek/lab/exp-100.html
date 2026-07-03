@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+  #hint {
+    position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%);
+    color: rgba(255,255,255,0.35); font: 12px/1.4 'Courier New', monospace;
+    letter-spacing: 2px; pointer-events: none; transition: opacity 1.2s;
+  }
+  #hint.weg { opacity: 0; }
+  #hud {
+    position: fixed; top: 16px; left: 16px; display: none;
+    color: rgba(255,255,255,0.6); font: 12px/1.5 'Courier New', monospace;
+    white-space: pre; pointer-events: none;
+  }
+  #hud.aan { display: block; }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<div id="hint">klik = microfoon aan &nbsp;·&nbsp; d = signalen</div>
+<div id="hud"></div>
+
+<!-- p5.js vendored lokaal (staat in doek/), geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek — exp-100: signaal-gestuurd FLOW-FIELD
+// ===========================================
+// Zelfde opzet en zelfde echte inputs als exp-99 (BUS / BRON / MAPPING / ENGINE),
+// maar een andere visual: duizenden deeltjes stromen door een noise-veld en laten
+// sporen na. Puur additief (nooit wissen, geen fade) zoals de originele doek: het
+// beeld verandert alleen door erbij te tekenen of doordat het veld traag (uren)
+// drift -> geen sprongen. De variatie is ruimtelijk -> licht/donker, kleur, richting
+// en rust verschillen per plek (diepte).
+
+// ── knoppen ────────────────────────────────────────────────────────────────
+const SPEED       = 1;          // veld-tempo (1 = echt traag; puur tuning, geen nep-versnelling)
+const CLOCK_SPEED = 1;          // klok-tempo (1 = echte tijd)
+const LAT = 52.09, LON = 5.12;  // ~Utrecht; bepaalt de zonnebaan
+const N = 1400;                 // aantal deeltjes
+
+const PAINT_RATE = 0.0000005;   // basis-snelheid van de veld-tijd
+let paintT = 0;                 // veld-tijd (traag)
+let clockMs = 0;                // wandklok, ms sinds start (echte tijd)
+
+
+// ── SIGNAL-BUS ──────────────────────────────────────────────────────────────
+const providers = {};
+const smoothState = {};
+
+function registerSource(map) {
+  for (const k in map) if (typeof map[k] === 'function') providers[k] = map[k];
+}
+function hashSeed(name) {
+  let h = 2166136261;
+  for (let i = 0; i < name.length; i++) { h ^= name.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return ((h >>> 0) / 4294967295) * 1000;
+}
+// Vangnet: heeft een knop géén (echte) bron, dan drift 'ie op trage noise. In
+// deze versie is ALLES aan een echte bron gekoppeld, dus dit vuurt normaal nooit.
+function synth(name) { return noise(hashSeed(name), paintT * 0.35); }
+function sig(name, smoothing = 0) {
+  const p = providers[name];
+  let v = p ? p() : synth(name);
+  if (v == null || Number.isNaN(v)) v = synth(name);
+  v = v < 0 ? 0 : v > 1 ? 1 : v;
+  if (smoothing > 0) {
+    const prev = (name in smoothState) ? smoothState[name] : v;
+    v = prev + (v - prev) * (1 - smoothing);
+    smoothState[name] = v;
+  }
+  return v;
+}
+
+
+// ── BRON: zon / tijd / maan (offline, altijd aan) ──────────────────────────
+function makeAstro() {
+  const startWall = Date.now();
+  const D2R = Math.PI / 180;
+  const vDate = () => new Date(startWall + clockMs); // clockMs loopt op in draw()
+
+  function sunPos(d) { // zonshoogte, kompasrichting én declinatie (seizoen) in één
+    const yearStart = Date.UTC(d.getUTCFullYear(), 0, 0);
+    const today = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+    const doy = (today - yearStart) / 86400000;
+    const decl = 23.45 * Math.sin(D2R * (360 / 365) * (doy - 81));
+    const utcH = d.getUTCHours() + d.getUTCMinutes() / 60 + d.getUTCSeconds() / 3600;
+    const H = 15 * (utcH + LON / 15 - 12); // uurhoek (graden)
+    const sinAlt = Math.sin(LAT * D2R) * Math.sin(decl * D2R)
+                 + Math.cos(LAT * D2R) * Math.cos(decl * D2R) * Math.cos(H * D2R);
+    const alt = Math.asin(Math.max(-1, Math.min(1, sinAlt))) / D2R;
+    const cosAz = (Math.sin(decl * D2R) - Math.sin(alt * D2R) * Math.sin(LAT * D2R))
+                / (Math.cos(alt * D2R) * Math.cos(LAT * D2R));
+    let az = Math.acos(Math.max(-1, Math.min(1, cosAz))) / D2R; // 0=N,90=O,180=Z,270=W
+    if (H > 0) az = 360 - az;
+    return { alt, az, decl };
+  }
+  function moonIllum(d) {
+    const ref = Date.UTC(2000, 0, 6, 18, 14);
+    let phase = (((d.getTime() - ref) / 86400000) % 29.530588853) / 29.530588853;
+    if (phase < 0) phase += 1;
+    return (1 - Math.cos(phase * 2 * Math.PI)) / 2;
+  }
+  const ss = (e0, e1, x) => { let v = (x - e0) / (e1 - e0); v = v < 0 ? 0 : v > 1 ? 1 : v; return v * v * (3 - 2 * v); };
+
+  return {
+    vDate,
+    sources: {
+      'sun.alt':   () => ss(-12, 60, sunPos(vDate()).alt),        // dagelijks (seizoens-amplitude)
+      'sun.day':   () => ss(-6, 8, sunPos(vDate()).alt),          // dag/nacht
+      'sun.az':    () => sunPos(vDate()).az / 360,                // kompasrichting zon (dag-veeg)
+      'season':    () => (sunPos(vDate()).decl + 23.45) / 46.9,   // 0 winter .. 1 zomer (jaarlijks)
+      'time.frac': () => { const d = vDate(); return (d.getHours() + d.getMinutes() / 60) / 24; },
+      'moon':      () => moonIllum(vDate()),                      // maandelijks
+    },
+  };
+}
+
+
+// ── BRON: microfoon (optioneel, idle = 0) ──────────────────────────────────
+function makeMic() {
+  let analyser = null, freq = null, ready = false, level = 0, low = 0, mid = 0, high = 0;
+
+  async function enable() {
+    if (ready) return true;
+    try {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      const ctx = new Ctx();
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const src = ctx.createMediaStreamSource(stream);
+      analyser = ctx.createAnalyser();
+      analyser.fftSize = 1024;
+      analyser.smoothingTimeConstant = 0.85;
+      src.connect(analyser);
+      freq = new Uint8Array(analyser.frequencyBinCount);
+      await ctx.resume();
+      ready = true;
+      return true;
+    } catch (e) {
+      console.warn('microfoon niet beschikbaar:', e);
+      return false;
+    }
+  }
+  function update() {
+    if (!ready) return;
+    analyser.getByteFrequencyData(freq);
+    const n = freq.length;
+    const band = (a, b) => { let s = 0; for (let i = a; i < b; i++) s += freq[i]; return s / ((b - a) * 255); };
+    low = band(0, n * 0.15 | 0); mid = band(n * 0.15 | 0, n * 0.5 | 0); high = band(n * 0.5 | 0, n);
+    level = low * 0.6 + mid * 0.3 + high * 0.1;
+  }
+  return {
+    enable, update, isReady: () => ready,
+    sources: {
+      'mic.level': () => ready ? level : 0,
+      'mic.low':   () => ready ? low   : 0,
+      'mic.mid':   () => ready ? mid   : 0,
+      'mic.high':  () => ready ? high  : 0,
+    },
+  };
+}
+
+
+// ── MAPPING ("de partituur") ───────────────────────────────────────────────
+const mix = (a, b, t) => a + (b - a) * (t < 0 ? 0 : t > 1 ? 1 : t);
+
+function envelope() {
+  const day    = sig('sun.day');        // 0 nacht .. 1 dag     (dagelijks)
+  const alt    = sig('sun.alt');        // zonshoogte           (dagelijks)
+  const az     = sig('sun.az');         // kompasrichting zon   (dag-veeg)
+  const moon   = sig('moon');           // maan-verlichting     (maandelijks)
+  const season = sig('season');         // 0 winter .. 1 zomer  (jaarlijks)
+  const micL   = sig('mic.level', 0.6); // optioneel, direct
+  const micH   = sig('mic.high', 0.6);
+
+  const hueBase = mix(210, 40, day); // koel 's nachts -> warm overdag (echt, geen wiebel)
+
+  // ELK element aan een ECHTE bron, bewust op verschillende tijdschalen. De ranges
+  // (de mix-grenzen) houden elk element binnen een mooi bereik, wat er ook binnenkomt.
+  return {
+    // — DAGELIJKS (zon) —
+    hueCenter: (hueBase + 360) % 360,                        // warm/koel = tijd van de dag
+    lightCtr:  mix(18, 58, alt),                             // helderheid volgt zonshoogte
+    satBase:   mix(30, 82, 0.3 + alt * 0.5 + season * 0.2),  // fel bij hoge zon + zomer
+    flowBias:  az * TWO_PI,                                  // stroom 'waait' met de zonrichting
+    speed:     mix(0.6, 1.8, 0.3 + alt * 0.5) + micL * 0.8,  // dag energieker; mic erbovenop
+    alpha:     mix(0.05, 0.13, 0.4 + day * 0.4),             // overdag iets steviger neerzetten
+    // — MAANDELIJKS (maan) —
+    hueSpread: mix(35, 125, moon),                           // palet-breedte ademt met de maan
+    structAmt: mix(0.25, 0.72, moon),                        // compositie opent/sluit met de maan
+    moonLift:  moon * (1 - day),                             // volle maan tilt de nacht op
+    // — JAARLIJKS (seizoen) —
+    contrast:  mix(30, 72, 1 - season * 0.7),                // winter starker, zomer zachter
+    scaleFlow: mix(0.0011, 0.0028, season),                  // seizoen -> wervel-grootte
+    turns:     mix(1.0, 2.2, season),                        // seizoen -> ander gebaar
+    // — mic (direct, optioneel) —
+    weight:    mix(0.5, 1.4, 0.4 + micH * 0.6),
+    // — vast —
+    scaleComp: 0.0009,                                       // macro-massa's (groot, traag)
+    scaleHue:  0.0018,                                       // kleurzones
+  };
+}
+
+
+// ── ENGINE: flow-field ─────────────────────────────────────────────────────
+// Puur additief (zoals de originele doek): nooit wissen, geen fade. Alles
+// verandert door erbij te tekenen of doordat het veld traag drift -> geen
+// sprongen. De variatie is RUIMTELIJK: op elke plek bepalen noise-velden de
+// richting, licht/donker (massa's), contrast, kleurzone en rust -> diepte.
+let buf, particles = [];
+const sharpen = (v, k) => constrain((v - 0.5) * k + 0.5, 0, 1);
+
+function buildBuf() {
+  buf = createGraphics(width, height);
+  buf.colorMode(HSL, 360, 100, 100, 1);
+  buf.background(220, 25, 7); // diepe getinte ondergrond
+}
+function newParticle() {
+  const x = random(width), y = random(height);
+  return { x, y, px: x, py: y, life: random(80, 300) };
+}
+function seedParticles() {
+  particles = [];
+  for (let i = 0; i < N; i++) particles.push(newParticle());
+}
+
+function paint(blit = true) {
+  const e = envelope();
+  const zFlow = paintT * 0.10, zComp = paintT * 0.08, zHue = paintT * 0.10;
+
+  for (const p of particles) {
+    // richting uit het stroomveld (ruimtelijk -> overal een andere kant op)
+    const ang = noise(p.x * e.scaleFlow, p.y * e.scaleFlow, zFlow) * TWO_PI * e.turns + e.flowBias;
+    p.px = p.x; p.py = p.y;
+    p.x += Math.cos(ang) * e.speed;
+    p.y += Math.sin(ang) * e.speed;
+    p.life--;
+
+    if (p.life <= 0 || p.x < 0 || p.x >= width || p.y < 0 || p.y >= height) {
+      p.x = random(width); p.y = random(height); p.px = p.x; p.py = p.y;
+      p.life = random(80, 300);
+      continue; // teleport tekent geen lijn -> geen streep over het scherm
+    }
+
+    // macro-massa's: licht/donker (chiaroscuro = diepte)
+    const m = sharpen(noise(p.x * e.scaleComp + 200, p.y * e.scaleComp + 200, zComp), 3.2);
+    // rust rond de massa's: hier even niets toevoegen -> compositie/leegte
+    const ridge = 1 - Math.abs(noise(p.x * 0.0022, p.y * 0.0022, zComp) - 0.5) * 2;
+    const keep = (1 - e.structAmt) + e.structAmt * Math.pow(ridge, 2);
+    const focus = 0.10 + 0.90 * Math.pow(m, 2.0);
+    if (random() > keep * focus) continue;
+
+    // kleurzone per plek
+    const hz = noise(p.x * e.scaleHue + 5, p.y * e.scaleHue + 5, zHue);
+    const h = (e.hueCenter + (hz - 0.5) * e.hueSpread + 360) % 360;
+    // verzadiging hoog in de lichte massa's, dof eromheen (zoals doek)
+    const s = constrain(e.satBase * (0.35 + m), 0, 100);
+    // licht/donker uit de massa + fijne ruis + maan-lift 's nachts
+    const fine = (noise(p.x * 0.004 + 20, p.y * 0.004 + 20) - 0.5) * e.contrast;
+    const l = constrain(e.lightCtr + (m - 0.5) * e.contrast + fine + e.moonLift * 5, 2, 97);
+
+    buf.strokeWeight(e.weight * (0.5 + m * 1.3)); // dikker in de massa's -> vorm/diepte
+    buf.stroke(h, s, l, e.alpha);
+    buf.line(p.px, p.py, p.x, p.y);
+  }
+  if (blit) image(buf, 0, 0);
+}
+
+
+// ── p5 lifecycle ───────────────────────────────────────────────────────────
+let astro;
+const mic = makeMic();
+
+// TIJDELIJKE constructie (mag er later uit): benader bij opstart hoe het doek
+// eruit ZOU zien als het de afgelopen ~24u echt had gedraaid. Geen opslag -- we
+// spoelen de klok van 'hours' geleden naar nu, zodat de zon een echte dag/nacht
+// doorloopt (juiste datum/seizoen) en de lagen dus echte ochtend/dag/avond/nacht-
+// kleuren krijgen. Grof (weinig tijdstappen) maar met de juiste verhoudingen, dus
+// enigszins realistisch i.p.v. verzonnen. Laadtijd schaalt met hours × STEPS × SUB.
+function warmStartAsIf(hours) {
+  const STEPS = 1500;              // tijd-resolutie: hoe fijn de zon/veld-sweep is
+  const SUB   = 3;                 // depositie per stap: hoeveel dichtheid opbouwt
+  const totalMs = hours * 3600 * 1000;
+  const stepMs = totalMs / STEPS;
+  clockMs = -totalMs;             // begin 'hours' geleden
+  for (let i = 0; i < STEPS; i++) {
+    clockMs += stepMs;                       // zon loopt echt mee (dag/nacht/seizoen)
+    paintT  += stepMs * PAINT_RATE * SPEED;  // veld drift proportioneel mee
+    for (let s = 0; s < SUB; s++) paint(false);
+  }
+  clockMs = 0;                    // eindig exact op nu
+}
+
+function setup() {
+  pixelDensity(1);
+  createCanvas(windowWidth, windowHeight);
+  frameRate(30);
+  buildBuf();
+  seedParticles();
+  astro = makeAstro();
+  registerSource(astro.sources);
+  registerSource(mic.sources);
+  warmStartAsIf(24); // TIJDELIJK: benader ~24u echte geschiedenis bij opstart
+}
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  buildBuf();
+  seedParticles();
+}
+function draw() {
+  const dt = Math.min(deltaTime, 100); // knijp 1e frame / tab-terug af -> geen sprong
+  paintT  += dt * PAINT_RATE * SPEED;
+  clockMs += dt * CLOCK_SPEED;
+  mic.update();
+  paint();
+}
+
+
+// ── UI: mic-klik + signaal-overlay (d) ─────────────────────────────────────
+const hintEl = document.getElementById('hint');
+const hudEl = document.getElementById('hud');
+
+window.addEventListener('pointerdown', async () => {
+  const ok = await mic.enable();
+  if (hintEl) hintEl.textContent = ok ? 'microfoon actief' : 'geen microfoon — doek draait door';
+  setTimeout(() => hintEl && hintEl.classList.add('weg'), 1500);
+});
+
+window.addEventListener('keydown', (e) => { if (e.key === 'd') hudEl.classList.toggle('aan'); });
+
+setInterval(() => {
+  if (!hudEl.classList.contains('aan')) return;
+  const rows = ['sun.day', 'sun.alt', 'sun.az', 'season', 'moon', 'mic.level'];
+  const bars = rows.map((n) => {
+    const v = sig(n);
+    return n.padEnd(10) + ' ' + '█'.repeat(Math.round(v * 20)).padEnd(20, '·') + ' ' + v.toFixed(2);
+  });
+  let head = '';
+  if (astro) {
+    const d = astro.vDate();
+    const p2 = (x) => String(x).padStart(2, '0');
+    const stamp = `${p2(d.getDate())}-${p2(d.getMonth() + 1)}-${d.getFullYear()}  ${p2(d.getHours())}:${p2(d.getMinutes())}`;
+    head = `klok  ${stamp}\n\n`;
+  }
+  hudEl.textContent = head + bars.join('\n');
+}, 200);
+</script>
+</body>
+</html>

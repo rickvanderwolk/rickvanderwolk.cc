@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="nl">
+<head>
+    <meta charset="utf-8">
+    <title>Husselaar</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Plak tekst, hussel de woorden">
+    <meta name="author" content="Rick van der Wolk">
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: -apple-system, system-ui, sans-serif;
+            max-width: 700px;
+            margin: 0 auto;
+            padding: 24px;
+            color: #222;
+        }
+        h1 { font-size: 1.4rem; }
+        textarea {
+            width: 100%;
+            min-height: 220px;
+            padding: 12px;
+            font-size: 1rem;
+            font-family: inherit;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            resize: vertical;
+        }
+        button {
+            margin-top: 12px;
+            padding: 12px 20px;
+            font-size: 1rem;
+            border: none;
+            border-radius: 8px;
+            background: #222;
+            color: #fff;
+            cursor: pointer;
+        }
+        button:active { transform: translateY(1px); }
+        #output {
+            margin-top: 24px;
+            font-size: 1.1rem;
+            line-height: 1.6;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+    </style>
+</head>
+<body>
+    <h1>Husselaar</h1>
+    <textarea id="input" placeholder="Plak hier je tekst..."></textarea>
+    <br>
+    <button onclick="shuffle()">Hussel woorden</button>
+    <div id="output"></div>
+
+    <script>
+        function shuffle() {
+            const text = document.getElementById('input').value;
+            const words = text.split(/\s+/).filter(w => w.length > 0);
+            for (let i = words.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [words[i], words[j]] = [words[j], words[i]];
+            }
+            document.getElementById('output').textContent = words.join(' ');
+        }
+    </script>
+</body>
+</html>

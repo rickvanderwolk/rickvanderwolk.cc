@@ -9,12 +9,18 @@
   html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
   canvas { display: block; position: fixed; inset: 0; }
   #hud {
-    position: fixed; left: 14px; bottom: 14px; z-index: 2;
+    position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 2;
     font: 12px/1 "Courier New", ui-monospace, monospace;
     color: #f2f2f2; pointer-events: none; user-select: none;
-    letter-spacing: 0.14em; text-transform: lowercase;
-    background: rgba(0,0,0,0.5); padding: 5px 9px; border-radius: 3px;
+    letter-spacing: 0.16em; text-transform: lowercase; white-space: nowrap;
+    padding: 8px 16px; border-radius: 999px;
+    background: rgba(12,12,12,0.55);
+    border: 1px solid rgba(255,255,255,0.08);
+    box-shadow: 0 2px 14px rgba(0,0,0,0.45);
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
   }
+  #hud .sep { opacity: 0.28; margin: 0 0.8em; }
+  #hud .dim { opacity: 0.55; }
 </style>
 </head>
 <body>
@@ -257,8 +263,12 @@ function draw(rx, ry) {
   ctx.arc(originX + rx * u, originY + ry * u, BALL_R * u, 0, Math.PI * 2);
   ctx.fill();
 
-  const txt = 'level ' + level + '   ' + fmt(mazeMs) + '   ·   total ' + fmt(totalMs);
-  if (txt !== lastHud) { hud.textContent = txt; lastHud = txt; }
+  const txt = '<span>level ' + level + '</span>' +
+              '<span class="sep">·</span>' +
+              '<span class="dim">' + fmt(mazeMs) + '</span>' +
+              '<span class="sep">·</span>' +
+              '<span class="dim">total ' + fmt(totalMs) + '</span>';
+  if (txt !== lastHud) { hud.innerHTML = txt; lastHud = txt; }
 }
 function fmt(ms) {
   let s = Math.floor(ms / 1000);

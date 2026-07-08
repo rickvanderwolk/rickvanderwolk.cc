@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Doek</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #vignet {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      rgba(0,0,0,0) 42%, rgba(0,0,0,0.42) 100%);
+  }
+  #hint {
+    position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%);
+    color: rgba(255,255,255,0.35); font: 12px/1.4 'Courier New', monospace;
+    letter-spacing: 2px; pointer-events: none; transition: opacity 1.2s;
+  }
+  #hint.weg { opacity: 0; }
+  #hud {
+    position: fixed; top: 16px; left: 16px; display: none;
+    color: rgba(255,255,255,0.6); font: 12px/1.5 'Courier New', monospace;
+    white-space: pre; pointer-events: none;
+  }
+  #hud.aan { display: block; }
+</style>
+</head>
+<body>
+<div id="vignet"></div>
+<div id="hint">klik = microfoon aan &nbsp;·&nbsp; d = signalen</div>
+<div id="hud"></div>
+
+<!-- p5.js vendored lokaal (staat in doek/), geen CDN -->
+<script src="../p5.min.js"></script>
+<script>
+// doek — exp-109: WARM LICHT / KOELE SCHADUW — variant van exp-108
+// =========================================================================
+// [exp-109] Bovenop exp-108 (grond uit het palet + EXPLORE via #explore): (1) TEMPERATUUR
+// langs de licht-as -- highlights schuiven WARM (~goud 42°), schaduwen KOEL (~blauw 222°),
+// optisch echt (warme zon, koel hemellicht in de schaduw) -> gouden-uur-diepte i.p.v. één
+// vlakke tint; (2) COMPOSITIE-VARIATIE -- het zwaartepunt hangt nu óók aan de open-timestamp,
+// dus elke refresh een andere opbouw. De erfenis-tekst van exp-108 hieronder geldt nog:
+// =========================================================================
+// Zelfde kleur-engine als exp-107 (seizoen × weekdag × zon/weer), maar één fix:
+// de GRONDKLEUR komt niet meer uit een vaste blauwe waarde, maar uit DEZELFDE
+// dag-tint als de verf. In exp-107 was de grond hardcoded lei-blauw (215): bij het
+// laden zag je eerst dat vaste blauw (leek altijd hetzelfde, losgekoppeld van de
+// dag), waarna de verf 't 'ineens' overschilderde met een heel andere tint -> een
+// harde kleursprong. Ook botste dat vaste blauw met een palet dat nu overal op het
+// wiel kan liggen (rood/groen/paars op blauw = modderig i.p.v. de warm-op-koel van
+// exp-106). Nu is de grond een donkere, ontzadigde versie van de dag-tint: geen
+// sprong bij het laden én de combinaties horen weer bij één familie.
+//
+// De kleur-engine zelf (ongewijzigd) stapelt DRIE echte tijdschalen:
+//
+//   • SEIZOEN -> de palet-familie (natuurkleuren, traag/maanden). Winter lei-blauw ->
+//     lente groen -> zomer goud -> herfst amber/roest -> dovende gloed -> winter.
+//     Dit onderscheidt lente van herfst (i.t.t. het symmetrische 'season'-signaal).
+//   • WEEKDAG -> een echte kleur-tik per dag (Thaise/astrologische traditie): de tint
+//     wordt naar de dagkleur genudged. Garandeert: over 3 dagen echt andere kleur.
+//   • ZON + WEER -> niet de tint maar het LICHT & de stemming van dit moment: dag/nacht
+//     (lightCtr), bewolking/vocht (verzadiging), heldere lucht (contrast).
+//
+// Zo: over 3 dagen gegarandeerd anders (weekdag), over seizoenen totaal anders (natuur),
+// elk moment waar (zon/weer) -- en nergens een verzonnen wiel. Structuur nog steeds
+// uniek per instantie via de open-timestamp.
+
+// ── knoppen ────────────────────────────────────────────────────────────────
+const SPEED       = 1;          // veld-tempo (1 = echt traag; puur tuning)
+const CLOCK_SPEED = 1;          // klok-tempo (1 = echte tijd)
+const LAT = 52.09, LON = 5.12;  // ~Utrecht; bepaalt de zonnebaan
+
+const PAINT_RATE = 0.0000005;   // basis-snelheid van de veld-tijd
+let paintT = 0;                 // veld-tijd (traag)
+let clockMs = 0;                // wandklok, ms sinds start (echte tijd)
+
+// ── EXPLORE (tijdelijk, opt-in via URL) ─────────────────────────────────────
+// Open exp-108.html#explore -> elke refresh verzet de VIRTUELE klok een willekeurig
+// aantal HELE dagen vooruit: andere dag-van-'t-jaar (seizoen) én andere weekdag, maar
+// hetzelfde tijdstip. Zo zie je het ECHTE kleurmechanisme (seizoen×weekdag) op andere
+// dagen/seizoenen, zonder iets te vervalsen -- alleen de datum is verzet, de rest volgt.
+// Zonder #explore draait alles gewoon op nu. (Weer blijft 'nu': live weer kun je niet
+// terugspoelen; het stuurt toch alleen licht/stemming, niet de tint.) Druk 'd' voor de
+// HUD -> die toont de virtuele datum + seizoen/weekdag/tint van dit moment.
+const EXPLORE = location.hash.toLowerCase().startsWith('#explore');
+const EXPLORE_DAYS = EXPLORE ? Math.floor(Math.random() * 365) : 0;
+const EXPLORE_OFFSET_MS = EXPLORE_DAYS * 86400000;
+
+
+// ── SIGNAL-BUS ──────────────────────────────────────────────────────────────
+const providers = {};
+const smoothState = {};
+
+function registerSource(map) {
+  for (const k in map) if (typeof map[k] === 'function') providers[k] = map[k];
+}
+function hashSeed(name) {
+  let h = 2166136261;
+  for (let i = 0; i < name.length; i++) { h ^= name.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return ((h >>> 0) / 4294967295) * 1000;
+}
+// Vangnet: heeft een knop géén (echte) bron, dan drift 'ie op trage noise. In
+// deze versie is ALLES aan een echte bron gekoppeld, dus dit vuurt normaal nooit.
+function synth(name) { return noise(hashSeed(name), paintT * 0.35); }
+function sig(name, smoothing = 0) {
+  const p = providers[name];
+  let v = p ? p() : synth(name);
+  if (v == null || Number.isNaN(v)) v = synth(name);
+  v = v < 0 ? 0 : v > 1 ? 1 : v;
+  if (smoothing > 0) {
+    const prev = (name in smoothState) ? smoothState[name] : v;
+    v = prev + (v - prev) * (1 - smoothing);
+    smoothState[name] = v;
+  }
+  return v;
+}
+
+
+// ── BRON: zon / tijd / maan (offline, altijd aan) ──────────────────────────
+function makeAstro() {
+  const startWall = Date.now() + EXPLORE_OFFSET_MS;   // EXPLORE: virtuele datum verzet (anders 0)
+  const D2R = Math.PI / 180;
+  const vDate = () => new Date(startWall + clockMs);
+
+  function sunPos(d) { // zonshoogte, kompasrichting én declinatie (seizoen)
+    const yearStart = Date.UTC(d.getUTCFullYear(), 0, 0);
+    const today = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+    const doy = (today - yearStart) / 86400000;
+    const decl = 23.45 * Math.sin(D2R * (360 / 365) * (doy - 81));
+    const utcH = d.getUTCHours() + d.getUTCMinutes() / 60 + d.getUTCSeconds() / 3600;
+    const H = 15 * (utcH + LON / 15 - 12);
+    const sinAlt = Math.sin(LAT * D2R) * Math.sin(decl * D2R)
+                 + Math.cos(LAT * D2R) * Math.cos(decl * D2R) * Math.cos(H * D2R);
+    const alt = Math.asin(Math.max(-1, Math.min(1, sinAlt))) / D2R;
+    const cosAz = (Math.sin(decl * D2R) - Math.sin(alt * D2R) * Math.sin(LAT * D2R))
+                / (Math.cos(alt * D2R) * Math.cos(LAT * D2R));
+    let az = Math.acos(Math.max(-1, Math.min(1, cosAz))) / D2R;
+    if (H > 0) az = 360 - az;
+    return { alt, az, decl };
+  }
+  function moonIllum(d) {
+    const ref = Date.UTC(2000, 0, 6, 18, 14);
+    let phase = (((d.getTime() - ref) / 86400000) % 29.530588853) / 29.530588853;
+    if (phase < 0) phase += 1;
+    return (1 - Math.cos(phase * 2 * Math.PI)) / 2;
+  }
+  const ss = (e0, e1, x) => { let v = (x - e0) / (e1 - e0); v = v < 0 ? 0 : v > 1 ? 1 : v; return v * v * (3 - 2 * v); };
+
+  // Dag-in-het-jaar (1..365) uit de echte datum.
+  function dayOfYear(d) {
+    const start = Date.UTC(d.getUTCFullYear(), 0, 0);
+    const today = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+    return (today - start) / 86400000;
+  }
+  // SEIZOEN = de palet-familie (natuurkleuren), als tint over het jaar. Anders dan
+  // 'season' (declinatie, symmetrisch) onderscheidt dit lente van herfst. Monotoon
+  // dalende ruwe-tint -> lineair interpoleren volgt netjes het pad, mod 360 als kleur:
+  //   winter lei-blauw(215) -> lente groen(110) -> zomer goud(60) -> herfst amber(30)
+  //   -> [dovende gloed] rood/magenta/violet -> terug naar winterblauw(215 = -145).
+  const SEASON_KEYS = [[0, 215], [80, 110], [172, 60], [264, 30], [365, -145]];
+  function seasonHue() {
+    const doy = dayOfYear(vDate());
+    for (let i = 0; i < SEASON_KEYS.length - 1; i++) {
+      const [d0, h0] = SEASON_KEYS[i], [d1, h1] = SEASON_KEYS[i + 1];
+      if (doy >= d0 && doy <= d1) return h0 + (h1 - h0) * ((doy - d0) / (d1 - d0));
+    }
+    return 215;
+  }
+  // WEEKDAG = een echte kleur-tik per dag (Thaise/astrologische traditie), als tint.
+  // zo-rood ma-geel di-roze wo-groen do-oranje vr-lichtblauw za-paars.
+  const WEEKDAY_HUE = [0, 55, 330, 120, 30, 210, 280];
+  function weekdayHue() { return WEEKDAY_HUE[vDate().getDay()]; }
+
+  return {
+    vDate, seasonHue, weekdayHue,
+    sources: {
+      'sun.alt':   () => ss(-12, 60, sunPos(vDate()).alt),
+      'sun.day':   () => ss(-6, 8, sunPos(vDate()).alt),
+      'sun.az':    () => sunPos(vDate()).az / 360,
+      'season':    () => (sunPos(vDate()).decl + 23.45) / 46.9,
+      'time.frac': () => { const d = vDate(); return (d.getHours() + d.getMinutes() / 60) / 24; },
+      'moon':      () => moonIllum(vDate()),
+    },
+  };
+}
+
+
+// ── BRON: microfoon (optioneel, idle = 0) ──────────────────────────────────
+function makeMic() {
+  let analyser = null, freq = null, ready = false, level = 0, low = 0, mid = 0, high = 0;
+
+  async function enable() {
+    if (ready) return true;
+    try {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      const ctx = new Ctx();
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const src = ctx.createMediaStreamSource(stream);
+      analyser = ctx.createAnalyser();
+      analyser.fftSize = 1024;
+      analyser.smoothingTimeConstant = 0.85;
+      src.connect(analyser);
+      freq = new Uint8Array(analyser.frequencyBinCount);
+      await ctx.resume();
+      ready = true;
+      return true;
+    } catch (e) {
+      console.warn('microfoon niet beschikbaar:', e);
+      return false;
+    }
+  }
+  function update() {
+    if (!ready) return;
+    analyser.getByteFrequencyData(freq);
+    const n = freq.length;
+    const band = (a, b) => { let s = 0; for (let i = a; i < b; i++) s += freq[i]; return s / ((b - a) * 255); };
+    low = band(0, n * 0.15 | 0); mid = band(n * 0.15 | 0, n * 0.5 | 0); high = band(n * 0.5 | 0, n);
+    level = low * 0.6 + mid * 0.3 + high * 0.1;
+  }
+  return {
+    enable, update, isReady: () => ready,
+    sources: {
+      'mic.level': () => ready ? level : 0,
+      'mic.low':   () => ready ? low   : 0,
+      'mic.mid':   () => ready ? mid   : 0,
+      'mic.high':  () => ready ? high  : 0,
+    },
+  };
+}
+
+
+// ── BRON: live weer (Open-Meteo, gratis, geen sleutel) ─────────────────────
+// Echte uren-laag: wind, bewolking, druk, temperatuur, vocht voor de locatie.
+// Verversen elke ~10 min. Tot de eerste fetch binnen is -> neutraal (0.5),
+// nooit noise, zodat 'alles is echt' klopt.
+function makeWeather() {
+  let data = null;
+  const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
+  const norm = (v, lo, hi) => clamp01((v - lo) / (hi - lo));
+
+  async function fetchNow() {
+    try {
+      const url = `https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}`
+        + `&current=temperature_2m,relative_humidity_2m,cloud_cover,surface_pressure,wind_speed_10m,wind_direction_10m`;
+      const j = await (await fetch(url)).json();
+      const c = j.current;
+      data = {
+        temp:     norm(c.temperature_2m, -5, 30),
+        humid:    clamp01(c.relative_humidity_2m / 100),
+        cloud:    clamp01(c.cloud_cover / 100),
+        pressure: norm(c.surface_pressure, 985, 1035),
+        wind:     norm(c.wind_speed_10m, 0, 45),
+        windDir:  clamp01((((c.wind_direction_10m % 360) + 360) % 360) / 360),
+      };
+    } catch (e) { console.warn('weer niet beschikbaar:', e); }
+  }
+  fetchNow();
+  setInterval(fetchNow, 10 * 60 * 1000);
+
+  const val = (k) => () => (data ? data[k] : 0.5); // geen data -> neutraal, geen noise
+  return {
+    ready: () => data != null,
+    sources: {
+      'weather.temp':     val('temp'),
+      'weather.humid':    val('humid'),
+      'weather.cloud':    val('cloud'),
+      'weather.pressure': val('pressure'),
+      'weather.wind':     val('wind'),
+      'weather.windDir':  val('windDir'),
+    },
+  };
+}
+
+
+// ── MAPPING ("de partituur") — élk facet op een echte bron, per tijdschaal ─
+const mix = (a, b, t) => a + (b - a) * (t < 0 ? 0 : t > 1 ? 1 : t);
+
+function envelope() {
+  const day    = sig('sun.day');               // dag (zon)
+  const alt    = sig('sun.alt');
+  const az     = sig('sun.az');
+  const moon   = sig('moon');                  // maand (maan)
+  const season = sig('season');                // jaar (seizoen)
+  const cloud  = sig('weather.cloud', 0.92);   // uren (weer)
+  const wind   = sig('weather.wind', 0.92);
+  const wdir   = sig('weather.windDir', 0.95);
+  const press  = sig('weather.pressure', 0.95);
+  const temp   = sig('weather.temp', 0.95);
+  const humid  = sig('weather.humid', 0.92);
+  const micL   = sig('mic.level', 0.6);        // direct (kamer)
+  const micH   = sig('mic.high', 0.6);
+
+  // KLEUR-FAMILIE = seizoen (natuurpalet, traag) genudged naar de WEEKDAG-kleur
+  // (echte traditie, elke dag anders). Zon/weer sturen NIET de tint maar het licht &
+  // de stemming (lightCtr/satBase/contrast hieronder). Geen kunstmatige kleurklok.
+  const hueCenter = ((lerpAngleDeg(astro.seasonHue(), astro.weekdayHue(), WEEKDAY_MIX) % 360) + 360) % 360;
+
+  return {
+    // kleur — seizoen × weekdag
+    hueCenter,
+    // licht & stemming — zon + weer
+    lightCtr:  mix(18, 60, alt) * (1 - cloud * 0.35),                // bewolking dempt het licht
+    satBase:   mix(30, 88, 0.4 + alt * 0.35 - cloud * 0.2 - humid * 0.12 + season * 0.12 + (temp - 0.5) * 0.08),
+    contrast:  mix(30, 90, (1 - cloud) * 0.75 + (1 - season) * 0.25), // heldere lucht = hard chiaroscuro
+    // gebaar & richting — wind
+    flowBias:  (wdir * 0.7 + az * 0.3) * TWO_PI,                      // wind (+ zon) zet de penseelrichting
+    aspect:    mix(1.6, 3.6, 0.35 + wind * 0.5),
+    turns:     mix(0.7, 2.6, 0.25 + wind * 0.7),                      // wind = woeliger
+    scaleFlow: mix(0.0009, 0.0028, 0.3 + wind * 0.6),
+    // compositie — luchtdruk
+    structAmt: mix(0.15, 0.58, press),                               // hoog = open/sereen, laag = dicht (minder extreem)
+    // ritmes — maan / seizoen
+    hueSpread: mix(30, 115, moon),
+    moonLift:  moon * (1 - day),
+    sizeBase:  mix(14, 40, 0.4 + season * 0.3) + micL * 12,
+    // energie — zon + wind + geluid
+    density:   Math.round(mix(4, 9, 0.4 + alt * 0.25 + wind * 0.25) + micH * 3),
+    spawn:     mix(0.35, 0.85, 0.3 + wind * 0.4) + micL * 0.6,        // nieuwe toetsen per frame (rustig)
+    alpha:     mix(0.06, 0.14, 0.4 + day * 0.3),
+    // vast
+    scaleComp: 0.0018,   // fijnere massa's -> altijd licht én donker per scherm (geen heel-zwart)
+    scaleHue:  0.0026,   // fijnere kleurzones
+  };
+}
+
+
+// ── ENGINE: aangroeiend doek (alleen toevoegen) ────────────────────────────
+// Eén blijvende laag. Na de grond wordt er nooit gewist; elk frame komt er alleen
+// een handvol doorschijnende toetsen bij. Kleur/vorm van een toets komt uit het
+// echte veld op die plek × de echte tijd -> 'het klopt', en het schuift langzaam
+// mee met licht en weer. De aangroei kruipt rond een langzaam dwalend zwaartepunt,
+// zodat sommige plekken nú bewerkt worden en andere hun oudere lagen houden.
+// Grondkleur = donkere, ONTZADIGDE versie van dezelfde dag-tint (seizoen×weekdag) als
+// de verf. Zelfde tint -> geen kleursprong bij het laden, en de grond leest als de
+// diepe schaduw van het dag-palet i.p.v. een vaste blauwe die er niet bij hoort.
+const GROUND_S = 22, GROUND_L = 13;   // ontzadigd & donker (was de S/L van de oude vaste grond)
+let art;                      // de enige, blijvende laag — groeit alleen aan
+let worldOX = 0, worldOY = 0; // vaste wereld-offset (uit open-timestamp) -> uniek stuk veld
+let startMs = 0;              // opstartmoment (echte tijd): wereld-plek + klok
+let paintClock = 0;           // veld-klok: opgeteld uit GEKLEMDE dt -> springt nooit
+let envEased = null;          // zacht na-geijlde enveloppe -> toetsen matchen hun buur
+let strokeAcc = 0;            // deelframe-teller: houdt de aangroei-snelheid vloeiend
+let focusX = 0, focusY = 0;   // langzaam dwalend zwaartepunt van de aangroei
+const sharpen = (v, k) => constrain((v - 0.5) * k + 0.5, 0, 1);
+
+// ── onmerkbare infade + palet-sturing ──────────────────────────────────────
+const FADE_MIN = 2.2, FADE_MAX = 5.0; // sec: hoe lang een toets ONMERKBAAR infadet
+const PALETTE_STEER = true;           // aan: nieuwe verf komt waar 't doek van 't licht afdreef
+const STEER_CANDIDATES = 4;           // aantal kandidaat-plekken waaruit gekozen wordt
+const ACTIVE_CAP = 500;               // veiligheidsdak op gelijktijdig groeiende toetsen
+const WEEKDAY_MIX = 0.4;              // 0 = puur seizoen, 1 = puur weekdagkleur (dag-tot-dag verschil)
+const WARM_POLE = 42, COOL_POLE = 222, TEMP_STRENGTH = 0.42; // exp-109: warm licht / koele schaduw
+let active = [];                       // toetsen die nu aan het infaden zijn
+
+// HSL(0-360,0-100,0-100) -> RGB(0-255), om 'afdrift' t.o.v. het doek te meten
+function hsl2rgb(h, s, l) {
+  h /= 360; s /= 100; l /= 100;
+  if (s === 0) { const v = l * 255; return [v, v, v]; }
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+  const p = 2 * l - q;
+  const ch = (t) => {
+    if (t < 0) t += 1; if (t > 1) t -= 1;
+    if (t < 1 / 6) return p + (q - p) * 6 * t;
+    if (t < 1 / 2) return q;
+    if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+    return p;
+  };
+  return [ch(h + 1 / 3) * 255, ch(h) * 255, ch(h - 1 / 3) * 255];
+}
+// Huidige doek-kleur op (x,y). Alleen LEZEN -> verandert niets.
+function canvasRGB(x, y) {
+  const d = art.drawingContext.getImageData(x | 0, y | 0, 1, 1).data;
+  return [d[0], d[1], d[2]];
+}
+// 0..1: hoe ver de bedoelde kleur van de huidige doek-kleur op die plek ligt
+function driftOf(p) {
+  const t = hsl2rgb(p.h, p.s, p.l);
+  const c = canvasRGB(p.cx, p.cy);
+  return Math.sqrt((t[0]-c[0])**2 + (t[1]-c[1])**2 + (t[2]-c[2])**2) / 441.673;
+}
+
+// Ijl de enveloppe zacht na (one-pole). flowBias (radialen) én hueCenter (graden) zijn
+// hoeken -> kortste weg, zodat een sprong (bv. de weekdag-wissel om middernacht) niet
+// even door de verkeerde kleuren/richtingen veegt.
+function lerpAngle(a, b, t) {
+  let d = ((b - a + Math.PI) % TWO_PI) - Math.PI;
+  if (d < -Math.PI) d += TWO_PI;
+  return a + d * t;
+}
+function lerpAngleDeg(a, b, t) {
+  let d = ((b - a) % 360 + 540) % 360 - 180;
+  return a + d * t;
+}
+function easeEnv(cur, tgt, t) {
+  if (!cur) return Object.assign({}, tgt);
+  const o = {};
+  for (const k in tgt) {
+    if (k === 'flowBias') o[k] = lerpAngle(cur[k], tgt[k], t);
+    else if (k === 'hueCenter') o[k] = lerpAngleDeg(cur[k], tgt[k], t);
+    else if (typeof tgt[k] === 'number') o[k] = cur[k] + (tgt[k] - cur[k]) * t;
+    else o[k] = tgt[k];
+  }
+  return o;
+}
+
+// De dag-tint (seizoen×weekdag), identiek aan de hueCenter van de verf -> grond hoort
+// bij dezelfde familie. Zelfde formule als in envelope(), maar alleen de tint nodig.
+function groundHSL() {
+  const h = ((lerpAngleDeg(astro.seasonHue(), astro.weekdayHue(), WEEKDAY_MIX) % 360) + 360) % 360;
+  return [h, GROUND_S, GROUND_L];
+}
+// De blijvende laag opbouwen. Bij resize nemen we de bestaande verf OVER (bovenop
+// een verse grond, zodat nieuw-onthuld gebied niet zwart is) -> niets gaat weg.
+function buildArt(prev) {
+  const g = createGraphics(width, height);
+  g.pixelDensity(1);                         // 1:1 -> getImageData(x,y) leest de juiste pixel
+  g.colorMode(HSL, 360, 100, 100, 1);
+  const [bh, bs, bl] = groundHSL();
+  g.background(bh, bs, bl);                   // grond = dag-tint (enige keer dat er gevuld wordt)
+  if (prev) g.image(prev, 0, 0);             // bestaande verf er bovenop -> ongewijzigd
+  return g;
+}
+
+// Zachte, langwerpige penseeltoets via een radiale gradient, op doel-laag g.
+function dab(g, cx, cy, ang, R, aspect, h, s, l, a, core) {
+  const ctx = g.drawingContext;
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(ang);
+  ctx.scale(aspect, 1);
+  const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, R);
+  const H = h | 0, S = s | 0, L = l | 0;
+  const c = core == null ? 0.35 : core; // 0 = heel zacht ... ~0.8 = scherpe kern
+  grad.addColorStop(0, `hsla(${H},${S}%,${L}%,${a})`);
+  grad.addColorStop(c, `hsla(${H},${S}%,${L}%,${a})`);
+  grad.addColorStop(1, `hsla(${H},${S}%,${L}%,0)`);
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(0, 0, R, 0, 6.2832);
+  ctx.fill();
+  ctx.restore();
+}
+
+// Veld-tijd op de veld-klok (geklemde dt). Heel traag -> de compositie ligt zo goed
+// als vast, maar dezelfde plek is later nét anders; niets herhaalt exact.
+function fieldZ() { return paintClock * 0.0000005 * SPEED; }
+
+// Bereken de volledige toets-parameters op plek (cx,cy): KLEUR/VORM uit het echte veld
+// × de echte tijd. 'gate' = structuur-kans (hoe waarschijnlijk hier überhaupt verf komt).
+// Een eventueel accent (hoogsel of donker) wordt hier al vastgelegd, zodat het straks
+// mét de toets mee-infadet.
+function strokeAt(e, z, cx, cy) {
+  const wx = cx + worldOX, wy = cy + worldOY; // wereldcoord (vast -> geen reis)
+  const m = sharpen(noise(wx * e.scaleComp, wy * e.scaleComp, z), 3.6);
+  const ridge = 1 - Math.abs(noise(wx * 0.0022, wy * 0.0022, z) - 0.5) * 2;
+  const keep = (1 - e.structAmt) + e.structAmt * Math.pow(ridge, 2);
+  const focus = 0.08 + 0.92 * Math.pow(m, 2.2);
+  const ang = noise(wx * e.scaleFlow, wy * e.scaleFlow, z) * TWO_PI * e.turns + e.flowBias;
+  const hz = noise(wx * e.scaleHue + 5, wy * e.scaleHue + 5, z);
+  let h = e.hueCenter + (hz - 0.5) * e.hueSpread;
+  // exp-109: TEMPERATUUR langs de licht-as -> highlight warm, schaduw koel.
+  const tGap = (m - 0.5) * 2;                                   // -1 schaduw .. +1 highlight
+  h = lerpAngleDeg(h, tGap >= 0 ? WARM_POLE : COOL_POLE, Math.min(1, Math.abs(tGap)) * TEMP_STRENGTH);
+  h = (h % 360 + 360) % 360;
+  const s = constrain(e.satBase * (0.35 + m * 0.9), 0, 100);
+  const fine = (noise(wx * 0.004 + 20, wy * 0.004 + 20) - 0.5) * e.contrast;
+  const l = constrain(e.lightCtr + (m - 0.5) * e.contrast * 1.4 + fine + e.moonLift * 5, 1, 98);
+  const R = e.sizeBase * (0.5 + m * 1.4) * random(0.6, 1.5);
+
+  let accent = null;
+  if (m > 0.62 && random() < 0.4) {          // scherp verzadigd hoogsel
+    accent = { dx: Math.cos(ang) * R * 0.3, dy: Math.sin(ang) * R * 0.3,
+      R: R * random(0.18, 0.42), aspect: e.aspect * 1.25, h,
+      s: constrain(s + 18, 0, 100), l: constrain(l + random(10, 26), 0, 99),
+      a: Math.min(0.55, e.alpha * 3.2), core: 0.78 };
+  } else if (m < 0.3 && random() < 0.22) {   // diep donker-accent
+    accent = { dx: 0, dy: 0, R: R * random(0.35, 0.7), aspect: e.aspect, h,
+      s: constrain(s * 0.55, 0, 100), l: constrain(l - random(8, 22), 1, 90),
+      a: e.alpha * 1.5, core: 0.5 };
+  }
+  return { cx, cy, ang, R, aspect: e.aspect, h, s, l, a: e.alpha, core: 0.35,
+           gate: keep * focus, accent };
+}
+
+// Zwaartepunt uit het noise-veld, maar OP EEN PER-INSTANTIE PLEK (uit dezelfde echte
+// open-timestamp die ook worldOX/OY zet) -> elke refresh een andere compositie i.p.v.
+// steeds dezelfde blobs op dezelfde plekken. Kleur/vorm blijven uit het vaste wereldveld.
+function focusAt(z) {
+  return [ noise(11.3 + worldOX * 0.0000037, z * 10) * width,
+           noise(27.7 + worldOY * 0.0000037, z * 10) * height ];
+}
+
+// Geef één plek terug volgens het dwalende zwaartepunt (soms vrij verspreid).
+function pickSpot() {
+  let cx, cy;
+  if (random() < 0.72) { cx = randomGaussian(focusX, width * 0.24); cy = randomGaussian(focusY, height * 0.24); }
+  else { cx = random(width); cy = random(height); }
+  return (cx < 0 || cx > width || cy < 0 || cy > height) ? null : [cx, cy];
+}
+
+// Zet dit frame de nieuw geboren toetsen KLAAR om in te faden (nog geen verf!). De
+// plek volgt het zwaartepunt; met PALETTE_STEER kiezen we uit een paar kandidaten die
+// waar het doek 't meest van de huidige kleur is afgedreven.
+function spawnStrokes(dtms) {
+  const e = envEased || envelope();
+  const z = fieldZ();
+
+  const perSec = mix(4, 11, 0.3 + sig('sun.alt') * 0.3 + sig('weather.wind') * 0.2)
+               + sig('mic.level') * 22;
+  strokeAcc += perSec * dtms / 1000;
+  let n = Math.floor(strokeAcc);
+  strokeAcc -= n;
+
+  // zwaartepunt dwaalt langzaam (op de veld-klok) over het doek -> per instantie anders
+  const fc = focusAt(z);
+  focusX = fc[0]; focusY = fc[1];
+
+  for (let i = 0; i < n; i++) {
+    if (active.length > ACTIVE_CAP) break;           // veiligheidsdak
+    const K = PALETTE_STEER ? STEER_CANDIDATES : 1;
+    let best = null;
+    for (let k = 0; k < K; k++) {
+      const spot = pickSpot();
+      if (!spot) continue;
+      const p = strokeAt(e, z, spot[0], spot[1]);
+      const steer = PALETTE_STEER ? (0.15 + driftOf(p)) : 1; // meer afdrift = liever hier
+      p.score = p.gate * steer;
+      if (!best || p.score > best.score) best = p;
+    }
+    if (!best) continue;
+    if (random() > best.gate) continue;               // structuur-dichtheid behouden
+
+    // levensduur in frames -> trage, onmerkbare infade. Per-frame alpha zó dat de
+    // opgestapelde som ~ de doel-alpha wordt (1-(1-A)^(1/L)): elk frame een piepklein beetje.
+    const life = Math.max(2, Math.round(random(FADE_MIN, FADE_MAX) * 30));
+    best.life = life; best.age = 0;
+    best.aStep = 1 - Math.pow(1 - best.a, 1 / life);
+    if (best.accent) best.accent.aStep = 1 - Math.pow(1 - best.accent.a, 1 / life);
+    active.push(best);
+  }
+}
+
+// Laat alle actieve toetsen een piepklein stapje verder infaden (ALLEEN toevoegen).
+function growStrokes() {
+  for (let i = active.length - 1; i >= 0; i--) {
+    const p = active[i];
+    dab(art, p.cx, p.cy, p.ang, p.R, p.aspect, p.h, p.s, p.l, p.aStep, p.core);
+    if (p.accent) {
+      const ac = p.accent;
+      dab(art, p.cx + ac.dx, p.cy + ac.dy, p.ang, ac.R, ac.aspect, ac.h, ac.s, ac.l, ac.aStep, ac.core);
+    }
+    if (++p.age >= p.life) active.splice(i, 1);
+  }
+}
+
+
+// ── p5 lifecycle ───────────────────────────────────────────────────────────
+let astro;
+const mic = makeMic();
+const weather = makeWeather();
+
+// Verstrooi het opstartmoment (ms) naar een ver-uiteenliggende start-plek: 1 ms
+// verschil -> heel ander stuk veld. Zo zijn instanties die vlak na elkaar openen
+// tóch totaal verschillend (geen overlappend beeld). Echt (tijd), geen nep-random.
+function hash32(n) {
+  n = (n ^ 61) ^ (n >>> 16); n = (n + (n << 3)) | 0; n ^= n >>> 4;
+  n = Math.imul(n, 0x27d4eb2d); n ^= n >>> 15; return n >>> 0;
+}
+
+// Lichte aanzet zodat het doek niet kaal begint: verdeeld over een paar zwaartepunten
+// (anders één blob). De grondaanzet mag WEL in één keer vol (er kijkt nog niemand naar
+// 'verandering'); alleen de lópende aangroei moet onmerkbaar zijn -> hier direct stampen.
+function seedInitial() {
+  const e = envEased || envelope();
+  const per = Math.max(1, Math.round(width * height * 0.002 / 6));
+  const save = paintClock;
+  for (let b = 0; b < 6; b++) {
+    paintClock = save + b * 900000;          // ander zwaartepunt per batch (alleen voor de seed)
+    const z = fieldZ();
+    const fc = focusAt(z);
+    focusX = fc[0]; focusY = fc[1];
+    for (let i = 0; i < per; i++) {
+      const spot = pickSpot();
+      if (!spot) continue;
+      const p = strokeAt(e, z, spot[0], spot[1]);
+      if (random() > p.gate) continue;
+      dab(art, p.cx, p.cy, p.ang, p.R, p.aspect, p.h, p.s, p.l, p.a, p.core);
+      if (p.accent) {
+        const ac = p.accent;
+        dab(art, p.cx + ac.dx, p.cy + ac.dy, p.ang, ac.R, ac.aspect, ac.h, ac.s, ac.l, ac.a, ac.core);
+      }
+    }
+  }
+  paintClock = save;                         // klok terug -> live begint gewoon bij nu
+}
+
+function setup() {
+  pixelDensity(1);
+  createCanvas(windowWidth, windowHeight);
+  frameRate(30);
+  noiseSeed(0);                 // gedeeld, reproduceerbaar wereldveld ('het klopt')
+  astro = makeAstro();
+  registerSource(astro.sources);
+  registerSource(mic.sources);
+  registerSource(weather.sources);
+
+  // Wereld-plek uit het ECHTE opstartmoment, ver verstrooid -> elke instantie een
+  // heel ander stuk van het oneindige veld (geen random).
+  startMs = Date.now();
+  const s = startMs >>> 0;
+  worldOX = hash32(s) % 3000000;
+  worldOY = hash32(s ^ 0x9e3779b9) % 3000000;
+
+  art = buildArt(null);         // grondlaag (enige keer dat er gevuld wordt)
+  envEased = envelope();        // eerste enveloppe zetten
+  seedInitial();                // lichte aanzet, zelfde regels als live
+
+  if (EXPLORE) console.info(`EXPLORE +${EXPLORE_DAYS} dagen -> ${astro.vDate().toDateString()} (refresh = andere dag)`);
+}
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  art = buildArt(art);          // bestaande verf OVERnemen op nieuw formaat -> niets weg
+}
+function draw() {
+  const dtms = Math.min(deltaTime, 100);   // dempt 1e frame / terug-uit-achtergrond
+  clockMs = Date.now() - startMs;          // zon/seizoen/weer altijd op ECHTE tijd
+  paintClock += dtms;                      // veld-klok op geklemde dt -> nooit een sprong
+  envEased = easeEnv(envEased, envelope(), 0.05); // zacht na-ijlen -> geen harde kleursprong
+
+  mic.update();
+  spawnStrokes(dtms);          // nieuwe toetsen geboren -> gaan onmerkbaar infaden
+  growStrokes();               // alle actieve toetsen een piepklein stapje verder (alleen toevoegen)
+  image(art, 0, 0);            // toon de laag; niets wordt gewist of verschoven
+}
+
+
+// ── UI: mic-klik + signaal-overlay (d) ─────────────────────────────────────
+const hintEl = document.getElementById('hint');
+const hudEl = document.getElementById('hud');
+if (EXPLORE && hintEl) hintEl.innerHTML = 'EXPLORE · refresh = andere dag/seizoen &nbsp;·&nbsp; d = signalen';
+
+window.addEventListener('pointerdown', async () => {
+  const ok = await mic.enable();
+  if (hintEl) hintEl.textContent = ok ? 'microfoon actief' : 'geen microfoon — doek draait door';
+  setTimeout(() => hintEl && hintEl.classList.add('weg'), 1500);
+});
+window.addEventListener('keydown', (e) => { if (e.key === 'd') hudEl.classList.toggle('aan'); });
+
+// Elke echte bron met z'n rustpunt (mid) en 'reach' = hoeveel van het beeld 'ie
+// stuurt. nu-invloed = hoe ver van het rustpunt × reach -> zo zie je wat NU duwt.
+const HUD_ROWS = [
+  { key: 'weather.cloud',    reach: 1.0, mid: 0.5, drives: 'contrast·licht·kleur' },
+  { key: 'weather.wind',     reach: 0.9, mid: 0.5, drives: 'richting·drukte·vorm' },
+  { key: 'sun.alt',          reach: 0.9, mid: 0.5, drives: 'licht·kleur·energie' },
+  { key: 'sun.day',          reach: 0.8, mid: 0.5, drives: 'licht·alpha' },
+  { key: 'weather.pressure', reach: 0.6, mid: 0.5, drives: 'rust/compositie' },
+  { key: 'weather.temp',     reach: 0.4, mid: 0.5, drives: 'warmte·verzadiging' },
+  { key: 'season',           reach: 0.5, mid: 0.5, drives: 'kleur-familie·grootte' },
+  { key: 'moon',             reach: 0.4, mid: 0.0, drives: 'palet-breedte' },
+  { key: 'mic.level',        reach: 0.5, mid: 0.0, drives: 'energie·grootte' },
+];
+setInterval(() => {
+  if (!hudEl.classList.contains('aan')) return;
+  let head = 'signalen · gesorteerd op nu-invloed\n\n';
+  if (astro) {
+    const d = astro.vDate();
+    const p2 = (x) => String(x).padStart(2, '0');
+    const dagen = ['zo', 'ma', 'di', 'wo', 'do', 'vr', 'za'];
+    const hc = envEased ? Math.round(envEased.hueCenter) : Math.round(((astro.seasonHue() % 360) + 360) % 360);
+    head = `klok ${p2(d.getDate())}-${p2(d.getMonth() + 1)}-${d.getFullYear()} ${p2(d.getHours())}:${p2(d.getMinutes())}\n`
+         + `kleur ${dagen[d.getDay()]} ${Math.round(astro.weekdayHue())}° × seizoen ${Math.round(((astro.seasonHue() % 360) + 360) % 360)}°  ->  tint ${hc}°\n`
+         + `gesorteerd op nu-invloed\n\n`;
+  }
+  const rows = HUD_ROWS.map((r) => {
+    const v = sig(r.key);
+    const activity = Math.abs(v - r.mid) / Math.max(r.mid, 1 - r.mid); // 0..1 vanaf rustpunt
+    return { r, v, impact: r.reach * activity };
+  }).sort((a, b) => b.impact - a.impact);
+  const body = rows.map(({ r, v, impact }) => {
+    const bar = '█'.repeat(Math.round(v * 10)).padEnd(10, '·');
+    const n = Math.max(0, Math.min(3, Math.round(impact * 3)));
+    const dots = '●'.repeat(n) + '·'.repeat(3 - n);
+    return r.key.padEnd(16) + bar + ' ' + v.toFixed(2) + '  ' + dots + '  ' + r.drives;
+  }).join('\n');
+  hudEl.textContent = head + body + '\n\n●●● = duwt nu hard   ··· = rustig/neutraal';
+}, 200);
+</script>
+</body>
+</html>

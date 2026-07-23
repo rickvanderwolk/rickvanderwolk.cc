@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <title>Niet Schelde</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Je stem in frequentiebanden: bas als trage deining, hoog als snelle rimpels, die als water het scherm in zwemmen.">
+  <meta name="author" content="Rick van der Wolk">
+  <style>
+    :root { color-scheme: dark; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      background: #0a0a0a;
+      color: #eee;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      overflow: hidden;
+    }
+    canvas { display: block; width: 100vw; height: 100vh; }
+
+    #start {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 1.25rem;
+      background: #0a0a0a;
+      cursor: pointer;
+      transition: opacity .4s ease;
+    }
+    #start.hidden { opacity: 0; pointer-events: none; }
+    #start h1 { font-size: clamp(1.5rem, 6vw, 3rem); font-weight: 600; letter-spacing: .01em; }
+    #start .btn {
+      margin-top: .5rem;
+      padding: .7rem 1.6rem;
+      border: 1px solid #333;
+      border-radius: 999px;
+      font-size: 1rem;
+      color: #eee;
+      transition: border-color .2s ease, background .2s ease;
+    }
+    #start:hover .btn { border-color: #666; background: #141414; }
+
+    #error {
+      position: fixed;
+      bottom: 1.25rem;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: .85rem;
+      color: #c66;
+      display: none;
+      text-align: center;
+      max-width: 90vw;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="scope"></canvas>
+
+  <div id="start">
+    <h1>Niet Schelde</h1>
+    <div class="btn">Tik om te beginnen</div>
+  </div>
+
+  <div id="error"></div>
+
+  <script>
+    const canvas = document.getElementById('scope');
+    const ctx = canvas.getContext('2d');
+    const startEl = document.getElementById('start');
+    const errorEl = document.getElementById('error');
+
+    // ── Knoppen om het gevoel bij te stellen ───────────────────────────
+    const COLS       = 150;   // rekengrid-breedte — hoger = fijner, zwaarder voor de laptop
+    const DAMPING    = 0.997; // hoe lang golven leven (0-1) — hoog = halen de overkant, kaatsen, doven traag
+    const INJECT     = 26;    // hoe sterk de banden de linkerrand aandrijven — hoger = extremer
+    const BANDS      = 5;     // aantal frequentiebanden (bas..hoog), elk een eigen soort golf
+    const OMEGA_LO   = 0.12;  // golfsnelheid van de BAS-band — lager = tragere, langere deining
+    const OMEGA_HI   = 0.75;  // golfsnelheid van de HOOG-band — hoger = snellere, kortere rimpels
+    const ENV_SMOOTH = 0.4;   // hoe snel banden reageren op je stem (0-1) — hoger = directer, lager = zachter
+    const MIN_BIN    = 2;     // laagste frequentie-bin (bas)
+    const MAX_BIN    = 600;   // hoogste frequentie-bin (hoog)
+    const LINES      = 34;    // aantal getekende geluidslijnen
+    const DISP       = 1.2;   // golfhoogte van de lijnen (px per eenheid) — VEILIGE knop voor meer/minder uitslag
+    const ALPHA      = 0.5;   // lijnhelderheid — waar golven kruisen wordt het vanzelf feller
+    const MAX_DPR    = 1;     // retina-resolutie afgetopt — 1 = niet-retina, grootste snelheidswinst
+    const FPS        = 30;    // beeldsnelheid — lager = lichter voor de laptop
+    // ───────────────────────────────────────────────────────────────────
+
+    let dpr = 1;
+    let cols = COLS, rows = 120;
+    let cur, prev;             // hoogteveld (nu) en (vorige) — de golfvergelijking
+    let bands = [];            // frequentiebanden langs de linkerrand
+    let micAnalyser = null;
+    let freqData = null;       // frequentiespectrum van de microfoon
+    let last = 0;
+    const FRAME_MS = 1000 / FPS;
+
+    function allocate() {
+      const aspect = innerHeight / innerWidth;
+      cols = COLS;
+      rows = Math.max(40, Math.round(COLS * aspect));
+      cur = new Float32Array(cols * rows);
+      prev = new Float32Array(cols * rows);
+
+      // Banden verdelen over de hoogte: bas onderin, hoog bovenin. Elke band
+      // heeft een gladde verticale envelope (Gaussisch, overlappend → geen
+      // harde randen), een eigen frequentiebereik en een eigen golfsnelheid.
+      const sigma = rows / (BANDS * 1.3);
+      const ratio = MAX_BIN / MIN_BIN;
+      bands = [];
+      for (let b = 0; b < BANDS; b++) {
+        const bt = (b + 0.5) / BANDS;            // 0 = bas .. 1 = hoog
+        const center = (1 - bt) * (rows - 1);    // bas onderin (grote y), hoog bovenin
+        const env = new Float32Array(rows);
+        for (let y = 0; y < rows; y++) {
+          const d = (y - center) / sigma;
+          env[y] = Math.exp(-d * d);
+        }
+        const binLo = Math.round(MIN_BIN * Math.pow(ratio, b / BANDS));
+        let binHi = Math.round(MIN_BIN * Math.pow(ratio, (b + 1) / BANDS));
+        if (binHi <= binLo) binHi = binLo + 1;
+        const omega = OMEGA_LO + bt * (OMEGA_HI - OMEGA_LO);
+        bands.push({ env, binLo, binHi, omega, phase: 0, amp: 0, s: 0 });
+      }
+    }
+
+    function resize() {
+      dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR);
+      canvas.width = Math.floor(innerWidth * dpr);
+      canvas.height = Math.floor(innerHeight * dpr);
+      allocate();
+    }
+    resize();
+    addEventListener('resize', resize);
+
+    async function start() {
+      startEl.classList.add('hidden');
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+        });
+
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const source = audioCtx.createMediaStreamSource(stream);
+        const analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 2048;
+        analyser.smoothingTimeConstant = 0.6;
+        source.connect(analyser);
+
+        micAnalyser = analyser;
+        freqData = new Uint8Array(analyser.frequencyBinCount); // 1024 bins
+        loop();
+      } catch (err) {
+        startEl.classList.remove('hidden');
+        errorEl.style.display = 'block';
+        errorEl.textContent = 'Geen toegang tot de microfoon: ' + (err && err.message ? err.message : err);
+      }
+    }
+
+    function loop() {
+      requestAnimationFrame(loop); // vaste functie, geen nieuwe closure per frame (minder GC-hikken)
+      const now = performance.now();
+      if (now - last < FRAME_MS) return; // fps-rem
+      last = now;
+
+      micAnalyser.getByteFrequencyData(freqData);
+
+      // ── 1. Elke band leest z'n luidheid en trilt op eigen snelheid ────
+      for (let b = 0; b < BANDS; b++) {
+        const bd = bands[b];
+        let s = 0;
+        for (let k = bd.binLo; k < bd.binHi; k++) s += freqData[k];
+        const target = s / ((bd.binHi - bd.binLo) * 255); // 0..1 luidheid van deze band
+        bd.amp += (target - bd.amp) * ENV_SMOOTH;          // responsieve, gladde envelope
+        bd.phase += bd.omega;                              // eigen golfsnelheid
+        bd.s = Math.sin(bd.phase);
+      }
+
+      // ── 2. De linkerrand = som van de banden (gladde verticale vorm).
+      //       Bas duwt onderin traag, hoog bovenin snel; alles zwemt het
+      //       water in, kaatst tegen rechts en botst met de nieuwe golven.
+      for (let y = 1; y < rows - 1; y++) {
+        let e = 0;
+        for (let b = 0; b < BANDS; b++) {
+          const bd = bands[b];
+          e += bd.env[y] * bd.amp * bd.s;
+        }
+        cur[y * cols + 1] = e * INJECT; // aangedreven rand
+      }
+
+      // ── 3. Golfvergelijking: reizen, kaatsen, interfereren — als water.
+      for (let y = 1; y < rows - 1; y++) {
+        const r = y * cols;
+        for (let x = 1; x < cols - 1; x++) {
+          const i = r + x;
+          let v = (cur[i - 1] + cur[i + 1] + cur[i - cols] + cur[i + cols]) * 0.5 - prev[i];
+          v *= DAMPING;
+          prev[i] = v;
+        }
+      }
+      const tmp = cur; cur = prev; prev = tmp; // wissel: cur = nieuw veld
+
+      // ── 4. Tekenen als geluidslijnen ──────────────────────────────────
+      const W = canvas.width, H = canvas.height;
+      const stepX = W / (cols - 1);
+      const dispPx = DISP * dpr;
+      const maxD = (H / (LINES - 1)) * 3.5; // veiligheidsgrens, ruim genoeg om niet af te kappen
+      ctx.clearRect(0, 0, W, H);
+      ctx.lineWidth = 1.2 * dpr;
+      ctx.strokeStyle = 'rgba(238, 238, 238, ' + ALPHA + ')';
+
+      for (let j = 0; j < LINES; j++) {
+        const t = j / (LINES - 1);
+        const ry = Math.round(t * (rows - 1));
+        const baseY = t * H;
+        const off = ry * cols;
+        ctx.beginPath();
+        for (let x = 0; x < cols; x++) {
+          let d = cur[off + x] * dispPx;
+          if (d > maxD) d = maxD; else if (d < -maxD) d = -maxD;
+          const sy = baseY - d;
+          if (x === 0) ctx.moveTo(0, sy);
+          else ctx.lineTo(x * stepX, sy);
+        }
+        ctx.stroke();
+      }
+    }
+
+    startEl.addEventListener('click', start);
+  </script>
+</body>
+</html>

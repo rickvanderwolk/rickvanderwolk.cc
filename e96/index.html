@@ -1,0 +1,583 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <title>e96</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Een zwarte pagina die geluid maakt: een donkere Shepard-drone die eeuwig lijkt te zakken maar nooit ergens aankomt.">
+  <meta name="author" content="Rick van der Wolk">
+  <style>
+    :root {
+      color-scheme: light dark;                   /* systeemthema van de bezoeker bepaalt de wereld */
+      --mx: 50vw; --my: 50vh;                     /* zaklamp-positie (JS zet 'm op de cursor) */
+      --kern: 9px; --rand: 34px; --halo: 52px;    /* zaklamp-maten — JS stuurt ze (batterij/flikker/flare) */
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      background: #000;
+      color: #eee;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      overflow: hidden;
+    }
+
+    #start {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #000;
+      cursor: pointer;
+      transition: opacity 2s ease;
+    }
+    #start.hidden { opacity: 0; pointer-events: none; }
+    #start .hint {
+      font-size: .95rem;
+      letter-spacing: .04em;
+      color: #555;                 /* nauwelijks zichtbaar — de pagina blijft zwart */
+      transition: color .3s ease;
+    }
+    #start:hover .hint { color: #888; }
+
+    /* Zachte lichtplas onder het woord: geeft de zaklamp een ronde gloed op de
+       achtergrond, zodat een letterfragment in een lichtcirkeltje ligt i.p.v.
+       als los stuk in het zwart te zweven. Heel subtiel houden. */
+    #glow {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      opacity: 0;                    /* JS regelt de helderheid (fade-in, flikker, batterij) */
+      background: radial-gradient(circle var(--halo) at var(--mx) var(--my),
+                    rgba(255,255,255,.055) 0, rgba(255,255,255,.02) 40%, transparent var(--halo));
+    }
+
+    /* Eén groot woord, zwart op zwart → onzichtbaar. De cursor is een zaklamp:
+       een radiaal masker dat de muis volgt onthult telkens maar een stukje.
+       Je ziet het woord nooit in z'n geheel. Wisselen via WOORD. */
+    #word {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 3s ease;   /* aangaan; de zaklamp-maat stuurt JS (batterij/flikker/flare) */
+
+      -webkit-mask-image: radial-gradient(circle var(--rand) at var(--mx) var(--my),
+                            #000 0, #000 var(--kern), transparent var(--rand));
+              mask-image: radial-gradient(circle var(--rand) at var(--mx) var(--my),
+                            #000 0, #000 var(--kern), transparent var(--rand));
+    }
+    #word.on { opacity: 1; }
+    #word span {
+      font-family: "Times New Roman", Times, serif;
+      font-size: clamp(8rem, 44vw, 40rem);   /* enorm → een splinter licht toont maar een streepje, moeilijk te ontcijferen */
+      font-weight: 700;
+      letter-spacing: .01em;
+      color: #6e6e6e;                /* schemerig — zelfs in de zaklamp blijft het woord donker en lastig te lezen */
+      white-space: nowrap;
+      user-select: none;
+    }
+
+    body.lit { cursor: none; }       /* de zaklamp ís de cursor */
+
+    /* ── Light mode: de hoopvolle tegenhanger ─────────────────────────────
+       Wit/warm, het woord HOPE gewoon zichtbaar (niets verborgen), warme
+       gouden gloed onder de cursor. Alle dreiging (masker, flikker, bibber,
+       dissonantie, hartslag) staat in JS uit. */
+    body.light { background: #f5f1e8; color: #3a352c; }
+    body.light #start { background: #f5f1e8; }
+    body.light #start .hint { color: #c3b79c; }
+    body.light #start:hover .hint { color: #8f8368; }
+    body.light #word {                            /* niets verbergen: hoop is zichtbaar */
+      -webkit-mask-image: none;
+              mask-image: none;
+    }
+    body.light #word span { color: #d99a3c; }     /* warm goud — hoopvol */
+    body.light #glow {
+      background: radial-gradient(circle var(--halo) at var(--mx) var(--my),
+                    rgba(255,196,120,.18) 0, rgba(255,196,120,.06) 40%, transparent var(--halo));
+    }
+
+    #error {
+      position: fixed;
+      bottom: 1.25rem;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: .85rem;
+      color: #c66;
+      display: none;
+      text-align: center;
+      max-width: 90vw;
+    }
+  </style>
+</head>
+<body>
+  <div id="glow"></div>
+  <div id="word"><span></span></div>
+  <div id="start"><div class="hint">tik om te beginnen</div></div>
+  <div id="error"></div>
+
+  <script>
+    // ── Knoppen om het gevoel bij te stellen ─────────────────────────────
+    // Shepard-toon: een auditieve illusie die eeuwig lijkt te zakken (of te
+    // stijgen) maar nergens aankomt — een barberpole voor je oren. Een stapel
+    // sinussen precies één octaaf uit elkaar veegt samen omlaag; onder een
+    // vaste klokkromme (luid in het midden, stil aan de randen). Aan de randen,
+    // waar de kromme ~stil is, recyclen de lagen klikvrij naar de overkant.
+    // Het oor hoort dalen zonder dat het ergens lager wordt. (Uit geluid/exp-4.)
+
+    const DIRECTION = -1;      // -1 = eeuwig zakken (onheilspellend), +1 = eeuwig stijgen
+    const N         = 9;       // aantal octaaf-lagen (meer = bredere stapel)
+    const FMIN      = 18;      // Hz — onderrand (bijna subsonisch, daar is-ie stil)
+    const LOOP      = 24;      // seconden per octaaf — lager = sneller zakken/stijgen
+    const SIGMA_OCT = 1.3;     // breedte van de klokkromme (octaven) — hoeveel lagen tegelijk klinken
+    const MASTER    = 0.50;    // meestervolume (laag houden — er zitten veel sinussen in)
+    const BREATH_HZ = 0.05;    // Hz — trage ademhaling voor wat leven (0 = uit)
+    const BREATH_D  = 0.06;    // diepte van de ademhaling (volume wiebelt ± dit)
+    const DETUNE    = [        // onmerkbare, nooit-herhalende ontstemming (som van irrationele LFO's)
+      { hz: 0.011, cents: 3 },
+      { hz: 0.017, cents: 2 },
+    ];
+    // Dissonante schaduw — een tweede, zachtere Shepard-stapel op een vaste
+    // dissonante afstand die mee zakt. Geeft onopgeloste wrijving (spanning).
+    const SCHADUW      = 0.5;   // volume van de schaduw-stapel (0 = uit)
+    const SCHADUW_SEMI = 6;     // interval in halve tonen (6 = tritonus, 1 = kleine secunde)
+
+    // Verre gebeurtenissen — spaarzame, onvoorspelbare tonen die uit het zwart
+    // opdoemen (zachte inzet, lange uitsterf, gedempt, willekeurig gepand).
+    const VER       = 0.16;    // volume van de verre tonen (0 = uit)
+    const VER_MIN_S = 7;       // min. seconden tussen gebeurtenissen
+    const VER_MAX_S = 26;      // max. seconden ertussen (onvoorspelbaar)
+    const VER_ROOT  = 330;     // Hz — grondtoon waaruit de verre tonen kiezen
+    const VER_SCALE = [0, 1, 3, 5, 7, 8, 10, 12, 13, 15]; // frygisch (donker), halve tonen
+
+    // Muis-gestuurde sfeer — de drone reageert op waar je licht is.
+    const MUIS_DONKER = 350;   // Hz — helderheid van de drone onderaan het scherm (laag = dof/benauwd)
+    const MUIS_HELDER = 4000;  // Hz — helderheid bovenaan (hoog = open/scherp)
+    const MUIS_PAN    = 0.5;   // hoever de drone met de muis mee naar links/rechts pant (0 = uit)
+
+    // Easter eggs — verborgen dingen voor wie in het donker zit te tasten.
+    //   • klik of spatie  → lucifer-flare (licht flakkert groot op, zachte 'whoomph')
+    //   • spel 'HELP'      → het hele woord doemt op, de dissonantie lost even op
+    //   • pijltjes ↑/↓     → keer de eeuwige val om (↓ zakken, ↑ stijgen)
+    //   • pijltjes ←/→     → trager / sneller
+    const FLARE_VOL = 0.12;    // volume van de flare-'whoomph' (0 = stil)
+
+    // 'Het komt dichterbij' — de dreiging bouwt op naarmate je blijft kijken.
+    const DICHTBIJ_MIN = 5;    // minuten waarover de verre tonen naar 'dichtbij' groeien
+    const HART_VOL     = 0.5;  // max. volume van de hartslag als het dichtbij is (0 = uit)
+
+    // 'De zaklamp sterft' — het licht loopt leeg; bewegen/klikken laadt 'm op.
+    const BATTERIJ_MIN = 2.5;  // minuten waarin de zaklamp leegloopt bij stilstand
+    const LICHT_ZWAK   = 0.45; // hoe klein de zaklamp wordt als de batterij leeg is (fractie)
+    const OPLADEN      = 1.0;  // hoe snel bewegen 'm weer oplaadt
+
+    const BIBBER    = 2.4;     // px — hoe hard de HELP trilt als het dichtbij is (0 = stil)
+
+    const FADE_IN   = 4.0;     // s — zachte insluiper (geen klik bij de start)
+    const UPDATE    = 50;      // ms — hoe vaak de sweep bijgewerkt wordt (fijner = gladder, zwaarder)
+    const LOG_EVERY = 15;      // s — hoe vaak de console vertelt waar-ie staat
+    const WOORD       = 'HELP'; // het woord in dark mode (groot, Times, zwart-op-zwart). Leeg ('') = geen tekst.
+    const WOORD_LICHT = 'HOPE'; // het woord in light mode — de hoopvolle tegenhanger (wit, vrolijk)
+    // ─────────────────────────────────────────────────────────────────────
+
+    const FMAX    = FMIN * Math.pow(2, N);           // bovenrand — ook hier is de kromme ~stil
+    const FCENTER = FMIN * Math.pow(2, N / 2);       // piek van de klokkromme (luidste gebied)
+    const OCTSPAN = Math.pow(2, N);                  // sprong bij recyclen
+
+    const startEl = document.getElementById('start');
+    const errorEl = document.getElementById('error');
+    const wordEl   = document.getElementById('word');
+    const glowEl   = document.getElementById('glow');
+    const wordSpan = wordEl.firstElementChild;
+    let started = false;
+
+    // Het systeemthema van de bezoeker bepaalt de wereld: dark = de HELP in het
+    // donker (dreiging), light = HOPE in het wit (de hoopvolle tegenhanger).
+    // (?mode=light / ?mode=dark forceert 't, handig voor testen.)
+    function themeMode() {
+      const m = new URLSearchParams(location.search).get('mode');
+      if (m) return m === 'light' ? 'light' : 'dark';
+      return (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) ? 'light' : 'dark';
+    }
+    function applyTheme() {
+      const light = themeMode() === 'light';
+      document.body.classList.toggle('light', light);
+      wordSpan.textContent = light ? WOORD_LICHT : WOORD;   // in light zichtbaar; in dark verborgen
+    }
+    applyTheme();
+    // Live meewisselen als de bezoeker z'n systeemthema omzet — zónder herladen,
+    // dus je hoeft niet opnieuw te tikken. switchWorld wordt gezet zodra de audio draait.
+    let switchWorld = null;
+    if (window.matchMedia) {
+      window.matchMedia('(prefers-color-scheme: dark)')
+        .addEventListener('change', () => switchWorld ? switchWorld() : applyTheme());
+    }
+    let audioLight = null;                 // wordt gezet zodra de audio draait
+    let lastX = innerWidth / 2, lastY = innerHeight / 2;
+    let charge = 1;                        // batterij van de zaklamp (1 = vol, 0 = leeg)
+    function moveLight(x, y) {
+      const dx = x - lastX, dy = y - lastY;
+      charge = Math.min(1, charge + Math.hypot(dx, dy) * 0.0016 * OPLADEN);  // bewegen laadt de zaklamp op
+      lastX = x; lastY = y;
+      document.documentElement.style.setProperty('--mx', x + 'px');
+      document.documentElement.style.setProperty('--my', y + 'px');
+      if (audioLight) audioLight(x, y);    // de drone reageert op waar je licht is
+    }
+    moveLight(innerWidth / 2, innerHeight / 2);
+    addEventListener('pointermove', e => moveLight(e.clientX, e.clientY), { passive: true });
+    addEventListener('touchmove', e => {
+      const t = e.touches[0]; if (t) moveLight(t.clientX, t.clientY);
+    }, { passive: true });
+
+    // Gaussische klok over log-frequentie: sterk in het midden, stil aan de randen.
+    function envelope(f) {
+      const d = (Math.log2(f) - Math.log2(FCENTER)) / SIGMA_OCT;
+      return Math.exp(-0.5 * d * d);
+    }
+
+    async function start() {
+      if (started) return;
+      started = true;
+      let light = themeMode() === 'light';     // huidige wereld — live te wisselen (setWorld)
+      let woord = light ? WOORD_LICHT : WOORD;
+      startEl.classList.add('hidden');
+      if (woord) {
+        wordEl.classList.add('on');            // het licht/woord gaat aan
+        document.body.classList.add('lit');    // cursor wordt de zaklamp
+      }
+
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        if (ctx.state === 'suspended') await ctx.resume();
+        const t0 = ctx.currentTime;
+        let dreadStart = t0;                 // reset bij elke wissel naar dark → dreiging bouwt opnieuw op
+
+        // Hoe lang je al kijkt, 0 → 1 over DICHTBIJ_MIN minuten. Stuurt de
+        // accumulerende dreiging ('het komt dichterbij') en het bibberen.
+        const nearness = () => light ? 0 : Math.min(1, (ctx.currentTime - dreadStart) / (DICHTBIJ_MIN * 60));
+
+        // Zachte insluiper aan het eind van de keten → nul klikken.
+        const fade = ctx.createGain();
+        fade.gain.setValueAtTime(0, t0);
+        fade.gain.linearRampToValueAtTime(1, t0 + FADE_IN);
+        fade.connect(ctx.destination);
+
+        // Master met trage ademhaling (één LFO moduleert het volume).
+        const master = ctx.createGain();
+        master.gain.value = MASTER;
+
+        // Muis-gestuurde sfeer: verticaal = helderheid (lowpass), horizontaal =
+        // waar de drone vandaan komt (pan). De drone leeft waar je licht is.
+        const toneLP = ctx.createBiquadFilter();
+        toneLP.type = 'lowpass';
+        toneLP.frequency.value = Math.sqrt(MUIS_DONKER * MUIS_HELDER); // start in het midden
+        toneLP.Q.value = 0.7;
+        master.connect(toneLP);
+        const tonePan = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+        if (tonePan) { toneLP.connect(tonePan); tonePan.connect(fade); }
+        else toneLP.connect(fade);
+
+        audioLight = (x, y) => {
+          const now = ctx.currentTime;
+          const fy = 1 - Math.min(1, Math.max(0, y / innerHeight));    // 0 onder .. 1 boven
+          toneLP.frequency.setTargetAtTime(
+            MUIS_DONKER * Math.pow(MUIS_HELDER / MUIS_DONKER, fy), now, 0.08);
+          if (tonePan) {
+            const fx = (Math.min(innerWidth, Math.max(0, x)) / innerWidth) * 2 - 1; // -1 links .. 1 rechts
+            tonePan.pan.setTargetAtTime(fx * MUIS_PAN, now, 0.08);
+          }
+        };
+        audioLight(lastX, lastY);          // meteen naar de huidige muispositie
+
+        if (BREATH_HZ > 0 && BREATH_D > 0) {
+          const breathOsc = ctx.createOscillator();
+          breathOsc.frequency.value = BREATH_HZ;
+          const breathDepth = ctx.createGain();
+          breathDepth.gain.value = BREATH_D;
+          breathOsc.connect(breathDepth).connect(master.gain);
+          breathOsc.start();
+        }
+
+        // Onmerkbare, nooit-herhalende ontstemming: een detune-bus (in cents)
+        // die op álle lagen tegelijk werkt, zodat de stapel samen schuift.
+        // Per sessie iets ge-randomiseerd → geen twee bezoeken exact gelijk.
+        const detuneBus = ctx.createGain();
+        detuneBus.gain.value = 1;
+        DETUNE.forEach(d => {
+          const lfo = ctx.createOscillator();
+          lfo.frequency.value = d.hz * (0.9 + Math.random() * 0.2);
+          const depth = ctx.createGain();
+          depth.gain.value = d.cents;
+          lfo.connect(depth).connect(detuneBus);
+          lfo.start();
+        });
+
+        // Een Shepard-stapel: N sinussen, octaaf uit elkaar. gainScale schaalt
+        // de hele stapel; dest is de node waar-ie op uitkomt.
+        const SHADOW_MULT = Math.pow(2, SCHADUW_SEMI / 12);
+        function buildStack(gainScale, dest) {
+          const oscs = [], gains = [];
+          for (let i = 0; i < N; i++) {
+            const osc = ctx.createOscillator();
+            osc.type = 'sine';
+            detuneBus.connect(osc.detune);   // gedeelde, onmerkbare drift
+            const g = ctx.createGain();
+            g.gain.value = 0;                 // fade regelt de start
+            osc.connect(g).connect(dest);
+            osc.start();
+            oscs.push(osc); gains.push(g);
+          }
+          return { oscs, gains, gainScale };
+        }
+
+        // Grond-frequenties (hoofdstapel), start één octaaf uit elkaar.
+        const freqs = [];
+        for (let i = 0; i < N; i++) freqs.push(FMIN * Math.pow(2, i));
+
+        // De schaduw krijgt een eigen bus, zodat 'HELP' 'm even kan wegdraaien,
+        // en zodat we 'm in light mode live kunnen dempen (hoop is consonant).
+        const shadowBus = SCHADUW > 0 ? ctx.createGain() : null;
+        if (shadowBus) { shadowBus.gain.value = light ? 0.0001 : 1; shadowBus.connect(master); }
+
+        const main   = buildStack(1, master);
+        const shadow = shadowBus ? buildStack(SCHADUW, shadowBus) : null;
+
+        // Render één stapel op basis van de grond-frequenties × mult. Elke
+        // stapel houdt z'n eigen constante luidheid (klok genormaliseerd).
+        const dt = UPDATE / 1000;
+        function renderStack(stack, mult, now) {
+          let sum = 0;
+          const amps = new Array(N);
+          for (let i = 0; i < N; i++) { amps[i] = envelope(freqs[i] * mult); sum += amps[i]; }
+          for (let i = 0; i < N; i++) {
+            stack.oscs[i].frequency.setValueAtTime(freqs[i] * mult, now);
+            stack.gains[i].gain.linearRampToValueAtTime(stack.gainScale * amps[i] / sum, now + dt);
+          }
+        }
+
+        // Richting en snelheid zijn met de pijltjes te sturen (easter egg).
+        // In light mode stijgt de Shepard (hoop) i.p.v. te zakken.
+        let dir = light ? +1 : DIRECTION, loopSec = LOOP;
+
+        // ── De sweep: alle lagen samen omlaag (of omhoog) vegen ───────────
+        // Frequentie zetten we direct (fase loopt door → klikvrij); de gains
+        // ramp-en we glad. De schaduw-stapel volgt op een vaste dissonante
+        // afstand (SHADOW_MULT) → onopgeloste wrijving die mee zakt.
+        function tick() {
+          const now = ctx.currentTime;
+          for (let i = 0; i < N; i++) {
+            freqs[i] *= Math.pow(2, dir * dt / loopSec);
+            if (freqs[i] > FMAX) freqs[i] /= OCTSPAN;        // recyclen waar-ie stil is
+            else if (freqs[i] < FMIN) freqs[i] *= OCTSPAN;
+          }
+          renderStack(main, 1, now);
+          if (shadow) renderStack(shadow, SHADOW_MULT, now);
+        }
+        setInterval(tick, UPDATE);
+
+        console.log('%ce96', 'font-weight:bold', `— Shepard-drone, ${DIRECTION < 0 ? 'zakt' : 'stijgt'} eeuwig.`,
+          `${N} lagen · ${LOOP}s per octaaf · komt nooit ergens aan.`);
+
+        // De console volgt de positie binnen het octaaf — herhaalt, maar
+        // hoort nooit op (net als de terminal-prints in geluid/exp-4).
+        setInterval(() => {
+          const richting = dir < 0 ? 'zakt' : 'stijgt';
+          const pijl = dir < 0 ? '▼' : '▲';
+          const pos = ((Math.log2(freqs[0] / FMIN)) % 1 + 1) % 1;
+          const bar = Math.round(pos * 20);
+          const loud = freqs.reduce((a, b) => envelope(b) > envelope(a) ? b : a);
+          console.log(
+            `  ${richting} ${pijl} [${'|'.repeat(bar)}${' '.repeat(20 - bar)}]  · luidst ~${Math.round(loud)} Hz  · herhaalt, komt nooit aan`
+          );
+        }, LOG_EVERY * 1000);
+
+        // ── Verre gebeurtenissen ──────────────────────────────────────────
+        // Spaarzame, onvoorspelbare tonen die uit het zwart opdoemen: zachte
+        // inzet, lange uitsterf, gedempt (lowpass) en willekeurig gepand →
+        // 'er is iets/iemand'. Bel-achtig, uit een frygische (donkere) ladder.
+        // In light mode kiezen de verre tonen uit een majeur-ladder (vrolijk,
+        // consonant) en klinken ze helder; in dark uit de frygische (donker).
+        // Live uitgelezen, zodat een thema-wissel meteen doorwerkt.
+        const VER_SCALE_LICHT = [0, 2, 4, 7, 9, 12, 14, 16, 19];   // majeur-pentatonisch
+        if (VER > 0) {
+          const verEvent = () => {
+            const now = ctx.currentTime;
+            const n = nearness();                    // 0 = ver/net begonnen .. 1 = dichtbij
+            const sc = light ? VER_SCALE_LICHT : VER_SCALE;
+            const semi = sc[(Math.random() * sc.length) | 0];
+            const base = (light ? 523 : VER_ROOT) * Math.pow(2, semi / 12);
+            const att = (0.8 + Math.random() * 0.8) * (1 - 0.5 * n);   // dichterbij = sneller opdoemen
+            const rel = 6 + Math.random() * 7;       // lange uitsterf
+
+            const env = ctx.createGain();
+            env.gain.setValueAtTime(0.0001, now);
+            env.gain.linearRampToValueAtTime(VER * (1 + 2 * n), now + att);   // dichterbij = luider
+            env.gain.exponentialRampToValueAtTime(0.0006, now + att + rel);
+
+            const lp = ctx.createBiquadFilter();     // gedempt = ver weg; opent als 't nadert
+            lp.type = 'lowpass';
+            lp.frequency.value = light ? 4200 : 1200 + 4000 * n;
+            env.connect(lp);
+
+            if (ctx.createStereoPanner) {
+              const pan = ctx.createStereoPanner();
+              pan.pan.value = (Math.random() * 2 - 1) * 0.8 * (1 - 0.6 * n);  // dichterbij = meer vóór je
+              lp.connect(pan).connect(fade);
+            } else {
+              lp.connect(fade);
+            }
+
+            // bel-achtig: grondtoon + zachte, licht-inharmonische boventoon
+            [[1, 1], [2.4, 0.35]].forEach(([mult, amp]) => {
+              const o = ctx.createOscillator();
+              o.type = 'sine';
+              o.frequency.value = base * mult;
+              const g = ctx.createGain();
+              g.gain.value = amp;
+              o.connect(g).connect(env);
+              o.start(now);
+              o.stop(now + att + rel + 0.2);
+            });
+
+            const lo = VER_MIN_S * (1 - 0.6 * n), hi = VER_MAX_S * (1 - 0.7 * n);  // dichterbij = vaker
+            setTimeout(verEvent, (lo + Math.random() * (hi - lo)) * 1000);
+          };
+          setTimeout(verEvent, (VER_MIN_S + Math.random() * (VER_MAX_S - VER_MIN_S)) * 1000);
+        }
+
+        // Hartslag die opkomt en versnelt naarmate het dichterbij komt (dread
+        // in je borst). Pas echt hoorbaar na een tijdje (n²), speelt op fade
+        // zodat 'HELP' 'm ook stillegt. In light mode is nearness 0 → vanzelf stil.
+        if (HART_VOL > 0) {
+          const heartLP = ctx.createBiquadFilter();
+          heartLP.type = 'lowpass'; heartLP.frequency.value = 120;
+          heartLP.connect(fade);
+          const thump = (t, amp) => {
+            const o = ctx.createOscillator();
+            o.type = 'sine';
+            o.frequency.setValueAtTime(70, t);
+            o.frequency.exponentialRampToValueAtTime(45, t + 0.14);   // korte pitch-drop = 'thud'
+            const g = ctx.createGain();
+            g.gain.setValueAtTime(0.0001, t);
+            g.gain.linearRampToValueAtTime(amp, t + 0.006);
+            g.gain.exponentialRampToValueAtTime(0.0006, t + 0.18);
+            o.connect(g).connect(heartLP);
+            o.start(t); o.stop(t + 0.24);
+          };
+          const beat = () => {
+            const n = nearness();
+            const amp = HART_VOL * n * n;            // pas hoorbaar als het echt dichtbij komt
+            if (amp > 0.0006) {
+              const t = ctx.currentTime + 0.02;
+              thump(t, amp);
+              thump(t + 0.17, amp * 0.7);            // lub-dub
+            }
+            setTimeout(beat, 60000 / (46 + 46 * n)); // versnelt van ~46 naar ~92 bpm
+          };
+          beat();
+        }
+
+        // ── Stervende zaklamp + flikker + flare + bibberende tekst ─────────
+        // Eén beeld-loop. charge (batterij) leegt met de tijd en laadt op door
+        // bewegen; de zaklamp-maat, gloed-helderheid en het flikkeren volgen
+        // 'm. De HELP bibbert altijd een beetje, en harder naarmate 't nadert.
+        let flareBoost = 0, flick = 1, litRamp = 0, lastFrame = null;
+        function frame(ts) {
+          requestAnimationFrame(frame);
+          if (lastFrame === null) lastFrame = ts;
+          const dtf = Math.min(0.1, (ts - lastFrame) / 1000);
+          lastFrame = ts;
+
+          if (!light) charge = Math.max(0, charge - dtf / (BATTERIJ_MIN * 60));   // de zaklamp sterft (alleen in dark)
+          if (!light && Math.random() < (1 - charge) * 0.12) flick = 0.2 + Math.random() * 0.35;  // flikkert bij lege batterij
+          else flick += (1 - flick) * Math.min(1, dtf * 12);
+          flareBoost *= Math.pow(0.03, dtf);                          // flare dooft in ~1s
+
+          const torch = LICHT_ZWAK + (1 - LICHT_ZWAK) * charge;
+          const s = torch * flick + flareBoost;
+          const rs = document.documentElement.style;
+          rs.setProperty('--kern', (9 * s).toFixed(2) + 'px');
+          rs.setProperty('--rand', (34 * s).toFixed(2) + 'px');
+          rs.setProperty('--halo', (52 * s).toFixed(2) + 'px');
+
+          litRamp = Math.min(1, litRamp + dtf / 3);                   // gloed fade-in over ~3s
+          glowEl.style.opacity = (litRamp * (0.35 + 0.65 * charge) * flick).toFixed(3);
+
+          const b = light ? 0 : (0.35 + BIBBER * nearness());         // bibberen alleen in dark, erger naarmate 't nadert
+          wordSpan.style.transform = b > 0.01
+            ? `translate(${(Math.random() * 2 - 1) * b}px, ${(Math.random() * 2 - 1) * b}px)`
+            : 'none';
+        }
+        requestAnimationFrame(frame);
+
+        // Vrolijke sprankel (light mode): een paar heldere majeur-belletjes,
+        // elke keer net anders — een 'vrolijk dingetje' bij spatie/klik.
+        function sparkle() {
+          const scale = [0, 2, 4, 7, 9];         // majeur-pentatonisch
+          const now = ctx.currentTime;
+          const n = 2 + (Math.random() * 2 | 0);
+          for (let i = 0; i < n; i++) {
+            const semi = scale[(Math.random() * scale.length) | 0] + 12 * (Math.random() * 2 | 0);
+            const o = ctx.createOscillator(); o.type = 'triangle'; o.frequency.value = 784 * Math.pow(2, semi / 12);
+            const g = ctx.createGain();
+            const t = now + i * 0.05 + Math.random() * 0.03;
+            g.gain.setValueAtTime(0.0001, t);
+            g.gain.linearRampToValueAtTime(FLARE_VOL * 0.5, t + 0.01);
+            g.gain.exponentialRampToValueAtTime(0.0004, t + 0.9);
+            o.connect(g).connect(fade);
+            o.start(t); o.stop(t + 1.0);
+          }
+        }
+
+        // Flare (klik/spatie): de zaklamp schiet kort op + vrolijke belletjes.
+        // Een 'vrolijk dingetje' in beide werelden — géén HOPE-tekst (die hoort
+        // bij het spellen van het woord).
+        function flare() {
+          flareBoost = 8;                        // korte, felle uitschieter van het licht
+          charge = Math.min(1, charge + 0.5);    // een zet voor de batterij
+          if (FLARE_VOL > 0) sparkle();          // heldere majeur-belletjes
+        }
+
+        // Live van wereld wisselen (systeemthema) zónder herladen: alle lagen
+        // lezen 'light' al live uit, hier zetten we de directe dingen om.
+        switchWorld = () => {
+          light = themeMode() === 'light';
+          woord = light ? WOORD_LICHT : WOORD;
+          applyTheme();                                        // palet + zichtbaar woord
+          dir = light ? +1 : DIRECTION;                        // hoop stijgt / dread zakt
+          loopSec = LOOP;
+          dreadStart = ctx.currentTime;                        // dreiging opnieuw laten opbouwen
+          if (light) charge = 1;                               // zaklamp sterft niet in light
+          if (shadowBus) shadowBus.gain.setTargetAtTime(light ? 0.0001 : 1, ctx.currentTime, 0.5);
+          console.log(`  wereld → ${light ? 'light (HOPE)' : 'dark (HELP)'}`);
+        };
+
+        // Toetsenbord: spatie = flare (zaklamp schiet op + belletjes),
+        // pijltjes = de eeuwige val omkeren (↑/↓) of trager/sneller (←/→).
+        // (Klikken doet bewust niks meer met de zaklamp.)
+        addEventListener('keydown', e => {
+          switch (e.code) {
+            case 'Space':      e.preventDefault(); if (!e.repeat) flare(); return;  // ingedrukt houden mag, maar flare vuurt maar 1×
+            case 'ArrowUp':    e.preventDefault(); dir = +1; console.log('  ↑ stijgt nu eeuwig'); return;
+            case 'ArrowDown':  e.preventDefault(); dir = -1; console.log('  ↓ zakt nu eeuwig'); return;
+            case 'ArrowLeft':  e.preventDefault(); loopSec = Math.min(loopSec * 1.25, 120); console.log(`  ← trager: ${loopSec.toFixed(1)}s/octaaf`); return;
+            case 'ArrowRight': e.preventDefault(); loopSec = Math.max(loopSec / 1.25, 4); console.log(`  → sneller: ${loopSec.toFixed(1)}s/octaaf`); return;
+          }
+        });
+
+      } catch (err) {
+        started = false;
+        startEl.classList.remove('hidden');
+        errorEl.style.display = 'block';
+        errorEl.textContent = 'Geen geluid: ' + (err && err.message ? err.message : err);
+      }
+    }
+
+    startEl.addEventListener('click', start);
+  </script>
+</body>
+</html>

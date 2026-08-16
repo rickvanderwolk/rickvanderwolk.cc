@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>fc1042 — exp-1</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; }
+  canvas { display: block; position: fixed; inset: 0; }
+  video { position: fixed; top: -8px; left: -8px; width: 4px; height: 4px; opacity: 0; pointer-events: none; }
+
+  #start {
+    position: fixed; inset: 0; z-index: 3; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 14px; background: #000;
+    color: rgba(255,255,255,0.5); font: 13px/1.6 'Courier New', monospace;
+    letter-spacing: 2px; text-align: center; cursor: pointer; transition: opacity 1.2s;
+  }
+  #start.weg { opacity: 0; pointer-events: none; }
+  #start small { color: rgba(255,255,255,0.22); letter-spacing: 1px; }
+
+  #hud {
+    position: fixed; top: 14px; left: 14px; z-index: 2; display: none;
+    color: rgba(255,255,255,0.55); font: 11px/1.5 'Courier New', monospace;
+    white-space: pre; pointer-events: none; text-shadow: 0 0 6px #000;
+  }
+  #hud.aan { display: block; }
+
+  #vignet {
+    position: fixed; inset: 0; z-index: 1; pointer-events: none;
+    background: radial-gradient(ellipse at center, rgba(0,0,0,0) 45%, rgba(0,0,0,0.6) 100%);
+  }
+</style>
+</head>
+<body>
+<canvas id="scherm"></canvas>
+<div id="vignet"></div>
+<div id="hud"></div>
+<div id="start">
+  <span>tik om te beginnen</span>
+  <small>beweeg voor de camera &nbsp;·&nbsp; iPhone: zijschakelaar uit</small>
+</div>
+<video id="cam" playsinline muted autoplay></video>
+
+<script>
+// fc1042 — exp-1: BEWEGING WORDT MUZIEK
+// =====================================
+// De kernvraag van het hele project: klinkt dit leuk of irritant?
+//
+//   beweging per zone → een noot.  hoog in beeld = hoge toon,
+//   links/rechts = links/rechts,  harder bewegen = fellere aanslag.
+//
+// Drie dingen maken het verschil tussen muziek en gepiep:
+//
+//  1. LADDER — elke noot valt in een mineur-pentatonische toonladder. Wat je
+//     ook doet, het kan niet vals klinken.
+//  2. RUISVLOER PER ZONE — elke zone leert zijn eigen rust kennen (sensorruis,
+//     een flikkerende lamp, een bewegend gordijn) en trekt die eraf. Daardoor
+//     is stilstaan écht stil, in elke kamer, met elke camera.
+//  3. DICHTHEID BEGRENSD — hoogstens een paar noten per seconde, en per zone
+//     een wachttijd. Een druk beeld wordt voller, niet ratelend.
+//
+// Onder alles ligt een zacht bed dat met de helderheid ademt, zodat niet-
+// bewegen niet dood is maar stil.
+//
+// tik (na de start) of 'd' = signalen tonen
+
+// ── knoppen ────────────────────────────────────────────────────────────────
+const GW = 64, GH = 48;         // analyse-raster
+const ZC = 8, ZR = 6;           // zones: 8 breed, 6 hoog
+const TICK = 1000 / 15;         // 15 analyses per seconde
+
+const DREMPEL   = 0.34;         // hoeveel beweging (0–1) een noot vraagt
+const MARGE     = 0.006;        // dode zone boven de ruisvloer
+const RUST_ZONE = 320;          // ms wachttijd per zone
+const RUST_ALLE = 130;          // ms wachttijd voor het geheel → max ~7 noten/sec
+const PER_TICK  = 2;            // hoogstens zoveel noten per analyse
+
+const GRONDTOON = 55;           // Hz (A1); alle noten zijn hier veelvouden van
+const LADDER    = [0, 3, 5, 7, 10];  // mineur-pentatonisch, in halve tonen
+const STEMMEN   = 8;            // vaste stem-pool, nooit nodes bijmaken
+
+// ── beeld ──────────────────────────────────────────────────────────────────
+const video  = document.getElementById('cam');
+const scherm = document.getElementById('scherm');
+const sctx   = scherm.getContext('2d');
+const klein  = document.createElement('canvas');
+klein.width = GW; klein.height = GH;
+const kctx = klein.getContext('2d', { willReadFrequently: true });
+
+const vorigeLum = new Float32Array(GW * GH);
+const beweging  = new Float32Array(ZC * ZR);   // ruwe beweging per zone
+const bodem     = new Float32Array(ZC * ZR);   // geleerde ruisvloer per zone
+const kracht    = new Float32Array(ZC * ZR);   // 0–1, genormaliseerd
+const gloed     = new Float32Array(ZC * ZR);   // alleen voor het beeld
+const zoneRust  = new Float32Array(ZC * ZR);
+
+let eersteMeting = true, piek = 0.02, helderheid = 0, lo = null, hi = null, licht = 0;
+let laatsteNoot = 0, notenTeller = 0, notenPerSec = 0, laatsteSecTel = 0;
+let laatsteTick = 0, fps = 0, vorigFrame = 0;
+
+const zoneW = GW / ZC, zoneH = GH / ZR;
+
+function meet(nu) {
+  kctx.save();
+  kctx.scale(-1, 1);                       // spiegelen: rechts is rechts
+  kctx.drawImage(video, -GW, 0, GW, GH);
+  kctx.restore();
+
+  const d = kctx.getImageData(0, 0, GW, GH).data;
+  beweging.fill(0);
+  let som = 0;
+
+  for (let y = 0; y < GH; y++) {
+    const zr = (y / zoneH) | 0;
+    for (let x = 0; x < GW; x++) {
+      const i = y * GW + x, p = i * 4;
+      const l = (0.2126 * d[p] + 0.7152 * d[p + 1] + 0.0722 * d[p + 2]) / 255;
+      som += l;
+      beweging[zr * ZC + ((x / zoneW) | 0)] += Math.abs(l - vorigeLum[i]);
+      vorigeLum[i] = l;
+    }
+  }
+  helderheid = som / (GW * GH);
+  if (eersteMeting) { eersteMeting = false; return; }   // eerste frame heeft geen 'vorige'
+
+  // helderheid, zelf-kalibrerend (zie exp-0)
+  if (lo === null) { lo = hi = helderheid; }
+  lo += (helderheid - lo) * (helderheid < lo ? 0.15 : 0.0015);
+  hi += (helderheid - hi) * (helderheid > hi ? 0.15 : 0.0015);
+  licht = Math.min(1, Math.max(0, (helderheid - lo) / Math.max(hi - lo, 0.02)));
+
+  // per zone: ruisvloer aftrekken, dan schalen op de recente piek
+  const pixPerZone = zoneW * zoneH;
+  let hoogste = 0;
+  const kandidaten = [];
+  for (let z = 0; z < ZC * ZR; z++) {
+    const m = beweging[z] / pixPerZone;
+    // de bodem zakt snel mee en stijgt bijna niet — zo leert hij de rust,
+    // zonder door echte beweging omhoog te worden getrokken. Blijf je lang
+    // bewegen, dan kruipt hij nauwelijks omhoog; anders zou het instrument
+    // ongevoelig worden precies terwijl je speelt.
+    bodem[z] += (m - bodem[z]) * (m < bodem[z] ? 0.25 : 0.0015);
+    const over = Math.max(0, m - bodem[z] - MARGE);
+    if (over > hoogste) hoogste = over;
+    kracht[z] = Math.min(1, over / piek);
+    if (kracht[z] > DREMPEL && nu - zoneRust[z] > RUST_ZONE) kandidaten.push(z);
+  }
+  piek = Math.max(hoogste, Math.max(piek * 0.995, 0.02));
+
+  // sterkste zones eerst, en niet meer dan een paar per tick
+  kandidaten.sort((a, b) => kracht[b] - kracht[a]);
+  for (let n = 0; n < Math.min(PER_TICK, kandidaten.length); n++) {
+    if (nu - laatsteNoot < RUST_ALLE) break;
+    const z = kandidaten[n];
+    zoneRust[z] = laatsteNoot = nu;
+    gloed[z] = 1;
+    notenTeller++;
+    speel(z, kracht[z]);
+  }
+
+  if (nu - laatsteSecTel > 1000) {
+    notenPerSec = notenTeller; notenTeller = 0; laatsteSecTel = nu;
+  }
+}
+
+function teken(dt) {
+  const W = scherm.width, H = scherm.height;
+  sctx.fillStyle = '#000';
+  sctx.fillRect(0, 0, W, H);
+
+  const s = Math.max(W / GW, H / GH);
+  const bw = GW * s, bh = GH * s;
+  const ox = (W - bw) / 2, oy = (H - bh) / 2;
+
+  // spookbeeld: net genoeg om te zien waar je bent, niet genoeg om naar te kijken
+  sctx.imageSmoothingEnabled = false;
+  sctx.globalAlpha = 0.10;
+  sctx.drawImage(klein, ox, oy, bw, bh);
+  sctx.globalAlpha = 1;
+
+  // de zones die klinken lichten op
+  const zw = bw / ZC, zh = bh / ZR;
+  for (let z = 0; z < ZC * ZR; z++) {
+    gloed[z] = Math.max(0, gloed[z] - dt * 0.0016);
+    if (gloed[z] <= 0.001) continue;
+    const g = gloed[z] * gloed[z];
+    sctx.fillStyle = 'rgba(255,236,205,' + (g * 0.5) + ')';
+    sctx.fillRect(ox + (z % ZC) * zw, oy + ((z / ZC) | 0) * zh, zw, zh);
+  }
+}
+
+// ── geluid ─────────────────────────────────────────────────────────────────
+let ctx, bus, bedGain, bedFilter, stemmen = [];
+
+function bouwGeluid() {
+  ctx = new (window.AudioContext || window.webkitAudioContext)();
+
+  const comp = ctx.createDynamicsCompressor();
+  comp.threshold.value = -16; comp.ratio.value = 8; comp.attack.value = 0.005;
+  comp.connect(ctx.destination);
+
+  const master = ctx.createBiquadFilter();
+  master.type = 'lowpass'; master.frequency.value = 6000;
+  master.connect(comp);
+
+  bus = ctx.createGain(); bus.gain.value = 0.9;
+  bus.connect(master);
+
+  // ruimte: één feedback-delay is genoeg en kost bijna niets
+  const delay = ctx.createDelay(1.0); delay.delayTime.value = 0.36;
+  const fb = ctx.createGain(); fb.gain.value = 0.34;
+  const send = ctx.createGain(); send.gain.value = 0.30;
+  bus.connect(send).connect(delay).connect(fb).connect(delay);
+  delay.connect(master);
+
+  // het bed: ademt met de helderheid, houdt de stilte warm
+  bedFilter = ctx.createBiquadFilter();
+  bedFilter.type = 'lowpass'; bedFilter.frequency.value = 300; bedFilter.Q.value = 2;
+  bedFilter.connect(master);
+  bedGain = ctx.createGain(); bedGain.gain.value = 0;
+  bedGain.connect(bedFilter);
+  [-6, 0, 4].forEach(cent => {
+    const o = ctx.createOscillator();
+    o.type = 'sawtooth'; o.frequency.value = GRONDTOON * 2; o.detune.value = cent;
+    const g = ctx.createGain(); g.gain.value = 0.33;
+    o.connect(g).connect(bedGain);
+    o.start();
+  });
+
+  for (let i = 0; i < STEMMEN; i++) stemmen.push(maakStem());
+}
+
+// Eén stem = oscillator die eeuwig doorloopt met een dichtgedraaide gain.
+// Aanslaan is alleen de envelope opnieuw zetten — nooit nodes maken of slopen,
+// want dát is wat een browser laat haperen.
+function maakStem() {
+  const osc = ctx.createOscillator(); osc.type = 'triangle';
+  const fil = ctx.createBiquadFilter(); fil.type = 'lowpass'; fil.Q.value = 1.2;
+  const g = ctx.createGain(); g.gain.value = 0;
+  const pan = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+  osc.connect(fil).connect(g);
+  if (pan) g.connect(pan).connect(bus); else g.connect(bus);   // oudere Safari: mono
+  osc.start();
+  return { osc, fil, g, pan, vrij: 0 };
+}
+
+function frequentie(index) {
+  const octaaf = Math.floor(index / LADDER.length);
+  return GRONDTOON * Math.pow(2, (octaaf * 12 + LADDER[index % LADDER.length]) / 12);
+}
+
+function speel(z, k) {
+  const rij = (z / ZC) | 0, kolom = z % ZC;
+  const freq = frequentie(6 + (ZR - 1 - rij) * 2);      // boven = hoog
+  const pan  = ((kolom + 0.5) / ZC * 2 - 1) * 0.85;     // links = links
+  const duur = 1.2 + k * 1.4;
+
+  // oudste stem hergebruiken
+  let v = stemmen[0];
+  for (const s of stemmen) if (s.vrij < v.vrij) v = s;
+
+  const t = ctx.currentTime;
+  v.osc.frequency.setTargetAtTime(freq, t, 0.004);
+  if (v.pan) v.pan.pan.setTargetAtTime(pan, t, 0.02);
+
+  v.fil.frequency.cancelScheduledValues(t);
+  v.fil.frequency.setValueAtTime(freq * 3 + k * 3500, t);       // harder = feller
+  v.fil.frequency.exponentialRampToValueAtTime(Math.max(freq * 1.5, 220), t + duur * 0.7);
+
+  v.g.gain.cancelScheduledValues(t);
+  v.g.gain.setValueAtTime(Math.max(v.g.gain.value, 0.0001), t);
+  v.g.gain.linearRampToValueAtTime(0.05 + k * 0.16, t + 0.01);  // korte aanslag
+  v.g.gain.exponentialRampToValueAtTime(0.0001, t + duur);
+  v.vrij = t + duur;
+}
+
+function stuurBed() {
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  bedFilter.frequency.setTargetAtTime(200 + licht * 900, t, 0.4);
+  bedGain.gain.setTargetAtTime(0.035 + licht * 0.075, t, 0.4);
+}
+
+// ── lus ────────────────────────────────────────────────────────────────────
+const hud = document.getElementById('hud');
+let draait = false;
+
+function lus(nu) {
+  requestAnimationFrame(lus);
+  if (!draait) return;
+
+  const dt = vorigFrame ? nu - vorigFrame : 16;
+  if (vorigFrame) fps += ((1000 / Math.max(dt, 1)) - fps) * 0.1;
+  vorigFrame = nu;
+
+  if (nu - laatsteTick >= TICK) {
+    laatsteTick = nu;
+    if (video.readyState >= 2) { meet(nu); stuurBed(); }
+  }
+  teken(dt);
+
+  if (hud.classList.contains('aan')) {
+    let actief = 0;
+    for (let z = 0; z < ZC * ZR; z++) if (kracht[z] > DREMPEL) actief++;
+    hud.textContent =
+      'licht       ' + licht.toFixed(3) + '\n' +
+      'piek        ' + piek.toFixed(4) + '\n' +
+      'zones aan   ' + actief + ' / ' + (ZC * ZR) + '\n' +
+      'noten/sec   ' + notenPerSec + '\n' +
+      'fps         ' + fps.toFixed(0);
+  }
+}
+requestAnimationFrame(lus);
+
+// ── starten ────────────────────────────────────────────────────────────────
+const startScherm = document.getElementById('start');
+
+async function start() {
+  startScherm.removeEventListener('click', start);
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'user', width: { ideal: 320 }, height: { ideal: 240 } },
+      audio: false
+    });
+    video.srcObject = stream;
+    await video.play();
+  } catch (e) {
+    startScherm.innerHTML = '<span>geen camera</span><small>' + (e.name || e) + '</small>';
+    return;
+  }
+  bouwGeluid();
+  await ctx.resume();
+  draait = true;
+  startScherm.classList.add('weg');
+}
+startScherm.addEventListener('click', start);
+
+// ── klein onderhoud ────────────────────────────────────────────────────────
+function maat() { scherm.width = innerWidth; scherm.height = innerHeight; }
+addEventListener('resize', maat); maat();
+
+addEventListener('keydown', e => { if (e.key === 'd') hud.classList.toggle('aan'); });
+scherm.addEventListener('click', () => { if (draait) hud.classList.toggle('aan'); });
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden || !draait) return;
+  ctx && ctx.resume();
+  video.play().catch(() => {});
+  eersteMeting = true;          // na een pauze is het 'vorige' frame waardeloos
+});
+</script>
+</body>
+</html>

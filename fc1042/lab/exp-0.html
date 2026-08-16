@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>fc1042 — exp-0</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; }
+  canvas { display: block; position: fixed; inset: 0; }
+
+  /* de video zelf tonen we nooit; hij is alleen de bron voor het mini-raster.
+     display:none mag niet — dan stopt Safari met decoderen. Dus wegparkeren. */
+  video { position: fixed; top: -8px; left: -8px; width: 4px; height: 4px; opacity: 0; pointer-events: none; }
+
+  #start {
+    position: fixed; inset: 0; z-index: 3; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 14px; background: #000;
+    color: rgba(255,255,255,0.5); font: 13px/1.6 'Courier New', monospace;
+    letter-spacing: 2px; text-align: center; cursor: pointer;
+    transition: opacity 1.2s;
+  }
+  #start.weg { opacity: 0; pointer-events: none; }
+  #start small { color: rgba(255,255,255,0.22); letter-spacing: 1px; }
+
+  #hud {
+    position: fixed; top: 14px; left: 14px; z-index: 2; display: none;
+    color: rgba(255,255,255,0.55); font: 11px/1.5 'Courier New', monospace;
+    white-space: pre; pointer-events: none; text-shadow: 0 0 6px #000;
+  }
+  #hud.aan { display: block; }
+
+  #vignet {
+    position: fixed; inset: 0; z-index: 1; pointer-events: none;
+    background: radial-gradient(ellipse at center, rgba(0,0,0,0) 45%, rgba(0,0,0,0.55) 100%);
+  }
+</style>
+</head>
+<body>
+<canvas id="scherm"></canvas>
+<div id="vignet"></div>
+<div id="hud"></div>
+<div id="start">
+  <span>tik om te beginnen</span>
+  <small>camera + geluid &nbsp;·&nbsp; iPhone: zijschakelaar uit</small>
+</div>
+<video id="cam" playsinline muted autoplay></video>
+
+<script>
+// fc1042 — exp-0: DOET DE KETEN HET?
+// ==================================
+// Het kaalst mogelijke bewijs dat camera → geluid werkt, en de plek om te
+// controleren of dat ook op een iPhone lukt.
+//
+//   camera → mini-raster 64×48 (15×/sec) → helderheid → één ademende toon
+//
+// Je ziet precies wat de machine ziet: het beeld op analyse-resolutie, verder
+// niets. Geen melodie, geen ritme — alleen: wordt het lichter, dan opent de
+// klank; wordt het donkerder, dan sluit hij. Hand voor de lens = hoorbaar.
+//
+// Belangrijk detail: de helderheid wordt ZELF-GEKALIBREERD. Een kamer levert
+// misschien alleen waarden tussen 0.18 en 0.31; zonder kalibratie hoor je dan
+// vrijwel niets. lo/hi kruipen naar de werkelijke spreiding van dít moment, dus
+// het instrument gebruikt overal zijn volle bereik.
+//
+// tik (na de start) of 'd' = signalen tonen
+
+// ── knoppen ────────────────────────────────────────────────────────────────
+const GW = 64, GH = 48;        // analyse-raster (3072 pixels — niks voor een telefoon)
+const TICK = 1000 / 15;        // 15 analyses per seconde; beeld tekent op rAF
+const GRONDTOON = 110;         // Hz, de drone
+const FILTER_LAAG = 180;       // Hz, klank bij een donker beeld
+const FILTER_HOOG = 2600;      // Hz, klank bij een licht beeld
+const TRAAGHEID = 0.25;        // s, hoe soepel de klank de helderheid volgt
+
+// ── beeld ──────────────────────────────────────────────────────────────────
+const video  = document.getElementById('cam');
+const scherm = document.getElementById('scherm');
+const sctx   = scherm.getContext('2d');
+const klein  = document.createElement('canvas');
+klein.width = GW; klein.height = GH;
+const kctx = klein.getContext('2d', { willReadFrequently: true });
+
+let helderheid = 0, lo = null, hi = null, genormaliseerd = 0;
+let laatsteTick = 0, fps = 0, vorigFrame = 0;
+
+function meet() {
+  // gespiegeld inlezen: wat jij naar rechts beweegt, gaat ook op het scherm
+  // naar rechts. Analyse en weergave delen dezelfde spiegeling.
+  kctx.save();
+  kctx.scale(-1, 1);
+  kctx.drawImage(video, -GW, 0, GW, GH);
+  kctx.restore();
+
+  const d = kctx.getImageData(0, 0, GW, GH).data;
+  let som = 0;
+  for (let i = 0; i < GW * GH; i++) {
+    const p = i * 4;
+    som += 0.2126 * d[p] + 0.7152 * d[p + 1] + 0.0722 * d[p + 2];
+  }
+  helderheid = som / (GW * GH * 255);
+
+  // zelf-kalibratie: lo/hi schieten meteen mee als de helderheid buiten het
+  // bekende bereik valt, en kruipen daarna heel traag weer naar elkaar toe.
+  if (lo === null) { lo = hi = helderheid; }
+  lo += (helderheid - lo) * (helderheid < lo ? 0.15 : 0.0015);
+  hi += (helderheid - hi) * (helderheid > hi ? 0.15 : 0.0015);
+  genormaliseerd = Math.min(1, Math.max(0, (helderheid - lo) / Math.max(hi - lo, 0.02)));
+}
+
+function teken() {
+  const W = scherm.width, H = scherm.height;
+  sctx.fillStyle = '#000';
+  sctx.fillRect(0, 0, W, H);
+
+  // het mini-raster schermvullend opblazen, zonder interpolatie → je ziet de
+  // blokjes waar de klank op gebaseerd is.
+  const s = Math.max(W / GW, H / GH);
+  const w = GW * s, h = GH * s;
+  sctx.imageSmoothingEnabled = false;
+  sctx.globalAlpha = 0.85;
+  sctx.drawImage(klein, (W - w) / 2, (H - h) / 2, w, h);
+  sctx.globalAlpha = 1;
+}
+
+// ── geluid ─────────────────────────────────────────────────────────────────
+let ctx, filter, bedGain;
+
+function bouwGeluid() {
+  ctx = new (window.AudioContext || window.webkitAudioContext)();
+
+  const comp = ctx.createDynamicsCompressor();   // vangnet: het kan nooit knallen
+  comp.threshold.value = -14; comp.ratio.value = 6; comp.attack.value = 0.01;
+  comp.connect(ctx.destination);
+
+  filter = ctx.createBiquadFilter();
+  filter.type = 'lowpass'; filter.frequency.value = FILTER_LAAG; filter.Q.value = 3;
+  filter.connect(comp);
+
+  bedGain = ctx.createGain();
+  bedGain.gain.value = 0;
+  bedGain.connect(filter);
+
+  // drie zaagtanden, licht ontstemd → een levende drone in plaats van een piep
+  [-7, 0, 5].forEach(cent => {
+    const o = ctx.createOscillator();
+    o.type = 'sawtooth';
+    o.frequency.value = GRONDTOON;
+    o.detune.value = cent;
+    const g = ctx.createGain();
+    g.gain.value = 0.33;
+    o.connect(g).connect(bedGain);
+    o.start();
+  });
+}
+
+function stuurGeluid() {
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  // helderheid → filter (exponentieel, want zo horen oren toonhoogte) + volume
+  const f = FILTER_LAAG * Math.pow(FILTER_HOOG / FILTER_LAAG, genormaliseerd);
+  filter.frequency.setTargetAtTime(f, t, TRAAGHEID);
+  bedGain.gain.setTargetAtTime(0.05 + genormaliseerd * 0.20, t, TRAAGHEID);
+}
+
+// ── lus ────────────────────────────────────────────────────────────────────
+const hud = document.getElementById('hud');
+let draait = false;
+
+function lus(nu) {
+  requestAnimationFrame(lus);
+  if (!draait) return;
+
+  if (vorigFrame) fps += ((1000 / Math.max(nu - vorigFrame, 1)) - fps) * 0.1;
+  vorigFrame = nu;
+
+  // analyse op eigen tempo (15 Hz), weergave op schermtempo — losgekoppeld
+  if (nu - laatsteTick >= TICK) {
+    laatsteTick = nu;
+    if (video.readyState >= 2) { meet(); stuurGeluid(); }
+  }
+  teken();
+
+  if (hud.classList.contains('aan')) {
+    hud.textContent =
+      'helderheid  ' + helderheid.toFixed(3) + '\n' +
+      'bereik      ' + lo?.toFixed(3) + ' – ' + hi?.toFixed(3) + '\n' +
+      'signaal     ' + genormaliseerd.toFixed(3) + '\n' +
+      'filter      ' + Math.round(filter ? filter.frequency.value : 0) + ' Hz\n' +
+      'fps         ' + fps.toFixed(0);
+  }
+}
+requestAnimationFrame(lus);
+
+// ── starten ────────────────────────────────────────────────────────────────
+const startScherm = document.getElementById('start');
+
+async function start() {
+  startScherm.removeEventListener('click', start);
+  try {
+    // camera bewust klein aanvragen: minder decodeerwerk, en we schalen toch
+    // terug naar 64×48.
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'user', width: { ideal: 320 }, height: { ideal: 240 } },
+      audio: false
+    });
+    video.srcObject = stream;
+    await video.play();
+  } catch (e) {
+    startScherm.innerHTML = '<span>geen camera</span><small>' + (e.name || e) + '</small>';
+    return;
+  }
+
+  bouwGeluid();
+  await ctx.resume();            // iOS: mag alleen binnen een echte tap
+  draait = true;
+  startScherm.classList.add('weg');
+}
+startScherm.addEventListener('click', start);
+
+// ── klein onderhoud ────────────────────────────────────────────────────────
+function maat() { scherm.width = innerWidth; scherm.height = innerHeight; }
+addEventListener('resize', maat); maat();
+
+addEventListener('keydown', e => { if (e.key === 'd') hud.classList.toggle('aan'); });
+scherm.addEventListener('click', () => { if (draait) hud.classList.toggle('aan'); });
+
+// terug uit de achtergrond: iOS bevriest stream én audio, allebei wakker maken
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden || !draait) return;
+  ctx && ctx.resume();
+  video.play().catch(() => {});
+});
+</script>
+</body>
+</html>

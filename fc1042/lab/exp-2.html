@@ -1,0 +1,716 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>fc1042 — exp-2</title>
+<style>
+  :root { --warm: 255,236,205; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden;
+               font: 11px/1.5 'Courier New', monospace; color: rgba(255,255,255,0.55);
+               letter-spacing: 1px; -webkit-user-select: none; user-select: none; }
+
+  #app { position: fixed; inset: 0; display: flex; flex-direction: column; }
+
+  /* ── de sporen ───────────────────────────────────────────────────────── */
+  #sporen {
+    flex: 1; display: grid; gap: 14px; padding: 14px;
+    grid-template-columns: repeat(2, 1fr); grid-template-rows: repeat(2, 1fr);
+  }
+  @media (min-aspect-ratio: 1/1) { #sporen { grid-template-columns: repeat(4, 1fr); grid-template-rows: 1fr; } }
+
+  .spoor { position: relative; display: flex; flex-direction: column; min-height: 0;
+           border: 1px solid rgba(255,255,255,0.10); cursor: pointer; }
+  .spoor.leeg { align-items: center; justify-content: center; color: rgba(255,255,255,0.22); }
+  .spoor.stil { opacity: 0.32; }
+
+  .vlak { position: relative; flex: 1; min-height: 0; }
+  .foto { position: absolute; inset: 0; width: 100%; height: 100%;
+          object-fit: cover; opacity: 0.13; }
+  .raster { position: absolute; inset: 0; display: grid; gap: 2px; padding: 2px; }
+  .cel { border: 1px solid rgba(255,255,255,0.06); border-radius: 1px; transition: background 90ms linear; }
+  .cel.aan { background: rgba(var(--warm), 0.16); border-color: rgba(var(--warm), 0.22); }
+  .cel.nu  { border-color: rgba(255,255,255,0.55); }
+  .cel.vuur { background: rgba(var(--warm), 0.85); transition: none; }
+
+  .label { display: flex; gap: 2px; justify-content: space-between; align-items: center;
+           padding: 5px 6px; border-top: 1px solid rgba(255,255,255,0.10); }
+  .label button { background: none; border: 0; color: rgba(255,255,255,0.38); font: inherit;
+                  letter-spacing: 1px; padding: 3px 4px; cursor: pointer; }
+  .label button:active { color: #fff; }
+  .label .naam { color: rgba(var(--warm), 0.75); }
+
+  /* ── onderbalk ───────────────────────────────────────────────────────── */
+  #balk { display: flex; gap: 18px; align-items: center; justify-content: center;
+          padding: 12px 14px calc(12px + env(safe-area-inset-bottom)); }
+  #balk button { background: none; border: 1px solid rgba(255,255,255,0.14); color: inherit;
+                 font: inherit; letter-spacing: 1px; padding: 7px 12px; cursor: pointer; }
+  #balk button:active { border-color: rgba(255,255,255,0.5); }
+
+  /* ── overlay: instrument kiezen / camera ─────────────────────────────── */
+  #laag { position: fixed; inset: 0; z-index: 5; background: #000; display: none;
+          flex-direction: column; align-items: center; justify-content: center; gap: 20px; }
+  #laag.aan { display: flex; }
+  #kies { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; max-width: 330px; }
+  #kies button { background: none; border: 1px solid rgba(255,255,255,0.18); color: inherit;
+                 font: inherit; letter-spacing: 1px; padding: 12px 16px; cursor: pointer; }
+  #kies button:active { background: rgba(var(--warm), 0.14); }
+
+  #camera { position: absolute; inset: 0; display: none; }
+  #camera.aan { display: block; }
+  #cam { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
+         transform: scaleX(-1); }
+  /* het raster over het camerabeeld toont live wat je gaat horen */
+  #lijnen { position: absolute; inset: 0; display: grid; gap: 2px; padding: 2px; pointer-events: none; }
+  #lijnen .cel { border-color: rgba(255,255,255,0.20); }
+  #lijnen .cel.aan { background: rgba(var(--warm), 0.26); border-color: rgba(var(--warm), 0.55); }
+  #sluiter { position: absolute; left: 50%; bottom: calc(28px + env(safe-area-inset-bottom));
+             transform: translateX(-50%); width: 68px; height: 68px; border-radius: 50%;
+             border: 2px solid rgba(255,255,255,0.85); background: rgba(0,0,0,0.25); cursor: pointer; }
+  #sluiter:active { background: rgba(255,255,255,0.5); }
+  #tip { position: absolute; left: 0; right: 0; bottom: calc(112px + env(safe-area-inset-bottom));
+         text-align: center; color: rgba(255,255,255,0.6); text-shadow: 0 0 6px #000; }
+  #camkeuze { position: absolute; left: 14px; top: calc(14px + env(safe-area-inset-top));
+              display: none; background: rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.2);
+              color: rgba(255,255,255,0.75); font: inherit; letter-spacing: 1px;
+              padding: 8px 12px; cursor: pointer; }
+  #flits { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; }
+
+  #uit { position: absolute; right: 14px; top: calc(14px + env(safe-area-inset-top));
+         background: none; border: 0; color: rgba(255,255,255,0.5); font: inherit; padding: 8px; cursor: pointer; }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <div id="sporen"></div>
+  <div id="balk">
+    <button id="transport">▶</button>
+    <button id="tempo">95 bpm</button>
+    <button id="rasterknop">4 × 4</button>
+  </div>
+</div>
+
+<div id="laag">
+  <div id="kies"></div>
+  <div id="camera">
+    <video id="cam" playsinline muted autoplay></video>
+    <div id="lijnen"></div>
+    <button id="camkeuze">camera</button>
+    <div id="tip">je hoort al wat je ziet</div>
+    <button id="sluiter"></button>
+    <div id="flits"></div>
+  </div>
+  <button id="uit">×</button>
+</div>
+
+<script>
+// fc1042 — exp-2: FOTO-SEQUENCER
+// ==============================
+// Een heel kleine FL Studio waarin je geen noten intekent maar foto's maakt.
+//
+//   kies een geluid → maak een foto → de foto ís het patroon → het loopt
+//
+// Het raster (standaard 4×4 = 16 stappen) wordt gelezen zoals je leest: van
+// linksboven naar rechtsonder. Elk vakje is één stap.
+//
+//   vakje lichter dan het gemiddelde  → een aanslag op die stap
+//   helderheid van het vakje          → toonhoogte
+//   kleurigheid van het vakje         → hoe hard het aanslaat
+//   gemiddelde helderheid van de foto → klankkleur (donkere foto = dof)
+//   contrast van de foto              → lengte van de klank
+//   kleur van je EERSTE foto          → de toonsoort van het hele stuk
+//
+// Alles is relatief aan de foto zelf: de drempel is het gemiddelde van díe
+// foto. Daardoor levert een donkere kamer net zo goed een patroon op als een
+// zonnige, en hoef je nergens aan te draaien.
+//
+// De foto's worden op 64×64 bewaard, dus je kunt het raster achteraf omzetten
+// (3×3 / 4×4 / 5×5) zonder opnieuw te fotograferen.
+
+// ── knoppen ────────────────────────────────────────────────────────────────
+const SPOREN   = 4;            // aantal sporen
+const BRON     = 64;           // foto wordt op 64×64 bewaard
+const TEMPOS   = [80, 95, 110, 125];
+const RASTERS  = [3, 4, 5];
+const SWING    = 0.06;         // 0 = strak, 0.1 = losjes
+const VOORUIT  = 0.12;         // s, hoever de scheduler vooruit plant
+
+const GRONDTOON = 55;          // Hz (A1)
+const SCHALEN = {
+  mineur:   [0, 2, 3, 5, 7, 8, 10],
+  dorisch:  [0, 2, 3, 5, 7, 9, 10],
+  frygisch: [0, 1, 3, 5, 7, 8, 10],
+  mixo:     [0, 2, 4, 5, 7, 9, 10],
+};
+let schaal = 'mineur';         // wordt gezet door de eerste foto
+let toonsoortGezet = false;
+
+const INSTRUMENTEN = [
+  { id: 'kick',  naam: 'kick'  },
+  { id: 'hihat', naam: 'hihat' },
+  { id: 'clap',  naam: 'clap'  },
+  { id: 'bas',   naam: 'bas',  oct: 1 },
+  { id: 'bel',   naam: 'bel',  oct: 3 },
+  { id: 'pad',   naam: 'pad',  oct: 2 },
+];
+
+// ── staat ──────────────────────────────────────────────────────────────────
+let raster = 4, bpm = 95, speelt = false;
+const sporen = [];
+for (let i = 0; i < SPOREN; i++) sporen.push({ instrument: null, bron: null, cellen: null, stil: false, motor: null });
+
+// ── foto lezen ─────────────────────────────────────────────────────────────
+function rgbNaarHS(r, g, b) {
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
+  let h = 0;
+  if (d) {
+    if (mx === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+    else if (mx === g) h = ((b - r) / d + 2) / 6;
+    else h = ((r - g) / d + 4) / 6;
+  }
+  return { h, s: mx ? d / mx : 0 };
+}
+
+// Zet de bewaarde 64×64 beeldbron om in een patroon van raster×raster stappen.
+// Draait ook op het live camerabeeld (definitief = false), zodat je hoort wat
+// je gaat vastleggen terwijl je nog aan het richten bent.
+function lees(spoor, definitief) {
+  if (!spoor.bron) return;
+  const N = raster, blok = BRON / N;
+  const d = spoor.bron.getContext('2d', { willReadFrequently: true })
+                      .getImageData(0, 0, BRON, BRON).data;
+
+  const cellen = [];
+  for (let cy = 0; cy < N; cy++) {
+    for (let cx = 0; cx < N; cx++) {
+      let r = 0, g = 0, b = 0, n = 0;
+      for (let y = Math.floor(cy * blok); y < Math.floor((cy + 1) * blok); y++) {
+        for (let x = Math.floor(cx * blok); x < Math.floor((cx + 1) * blok); x++) {
+          const p = (y * BRON + x) * 4;
+          r += d[p]; g += d[p + 1]; b += d[p + 2]; n++;
+        }
+      }
+      r /= n; g /= n; b /= n;
+      const hs = rgbNaarHS(r, g, b);
+      cellen.push({
+        L: (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255,
+        S: hs.s, H: hs.h, aan: false, graad: 0, kracht: 0.6
+      });
+    }
+  }
+
+  // drempel = het gemiddelde van déze foto, plus een beetje spreiding: de
+  // lichtste vakjes klinken. Zo werkt elke foto, licht of donker.
+  const gem = cellen.reduce((a, c) => a + c.L, 0) / cellen.length;
+  const spreiding = Math.sqrt(cellen.reduce((a, c) => a + (c.L - gem) ** 2, 0) / cellen.length);
+  const drempel = gem + spreiding * 0.35;
+  const max = Math.max(...cellen.map(c => c.L));
+
+  // vangnet: een egale foto (mist, witte muur) zou niets of alles opleveren.
+  // Daarom altijd minstens 2 en hoogstens ~60% van de vakjes laten klinken.
+  const gerangschikt = cellen.map((c, i) => i).sort((a, b) => cellen[b].L - cellen[a].L);
+  let aantal = cellen.filter(c => c.L > drempel).length;
+  aantal = Math.max(2, Math.min(Math.round(cellen.length * 0.6), aantal));
+  for (let k = 0; k < aantal; k++) cellen[gerangschikt[k]].aan = true;
+
+  const bereik = Math.max(max - drempel, 0.02);
+  for (const c of cellen) {
+    if (!c.aan) continue;
+    const hoog = Math.min(1, Math.max(0, (c.L - drempel) / bereik));
+    c.graad  = Math.round(hoog * 7);            // helderder = hoger
+    c.kracht = 0.40 + Math.min(1, c.S * 1.4) * 0.60;   // kleuriger = harder
+  }
+
+  spoor.cellen   = cellen;
+  spoor.licht    = gem;                          // klankkleur
+  spoor.contrast = Math.min(1, spreiding * 3.2); // lengte van de klank
+
+  // De eerste foto bepaalt de toonsoort van het hele stuk. Tijdens het richten
+  // schuift die dus nog mee met de kleur die je in beeld hebt — pas als je
+  // afdrukt ligt hij vast.
+  if (!toonsoortGezet) {
+    let hx = 0, hy = 0, sw = 0;
+    for (const c of cellen) { const w = c.S; hx += Math.cos(c.H * 6.283) * w; hy += Math.sin(c.H * 6.283) * w; sw += w; }
+    const namen = Object.keys(SCHALEN);
+    if (sw > cellen.length * 0.08) {
+      let h = Math.atan2(hy, hx) / 6.283; if (h < 0) h += 1;
+      schaal = namen[Math.floor(h * namen.length) % namen.length];
+    }
+    if (definitief) toonsoortGezet = true;
+  }
+}
+
+// ── geluid ─────────────────────────────────────────────────────────────────
+let ctx, bus, ruis;
+
+function bouwAudio() {
+  if (ctx) return;
+  ctx = new (window.AudioContext || window.webkitAudioContext)();
+
+  const comp = ctx.createDynamicsCompressor();
+  comp.threshold.value = -14; comp.ratio.value = 8; comp.attack.value = 0.004;
+  comp.connect(ctx.destination);
+
+  bus = ctx.createGain(); bus.gain.value = 0.8;
+  bus.connect(comp);
+
+  const delay = ctx.createDelay(1.0); delay.delayTime.value = 60 / bpm / 2;
+  const fb = ctx.createGain(); fb.gain.value = 0.28;
+  const send = ctx.createGain(); send.gain.value = 0.18;
+  bus.connect(send).connect(delay).connect(fb).connect(delay);
+  delay.connect(comp);
+
+  // één doorlopende ruisbron voedt alle hihats en claps — nooit nodes maken
+  // of slopen tijdens het spelen, want dáár gaan browsers van haperen.
+  const len = ctx.sampleRate * 2;
+  const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+  const kanaal = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) kanaal[i] = Math.random() * 2 - 1;
+  ruis = ctx.createBufferSource(); ruis.buffer = buf; ruis.loop = true;
+  ruis.start();
+}
+
+function env(param, t, top, aanslag, verval) {
+  param.cancelScheduledValues(t);
+  param.setValueAtTime(Math.max(param.value, 0.0001), t);
+  param.linearRampToValueAtTime(top, t + aanslag);
+  param.exponentialRampToValueAtTime(0.0001, t + aanslag + verval);
+}
+
+function freq(graad, oct) {
+  const s = SCHALEN[schaal];
+  const o = Math.floor(graad / s.length);
+  return GRONDTOON * Math.pow(2, ((oct + o) * 12 + s[((graad % s.length) + s.length) % s.length]) / 12);
+}
+
+// Elke instrument-motor is één keer opgebouwd bij het kiezen van het geluid.
+// speel(t, cel, spoor) zet alleen envelopes — geen allocaties.
+function maakMotor(id) {
+  const uit = ctx.createGain(); uit.gain.value = 1; uit.connect(bus);
+
+  if (id === 'kick') {
+    const osc = ctx.createOscillator(); osc.type = 'sine';
+    const g = ctx.createGain(); g.gain.value = 0;
+    osc.connect(g).connect(uit); osc.start();
+    return { uit, speel(t, c, sp) {
+      const lengte = 0.34 - sp.contrast * 0.16;
+      osc.frequency.cancelScheduledValues(t);
+      osc.frequency.setValueAtTime(120 + sp.licht * 90, t);
+      osc.frequency.exponentialRampToValueAtTime(40, t + 0.09);
+      env(g.gain, t, 0.85 * c.kracht, 0.004, lengte);
+    }};
+  }
+
+  if (id === 'hihat' || id === 'clap') {
+    const fil = ctx.createBiquadFilter();
+    fil.type = id === 'hihat' ? 'highpass' : 'bandpass';
+    fil.Q.value = id === 'hihat' ? 0.7 : 1.6;
+    const g = ctx.createGain(); g.gain.value = 0;
+    ruis.connect(fil).connect(g).connect(uit);
+    return { uit, speel(t, c, sp) {
+      fil.frequency.setValueAtTime(
+        id === 'hihat' ? 4500 + sp.licht * 5000 : 900 + sp.licht * 1600, t);
+      const lengte = id === 'hihat' ? 0.02 + (1 - sp.contrast) * 0.10
+                                    : 0.05 + (1 - sp.contrast) * 0.16;
+      env(g.gain, t, (id === 'hihat' ? 0.22 : 0.40) * c.kracht, 0.002, lengte);
+    }};
+  }
+
+  if (id === 'pad') {
+    const fil = ctx.createBiquadFilter(); fil.type = 'lowpass'; fil.Q.value = 1;
+    const g = ctx.createGain(); g.gain.value = 0;
+    const oscs = [0, 2, 4].map(() => {
+      const o = ctx.createOscillator(); o.type = 'sawtooth';
+      const og = ctx.createGain(); og.gain.value = 0.3;
+      o.connect(og).connect(fil); o.start(); return o;
+    });
+    fil.connect(g).connect(uit);
+    const oct = INSTRUMENTEN.find(x => x.id === 'pad').oct;
+    return { uit, speel(t, c, sp) {
+      // een drieklank op de graad van dit vakje — altijd binnen de toonladder
+      [0, 2, 4].forEach((stap, i) =>
+        oscs[i].frequency.setTargetAtTime(freq(c.graad + stap, oct), t, 0.02));
+      fil.frequency.setValueAtTime(400 + sp.licht * 2600, t);
+      const lengte = 0.5 + (1 - sp.contrast) * 1.8;
+      env(g.gain, t, 0.16 * c.kracht, 0.12, lengte);
+    }};
+  }
+
+  // bas en bel: één toon, zelfde bouw, andere kleur
+  const bel = id === 'bel';
+  const osc = ctx.createOscillator(); osc.type = bel ? 'triangle' : 'sawtooth';
+  const fil = ctx.createBiquadFilter(); fil.type = 'lowpass'; fil.Q.value = bel ? 1.2 : 3;
+  const g = ctx.createGain(); g.gain.value = 0;
+  osc.connect(fil).connect(g).connect(uit); osc.start();
+  const oct = INSTRUMENTEN.find(x => x.id === id).oct;
+  return { uit, speel(t, c, sp) {
+    const f = freq(c.graad, oct);
+    osc.frequency.setTargetAtTime(f, t, 0.004);
+    fil.frequency.cancelScheduledValues(t);
+    fil.frequency.setValueAtTime(f * (bel ? 4 : 2.5) + sp.licht * 3000, t);
+    fil.frequency.exponentialRampToValueAtTime(Math.max(f * 1.4, 180), t + 0.4);
+    const lengte = (bel ? 0.5 : 0.28) + (1 - sp.contrast) * (bel ? 1.4 : 0.5);
+    env(g.gain, t, (bel ? 0.20 : 0.32) * c.kracht, 0.006, lengte);
+  }};
+}
+
+// ── transport ──────────────────────────────────────────────────────────────
+let stap = 0, volgendeTijd = 0, agenda = [], klok = null;
+
+function stapDuur(s) {
+  const basis = 60 / bpm / 4;                        // zestiende noot
+  return s % 2 === 0 ? basis * (1 + SWING) : basis * (1 - SWING);
+}
+
+function planner() {
+  const n = raster * raster;
+  // achterstand (tab lag op de achtergrond, timer werd geknepen): niet inhalen
+  // met een salvo noten in het verleden, maar opnieuw aanhaken op nu.
+  if (volgendeTijd < ctx.currentTime) { volgendeTijd = ctx.currentTime + 0.05; agenda.length = 0; }
+  while (volgendeTijd < ctx.currentTime + VOORUIT) {
+    for (const sp of sporen) {
+      if (sp.stil || !sp.cellen || !sp.motor) continue;
+      const c = sp.cellen[stap % sp.cellen.length];
+      if (c && c.aan) sp.motor.speel(volgendeTijd, c, sp);
+    }
+    agenda.push({ stap, t: volgendeTijd });
+    if (agenda.length > 200) agenda.shift();          // speelkop kijkt niet mee (verborgen tab)
+    volgendeTijd += stapDuur(stap);
+    stap = (stap + 1) % n;
+  }
+}
+
+function startTransport() {
+  if (speelt || !ctx) return;
+  speelt = true;
+  volgendeTijd = ctx.currentTime + 0.08;
+  klok = setInterval(planner, 25);
+  document.getElementById('transport').textContent = '■';
+}
+function stopTransport() {
+  speelt = false;
+  clearInterval(klok); klok = null;
+  agenda = []; stap = 0;
+  document.getElementById('transport').textContent = '▶';
+  document.querySelectorAll('.cel').forEach(el => el.classList.remove('nu', 'vuur'));
+}
+
+// ── beeld: sporen tekenen + speelkop ───────────────────────────────────────
+const sporenEl = document.getElementById('sporen');
+
+function tekenSporen() {
+  sporenEl.innerHTML = '';
+  sporen.forEach((sp, i) => {
+    const el = document.createElement('div');
+    el.className = 'spoor' + (sp.cellen ? '' : ' leeg') + (sp.stil ? ' stil' : '');
+    el.dataset.i = i;
+
+    if (!sp.cellen) {
+      el.textContent = '+ spoor ' + (i + 1);
+    } else {
+      const vlak = document.createElement('div'); vlak.className = 'vlak';
+      const img = document.createElement('img'); img.className = 'foto'; img.src = sp.foto;
+      const rst = document.createElement('div'); rst.className = 'raster';
+      rst.style.gridTemplateColumns = 'repeat(' + raster + ', 1fr)';
+      rst.style.gridTemplateRows = 'repeat(' + raster + ', 1fr)';
+      sp.cellen.forEach(c => {
+        const cel = document.createElement('i');
+        cel.className = 'cel' + (c.aan ? ' aan' : '');
+        rst.appendChild(cel);
+      });
+      vlak.append(img, rst);
+
+      // het vlak aantikken = spoor even uit; de knopjes eronder doen de rest
+      vlak.onclick = () => { sp.stil = !sp.stil; el.classList.toggle('stil', sp.stil); };
+
+      const label = document.createElement('div'); label.className = 'label';
+      const naam = knopje(INSTRUMENTEN.find(x => x.id === sp.instrument).naam, () => opendKiezer(i));
+      naam.className = 'naam';
+      label.append(
+        naam,
+        knopje('foto', () => openCamera(sp.instrument, i)),   // opnieuw fotograferen
+        knopje('×', () => leegSpoor(i))
+      );
+
+      el.append(vlak, label);
+    }
+
+    if (!sp.cellen) el.onclick = () => opendKiezer(i);
+    sporenEl.appendChild(el);
+  });
+}
+
+function knopje(tekst, actie) {
+  const b = document.createElement('button');
+  b.textContent = tekst;
+  b.onclick = e => { e.stopPropagation(); actie(); };
+  return b;
+}
+
+function leegSpoor(i) {
+  if (sporen[i].motor) sporen[i].motor.uit.disconnect();   // oscillators loslaten
+  sporen[i] = { instrument: null, bron: null, cellen: null, stil: false, motor: null };
+  if (!sporen.some(s => s.cellen)) stopTransport();
+  tekenSporen();
+}
+
+// de flits blijft staan tot de volgende stap 'm weghaalt — dat leest als een
+// stap-sequencer, en de fade komt van de transition op .cel
+function zetKop(els, cellen, nr, stil) {
+  for (const c of els) c.classList.remove('nu', 'vuur');
+  const cel = els[nr];
+  if (!cel || !cellen[nr]) return;
+  cel.classList.add('nu');
+  if (cellen[nr].aan && !stil) cel.classList.add('vuur');
+}
+
+function speelkop() {
+  requestAnimationFrame(speelkop);
+  if (!speelt || !ctx) return;
+  let huidig = null;
+  while (agenda.length && agenda[0].t <= ctx.currentTime) huidig = agenda.shift();
+  if (huidig === null) return;
+
+  document.querySelectorAll('.spoor').forEach(el => {
+    const sp = sporen[+el.dataset.i];
+    if (sp.cellen) zetKop(el.querySelectorAll('.cel'), sp.cellen, huidig.stap, sp.stil);
+  });
+
+  // het raster over het camerabeeld loopt mee, zodat je ziet én hoort wat je richt
+  const doel = sporen[doelSpoor];
+  if (cameraEl.classList.contains('aan') && doel.cellen) {
+    zetKop(lijnen.children, doel.cellen, huidig.stap, false);
+  }
+}
+requestAnimationFrame(speelkop);
+
+// ── instrument kiezen + fotograferen ───────────────────────────────────────
+const laag = document.getElementById('laag');
+const kies = document.getElementById('kies');
+const cameraEl = document.getElementById('camera');
+const video = document.getElementById('cam');
+const lijnen = document.getElementById('lijnen');
+const camKnop = document.getElementById('camkeuze');
+const tip = document.getElementById('tip');
+
+let doelSpoor = 0, stream = null, voorbeeldKlok = null, backup = null;
+let camApparaten = [], camKeuze = 0, gespiegeld = true;
+
+INSTRUMENTEN.forEach(inst => {
+  const b = document.createElement('button');
+  b.textContent = inst.naam;
+  b.onclick = () => kiesInstrument(inst.id);
+  kies.appendChild(b);
+});
+
+function opendKiezer(i) {
+  doelSpoor = i;
+  bouwAudio();                       // iOS: de AudioContext moet in een tap ontstaan
+  ctx.resume();
+  kies.style.display = 'flex';
+  cameraEl.classList.remove('aan');
+  laag.classList.add('aan');
+}
+
+// Een leeg spoor gaat door naar de camera; bij een gevuld spoor wisselt alleen
+// het geluid en blijft de foto (en dus het patroon) staan.
+function kiesInstrument(id) {
+  const sp = sporen[doelSpoor];
+  if (sp.motor) { sp.motor.uit.disconnect(); sp.motor = null; }
+  sp.instrument = id;
+  if (sp.cellen) {
+    sp.motor = maakMotor(id);
+    laag.classList.remove('aan');
+    tekenSporen();
+    return;
+  }
+  openCamera(id, doelSpoor);
+}
+
+// ── camerakeuze ────────────────────────────────────────────────────────────
+// Namen van camera's zijn pas bekend nádat je toestemming hebt gegeven, dus we
+// openen eerst iets en inventariseren daarna pas wat er nog meer is.
+async function ververCams() {
+  try {
+    const lijst = await navigator.mediaDevices.enumerateDevices();
+    camApparaten = lijst.filter(d => d.kind === 'videoinput');
+  } catch (e) { camApparaten = []; }
+
+  if (stream) {
+    const s = stream.getVideoTracks()[0].getSettings ? stream.getVideoTracks()[0].getSettings() : {};
+    const idx = camApparaten.findIndex(d => d.deviceId === s.deviceId);
+    if (idx >= 0) camKeuze = idx;
+  }
+  camKnop.style.display = camApparaten.length > 1 ? 'block' : 'none';
+  camKnop.textContent = camNaam();
+}
+
+function camNaam() {
+  const d = camApparaten[camKeuze];
+  if (!d) return 'camera';
+  return (d.label || ('camera ' + (camKeuze + 1)))
+    .replace(/\s*\([^)]*\)\s*$/, '').toLowerCase().slice(0, 20);
+}
+
+async function startStream() {
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  const eis = { width: { ideal: 640 }, height: { ideal: 480 } };
+  if (camApparaten[camKeuze]) eis.deviceId = { exact: camApparaten[camKeuze].deviceId };
+  else eis.facingMode = 'user';
+
+  stream = await navigator.mediaDevices.getUserMedia({ video: eis, audio: false });
+  video.srcObject = stream;
+  await video.play();
+
+  // jezelf zie je graag gespiegeld; de camera aan de achterkant juist niet
+  const s = stream.getVideoTracks()[0].getSettings ? stream.getVideoTracks()[0].getSettings() : {};
+  gespiegeld = s.facingMode !== 'environment';
+  video.style.transform = gespiegeld ? 'scaleX(-1)' : 'none';
+}
+
+camKnop.onclick = async () => {
+  if (camApparaten.length < 2) return;
+  camKeuze = (camKeuze + 1) % camApparaten.length;
+  try { await startStream(); } catch (e) { tip.textContent = 'die camera lukt niet'; }
+  camKnop.textContent = camNaam();
+};
+
+// ── fotograferen, met het geluid er al bij ─────────────────────────────────
+async function openCamera(instrumentId, i) {
+  doelSpoor = i;
+  bouwAudio(); ctx.resume();
+  const sp = sporen[i];
+  sp.instrument = instrumentId;
+  if (!sp.motor) sp.motor = maakMotor(instrumentId);
+
+  // bewaren wat er stond, zodat annuleren niets kapotmaakt
+  backup = sp.cellen ? { bron: sp.bron, foto: sp.foto, cellen: sp.cellen,
+                         licht: sp.licht, contrast: sp.contrast } : null;
+  sp.bron = null;                                  // vers doek voor het live beeld
+
+  kies.style.display = 'none';
+  cameraEl.classList.add('aan');
+  laag.classList.add('aan');
+  tip.textContent = 'je hoort al wat je ziet';
+
+  lijnen.style.gridTemplateColumns = 'repeat(' + raster + ', 1fr)';
+  lijnen.style.gridTemplateRows = 'repeat(' + raster + ', 1fr)';
+  lijnen.innerHTML = '<i class="cel"></i>'.repeat(raster * raster);
+
+  try {
+    await startStream();
+    await ververCams();
+  } catch (e) {
+    tip.textContent = 'geen camera: ' + (e.name || e);
+    return;
+  }
+  startVoorbeeld();
+  startTransport();
+}
+
+// Het live beeld wordt tien keer per seconde gelezen alsof het al een foto is,
+// en meteen door de sequencer gespeeld. Richten is dus spelen: je schuift een
+// lamp in beeld en hoort er een noot bij komen.
+function startVoorbeeld() {
+  stopVoorbeeld();
+  voorbeeldKlok = setInterval(() => {
+    if (!stream || video.readyState < 2) return;
+    const sp = sporen[doelSpoor];
+    if (!vangFrame(sp)) return;
+    lees(sp, false);
+    for (let k = 0; k < lijnen.children.length; k++)
+      lijnen.children[k].classList.toggle('aan', !!(sp.cellen[k] && sp.cellen[k].aan));
+  }, 100);
+}
+function stopVoorbeeld() { clearInterval(voorbeeldKlok); voorbeeldKlok = null; }
+
+// vierkant uit het midden van het beeld, op 64×64
+function vangFrame(sp) {
+  const vw = video.videoWidth, vh = video.videoHeight;
+  if (!vw || !vh) return false;
+  if (!sp.bron) { sp.bron = document.createElement('canvas'); sp.bron.width = sp.bron.height = BRON; }
+  const g = sp.bron.getContext('2d', { willReadFrequently: true });
+  const z = Math.min(vw, vh), sx = (vw - z) / 2, sy = (vh - z) / 2;
+  g.save();
+  if (gespiegeld) { g.scale(-1, 1); g.drawImage(video, sx, sy, z, z, -BRON, 0, BRON, BRON); }
+  else            { g.drawImage(video, sx, sy, z, z, 0, 0, BRON, BRON); }
+  g.restore();
+  return true;
+}
+
+function sluitCamera() {
+  stopVoorbeeld();
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  video.srcObject = null;
+  laag.classList.remove('aan');
+  cameraEl.classList.remove('aan');
+}
+
+document.getElementById('sluiter').onclick = () => {
+  if (!stream) return;
+  const sp = sporen[doelSpoor];
+  stopVoorbeeld();
+  if (!vangFrame(sp)) return;
+  lees(sp, true);                                  // nu pas ligt de toonsoort vast
+  sp.foto = sp.bron.toDataURL('image/jpeg', 0.7);
+  backup = null;
+
+  const flits = document.getElementById('flits');
+  flits.style.transition = 'none'; flits.style.opacity = '0.9';
+  requestAnimationFrame(() => { flits.style.transition = 'opacity 420ms'; flits.style.opacity = '0'; });
+
+  sluitCamera();
+  tekenSporen();
+  startTransport();
+};
+
+// annuleren: terug naar wat er stond, of het spoor weer leeg
+document.getElementById('uit').onclick = () => {
+  if (!cameraEl.classList.contains('aan')) { laag.classList.remove('aan'); return; }
+  const sp = sporen[doelSpoor];
+  stopVoorbeeld();
+  if (backup) Object.assign(sp, backup);
+  else {
+    if (sp.motor) sp.motor.uit.disconnect();
+    sporen[doelSpoor] = { instrument: null, bron: null, cellen: null, stil: false, motor: null };
+  }
+  backup = null;
+  sluitCamera();
+  tekenSporen();
+  if (!sporen.some(s => s.cellen)) stopTransport();
+};
+
+// ── onderbalk ──────────────────────────────────────────────────────────────
+document.getElementById('transport').onclick = () => {
+  bouwAudio(); ctx.resume();
+  if (speelt) stopTransport();
+  else if (sporen.some(s => s.cellen)) startTransport();
+};
+
+document.getElementById('tempo').onclick = e => {
+  bpm = TEMPOS[(TEMPOS.indexOf(bpm) + 1) % TEMPOS.length];
+  e.target.textContent = bpm + ' bpm';
+};
+
+document.getElementById('rasterknop').onclick = e => {
+  raster = RASTERS[(RASTERS.indexOf(raster) + 1) % RASTERS.length];
+  e.target.textContent = raster + ' × ' + raster;
+  stap = 0; agenda = [];
+  sporen.forEach(sp => { if (sp.bron) lees(sp, true); });   // foto's blijven, patroon wordt hertekend
+  if (cameraEl.classList.contains('aan')) {                 // ook het raster op de zoeker
+    lijnen.style.gridTemplateColumns = 'repeat(' + raster + ', 1fr)';
+    lijnen.style.gridTemplateRows = 'repeat(' + raster + ', 1fr)';
+    lijnen.innerHTML = '<i class="cel"></i>'.repeat(raster * raster);
+  }
+  tekenSporen();
+};
+
+document.addEventListener('visibilitychange', () => { if (!document.hidden && ctx) ctx.resume(); });
+
+tekenSporen();
+</script>
+</body>
+</html>

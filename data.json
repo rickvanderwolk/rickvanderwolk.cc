@@ -3,7 +3,7 @@
     "projects": [
         {
             "title": "Doek",
-            "description": "Een schilderij dat zo traag verandert dat je het niet ziet gebeuren.",
+            "description": "A painting still painting itself.",
             "image": "assets/images/doek-preview.jpg",
             "liveUrl": "https://rickvanderwolk.cc/doek/",
             "codeUrl": "https://github.com/rickvanderwolk/rickvanderwolk.cc/tree/main/doek",

@@ -3,7 +3,7 @@
     "projects": [
         {
             "title": "Doek",
-            "description": "A painting still painting itself.",
+            "description": "A painting that paints itself. The first minute is just the opening — from there it keeps evolving, endlessly, and you will hardly catch it.",
             "image": "assets/images/doek-preview.jpg",
             "liveUrl": "https://rickvanderwolk.cc/doek/",
             "codeUrl": "https://github.com/rickvanderwolk/rickvanderwolk.cc/tree/main/doek",

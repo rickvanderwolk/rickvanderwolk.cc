@@ -2,6 +2,17 @@
     "title": "Hello world",
     "projects": [
         {
+            "title": "Doek",
+            "description": "Een schilderij dat zo traag verandert dat je het niet ziet gebeuren.",
+            "image": "assets/images/doek-preview.jpg",
+            "liveUrl": "https://rickvanderwolk.cc/doek/",
+            "codeUrl": "https://github.com/rickvanderwolk/rickvanderwolk.cc/tree/main/doek",
+            "tags": [
+                "light",
+                "time"
+            ]
+        },
+        {
             "title": "Vissenkom",
             "description": "Een virtuele vissenkom die je fysieke aanwezigheid vereist.",
             "image": "assets/images/vissenkom-preview.png",

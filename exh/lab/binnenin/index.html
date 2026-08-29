@@ -1,0 +1,903 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="robots" content="noindex, nofollow">
+  <title>binnenin</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Een wereld in een wereld in een wereld. Je kunt niet lopen, alleen dichterbij kijken. Drie dingen om te ontdekken.">
+  <meta name="author" content="Rick van der Wolk">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      background: #dcd4c4;
+      overflow: hidden;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: none;
+      cursor: zoom-in;
+    }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+<canvas id="binnenin"></canvas>
+<script>
+'use strict';
+
+/* ---------------------------------------------------------------------------
+   binnenin — je kunt hier niet lopen, alleen dichterbij kijken.
+
+   Scrollen, vasthouden of knijpen: je zoomt. Elke wereld is een rond
+   schijfje met ergens één plek waar een volgende wereld in zit, veertien
+   keer zo klein. Een kiezel op een veld, op de kiezel een spikkel, in de
+   spikkel een kamertje, in het theekopje een zee... Twaalf lagen diep —
+   en wie ver genoeg gaat, ontdekt hoe de werelden aan elkaar hangen.
+
+   Ergens woont ook iemand. En er is iets dat terugkijkt.
+--------------------------------------------------------------------------- */
+
+const canvas = document.getElementById('binnenin');
+const ctx = canvas.getContext('2d');
+const TAU = Math.PI * 2;
+
+const Z = 14;            // elke wereld is 14x kleiner dan de vorige
+const LAGEN = 12;        // ...en na twaalf lagen ben je rond
+
+let W = 0, H = 0, dpr = 1, basis = 1;
+let vignet = null, korrel = null;
+
+function hermeet() {
+  dpr = Math.min(2, window.devicePixelRatio || 1);
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+  basis = Math.min(W, H) / 1000;
+  maakVignet();
+}
+window.addEventListener('resize', hermeet);
+
+function maakVignet() {
+  vignet = document.createElement('canvas');
+  vignet.width = W; vignet.height = H;
+  const v = vignet.getContext('2d');
+  const g = v.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.35, W / 2, H / 2, Math.max(W, H) * 0.75);
+  g.addColorStop(0, 'rgba(0,0,0,0)');
+  g.addColorStop(1, 'rgba(40,30,20,0.3)');
+  v.fillStyle = g; v.fillRect(0, 0, W, H);
+}
+
+function maakKorrel() {
+  korrel = document.createElement('canvas');
+  korrel.width = 160; korrel.height = 160;
+  const k = korrel.getContext('2d');
+  const beeld = k.createImageData(160, 160);
+  for (let i = 0; i < beeld.data.length; i += 4) {
+    const g = 120 + Math.random() * 60;
+    beeld.data[i] = beeld.data[i + 1] = beeld.data[i + 2] = g;
+    beeld.data[i + 3] = 10;
+  }
+  k.putImageData(beeld, 0, 0);
+}
+maakKorrel();
+hermeet();
+
+function klem(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+function mod12(n) { return ((n % LAGEN) + LAGEN) % LAGEN; }
+
+/* ------------------------------- de werelden ----------------------------- */
+
+/* Achtergrondkleur per laag, en de plek waar de volgende wereld zit. */
+const KLEUR_BG = [
+  '#e8e2d4',  // 0  het veld met de kiezel
+  '#c9d4b8',  // 1  mos
+  '#e6d9c4',  // 2  het kamertje
+  '#cfe3e8',  // 3  de zee (in het theekopje)
+  '#7fa9b8',  // 4  onder water
+  '#e3ead2',  // 5  de celtuin
+  '#12142a',  // 6  de ruimte
+  '#f2c469',  // 7  de ster
+  '#2a2331',  // 8  de grot
+  '#dce8f0',  // 9  binnenin het kristal
+  '#eef2f5',  // 10 sneeuw
+  '#e5d5c8',  // 11 het oog
+];
+const PORTAAL = [
+  { x: 60, y: 20 },     // spikkel op de kiezel
+  { x: -90, y: 70 },    // gat in het mos
+  { x: 60, y: 84 },     // het theekopje
+  { x: -140, y: 150 },  // draaikolk
+  { x: 110, y: -60 },   // grote luchtbel
+  { x: -30, y: 30 },    // kern van de middelste cel
+  { x: 140, y: -110 },  // een ster
+  { x: -80, y: 60 },    // zonnevlek
+  { x: 90, y: -30 },    // groot kristal
+  { x: -110, y: -90 },  // een glimlicht
+  { x: 24, y: 84 },     // het raampje van het huisje
+  { x: 0, y: 0 },       // de pupil
+];
+
+/* --------------------------------- camera -------------------------------- */
+
+/* n0 telt hoe diep je ooit werkelijk bent (ook voorbij de lus);
+   cx/cy/zoom leven in de coordinaten van de huidige laag. */
+const camera = { n0: 0, cx: 0, cy: -40, zoom: 1 };
+let diepteF = 0, vorigeDiepte = 0, zoomVaart = 0;
+
+/* ------------------------------ ontdekkingen ----------------------------- */
+
+const oog = { ontdekt: false, knipper: 0, knipperVolgende: 4 };
+const bewoner = { laag: 2, status: 'thuis', gevlucht: 0, ontdekt: false, hup: 0 };
+const lus = { ontdekt: false };
+
+/* ---------------------------------- geluid ------------------------------- */
+
+/* Elke laag heeft een eigen toon; zoomen glijdt door een eindeloos akkoord.
+   Daaroverheen: een zachte zoem als je beweegt, af en toe een klein
+   laag-eigen geluidje, en drie belletjes (samen C-E-G) voor de vondsten. */
+const NOTEN = [261.6, 293.7, 329.6, 392, 440, 523.3, 587.3, 523.3, 440, 392, 329.6, 293.7];
+let actx = null, hoofd = null, galm = null, zoemVol = null;
+const stemmen = new Map();
+let geluidjeVolgende = 3;
+
+function startGeluid() {
+  if (actx) { actx.resume(); return; }
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return;
+  actx = new AC();
+  actx.resume();
+
+  hoofd = actx.createGain();
+  hoofd.gain.value = 0;
+  hoofd.gain.linearRampToValueAtTime(0.85, actx.currentTime + 4);
+  hoofd.connect(actx.destination);
+
+  galm = actx.createGain();
+  const vertraging = actx.createDelay(0.6); vertraging.delayTime.value = 0.31;
+  const terug = actx.createGain(); terug.gain.value = 0.3;
+  const dof = actx.createBiquadFilter(); dof.type = 'lowpass'; dof.frequency.value = 1400;
+  const nat = actx.createGain(); nat.gain.value = 0.22;
+  galm.connect(vertraging); vertraging.connect(dof); dof.connect(terug);
+  terug.connect(vertraging); dof.connect(nat); nat.connect(hoofd);
+
+  /* De zoem van het zoomen zelf. */
+  const n = Math.floor(actx.sampleRate * 2);
+  const buf = actx.createBuffer(1, n, actx.sampleRate);
+  const d = buf.getChannelData(0);
+  let vorig = 0;
+  for (let i = 0; i < n; i++) {
+    vorig = (vorig + (Math.random() * 2 - 1) * 0.02) * 0.998;
+    d[i] = vorig * 3.5;
+  }
+  const bron = actx.createBufferSource(); bron.buffer = buf; bron.loop = true;
+  const filter = actx.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.value = 500;
+  zoemVol = actx.createGain(); zoemVol.gain.value = 0;
+  bron.connect(filter); filter.connect(zoemVol); zoemVol.connect(hoofd);
+  bron.start();
+}
+
+function uit(knoop, natheid) {
+  knoop.connect(hoofd);
+  const s = actx.createGain(); s.gain.value = natheid;
+  knoop.connect(s); s.connect(galm);
+}
+
+/* Het akkoord: per zichtbare laag een stem, luidst waar jij bent. */
+function bijwerkenStemmen() {
+  if (!actx) return;
+  for (let k = camera.n0 - 1; k <= camera.n0 + 1; k++) {
+    if (!stemmen.has(k)) {
+      const f = NOTEN[mod12(k)];
+      const g = actx.createGain(); g.gain.value = 0; g.connect(hoofd);
+      const stem = { g, ossen: [] };
+      for (const [deel, v] of [[1, 1], [0.5, 0.45]]) {
+        const o = actx.createOscillator(); o.type = 'sine'; o.frequency.value = f * deel;
+        const og = actx.createGain(); og.gain.value = v;
+        o.connect(og); og.connect(g); o.start();
+        stem.ossen.push(o);
+      }
+      stemmen.set(k, stem);
+    }
+    const nabij = Math.max(0, 1 - Math.abs(diepteF - k));
+    stemmen.get(k).g.gain.setTargetAtTime(0.024 * nabij, actx.currentTime, 0.15);
+  }
+  for (const [k, stem] of stemmen) {
+    if (k < camera.n0 - 2 || k > camera.n0 + 2) {
+      stem.g.gain.setTargetAtTime(0, actx.currentTime, 0.2);
+      for (const o of stem.ossen) o.stop(actx.currentTime + 1.2);
+      stemmen.delete(k);
+    }
+  }
+}
+
+function bel(f) {
+  if (!actx) return;
+  const t0 = actx.currentTime + 0.03;
+  for (const [deel, v, tau] of [[1, 0.05, 2.4], [2.01, 0.017, 1.2], [2.99, 0.007, 0.6]]) {
+    const o = actx.createOscillator(); o.type = 'sine'; o.frequency.value = f * deel;
+    const g = actx.createGain();
+    g.gain.setValueAtTime(0, t0);
+    g.gain.linearRampToValueAtTime(v, t0 + 0.015);
+    g.gain.setTargetAtTime(0, t0 + 0.03, tau);
+    o.connect(g); uit(g, 0.5);
+    o.start(t0); o.stop(t0 + 7);
+  }
+}
+
+function piep() {
+  if (!actx) return;
+  const t0 = actx.currentTime;
+  for (const [wanneer, f] of [[0, 950], [0.09, 1350]]) {
+    const o = actx.createOscillator(); o.type = 'triangle'; o.frequency.value = f;
+    const g = actx.createGain();
+    g.gain.setValueAtTime(0.03, t0 + wanneer);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + wanneer + 0.08);
+    o.connect(g); uit(g, 0.3);
+    o.start(t0 + wanneer); o.stop(t0 + wanneer + 0.12);
+  }
+}
+
+/* Elke laag laat af en toe één klein eigen geluidje horen. */
+function laagGeluidje(n) {
+  if (!actx) return;
+  const t0 = actx.currentTime;
+  const toon = (f0, f1, vol, duur, vorm) => {
+    const o = actx.createOscillator(); o.type = vorm || 'sine';
+    o.frequency.setValueAtTime(f0, t0);
+    if (f1 !== f0) o.frequency.exponentialRampToValueAtTime(f1, t0 + duur * 0.7);
+    const g = actx.createGain();
+    g.gain.setValueAtTime(vol, t0);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + duur);
+    o.connect(g); uit(g, 0.6);
+    o.start(t0); o.stop(t0 + duur + 0.05);
+  };
+  const ruisje = (freq, vol, duur, type) => {
+    const nn = Math.floor(actx.sampleRate * duur);
+    const buf = actx.createBuffer(1, nn, actx.sampleRate);
+    const dd = buf.getChannelData(0);
+    for (let i = 0; i < nn; i++) dd[i] = Math.random() * 2 - 1;
+    const bron = actx.createBufferSource(); bron.buffer = buf;
+    const f = actx.createBiquadFilter(); f.type = type; f.frequency.value = freq;
+    const g = actx.createGain();
+    g.gain.setValueAtTime(vol, t0);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + duur);
+    bron.connect(f); f.connect(g); uit(g, 0.5);
+    bron.start(t0); bron.stop(t0 + duur);
+  };
+  switch (n) {
+    case 0: toon(300, 240, 0.02, 0.1); break;                 // droge tok in het gras
+    case 1: ruisje(900, 0.018, 0.12, 'bandpass'); break;      // geritsel
+    case 2: toon(1800, 1800, 0.012, 0.05); break;             // een klok tikt ergens
+    case 3: ruisje(600, 0.02, 0.8, 'lowpass'); break;         // een golfje
+    case 4: toon(300, 700, 0.02, 0.15); break;                // geborrel
+    case 5: toon(520, 500, 0.016, 0.08); break;               // zachte plop
+    case 6: toon(2093, 2093, 0.012, 1.2); break;              // een ster twinkelt
+    case 7: toon(65, 60, 0.035, 1.5); break;                  // diepe gloed
+    case 8: toon(2200, 1200, 0.02, 0.07); break;              // een druppel
+    case 9: bel(1568); break;                                 // glazen ping
+    case 10: ruisje(1400, 0.012, 0.9, 'highpass'); break;     // windvlaagje
+    case 11: toon(55, 42, 0.05, 0.25); setTimeout(() => {     // een hartslag
+      if (actx) { const t1 = actx.currentTime;
+        const o = actx.createOscillator(); o.frequency.setValueAtTime(52, t1);
+        o.frequency.exponentialRampToValueAtTime(40, t1 + 0.15);
+        const g = actx.createGain();
+        g.gain.setValueAtTime(0.032, t1);
+        g.gain.exponentialRampToValueAtTime(0.0001, t1 + 0.22);
+        o.connect(g); uit(g, 0.5); o.start(t1); o.stop(t1 + 0.3);
+      } }, 210); break;
+  }
+}
+
+/* ---------------------------------- invoer ------------------------------- */
+
+const wijzer = { x: 0, y: 0 };
+const aanrakingen = new Map();
+let knijpAfstand = 0;
+let vasthoudRichting = 0;   // +1 = erin, -1 = eruit
+const toetsen = {};
+
+function zoomOm(mx, my, factor) {
+  const s = basis * camera.zoom;
+  const wx = camera.cx + (mx - W / 2) / s;
+  const wy = camera.cy + (my - H / 2) / s;
+  camera.zoom *= factor;
+  const s2 = basis * camera.zoom;
+  camera.cx = wx - (mx - W / 2) / s2;
+  camera.cy = wy - (my - H / 2) / s2;
+}
+
+canvas.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  startGeluid();
+  zoomOm(e.clientX, e.clientY, Math.exp(-e.deltaY * 0.0014));
+}, { passive: false });
+
+canvas.addEventListener('pointerdown', (e) => {
+  startGeluid();
+  aanrakingen.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  wijzer.x = e.clientX; wijzer.y = e.clientY;
+  if (aanrakingen.size === 1) vasthoudRichting = e.button === 2 ? -1 : 1;
+  if (aanrakingen.size === 2) {
+    vasthoudRichting = 0;
+    const [a, b] = [...aanrakingen.values()];
+    knijpAfstand = Math.hypot(a.x - b.x, a.y - b.y);
+  }
+});
+canvas.addEventListener('pointermove', (e) => {
+  wijzer.x = e.clientX; wijzer.y = e.clientY;
+  if (aanrakingen.has(e.pointerId)) aanrakingen.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (aanrakingen.size === 2) {
+    const [a, b] = [...aanrakingen.values()];
+    const nieuw = Math.hypot(a.x - b.x, a.y - b.y);
+    if (knijpAfstand > 0) zoomOm((a.x + b.x) / 2, (a.y + b.y) / 2, nieuw / knijpAfstand);
+    knijpAfstand = nieuw;
+  }
+});
+function laatLos(e) {
+  aanrakingen.delete(e.pointerId);
+  if (aanrakingen.size < 2) knijpAfstand = 0;
+  if (aanrakingen.size === 0) vasthoudRichting = 0;
+}
+window.addEventListener('pointerup', laatLos);
+window.addEventListener('pointercancel', laatLos);
+canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+window.addEventListener('keydown', (e) => {
+  if (['ArrowUp', 'ArrowDown', 'w', 's'].includes(e.key)) { toetsen[e.key] = true; startGeluid(); }
+});
+window.addEventListener('keyup', (e) => { delete toetsen[e.key]; });
+document.addEventListener('visibilitychange', () => {
+  if (!actx) return;
+  if (document.hidden) actx.suspend(); else actx.resume();
+});
+
+/* --------------------------------- bijwerken ----------------------------- */
+
+function bijwerken(dt, t) {
+  /* Vasthouden of toetsen: rustig doorzoomen richting de wijzer. */
+  let richting = aanrakingen.size === 1 ? vasthoudRichting : 0;
+  if (toetsen.ArrowUp || toetsen.w) richting = 1;
+  if (toetsen.ArrowDown || toetsen.s) richting = -1;
+  if (richting !== 0) {
+    const mx = aanrakingen.size === 1 ? wijzer.x : W / 2;
+    const my = aanrakingen.size === 1 ? wijzer.y : H / 2;
+    zoomOm(mx, my, Math.exp(richting * 0.62 * Math.log(Z) * dt / 2.4));
+  }
+
+  /* Niet van de schijf af dwalen. */
+  const rc = Math.hypot(camera.cx, camera.cy);
+  if (rc > 520) { camera.cx *= 520 / rc; camera.cy *= 520 / rc; }
+
+  /* Dieper: alleen als je echt bij de doorgang bent. Anders stopt het zoomen
+     vanzelf — het teken dat je ergens anders moet zoeken. */
+  const P = PORTAAL[mod12(camera.n0)];
+  if (camera.zoom > Z * 0.9) {
+    if (Math.hypot(camera.cx - P.x, camera.cy - P.y) < 250) {
+      camera.cx = (camera.cx - P.x) * Z;
+      camera.cy = (camera.cy - P.y) * Z;
+      camera.zoom /= Z;
+      camera.n0++;
+      naLaagwissel(t);
+    } else if (camera.zoom > Z * 2.2) {
+      camera.zoom = Z * 2.2;
+    }
+  }
+  /* Terug naar buiten: je komt altijd uit in de wereld eromheen. */
+  if (camera.zoom < 1) {
+    camera.n0--;
+    const Pb = PORTAAL[mod12(camera.n0)];
+    camera.cx = Pb.x + camera.cx / Z;
+    camera.cy = Pb.y + camera.cy / Z;
+    camera.zoom *= Z;
+    naLaagwissel(t);
+  }
+
+  vorigeDiepte = diepteF;
+  diepteF = camera.n0 + Math.log(camera.zoom) / Math.log(Z);
+  const vaart = (diepteF - vorigeDiepte) / dt;
+  zoomVaart += (vaart - zoomVaart) * Math.min(1, dt * 6);
+
+  /* Het oog knippert af en toe. */
+  oog.knipper = Math.max(0, oog.knipper - dt * 5);
+  oog.knipperVolgende -= dt;
+  if (oog.knipperVolgende < 0) { oog.knipper = 1; oog.knipperVolgende = 3.5 + Math.random() * 4; }
+
+  bijwerkenBewoner(t);
+  bewoner.hup = Math.max(0, bewoner.hup - dt * 3);
+
+  /* Geluid. */
+  if (actx) {
+    bijwerkenStemmen();
+    zoemVol.gain.setTargetAtTime(Math.min(0.06, Math.abs(zoomVaart) * 0.055), actx.currentTime, 0.12);
+    if (t > geluidjeVolgende) {
+      laagGeluidje(mod12(camera.n0));
+      geluidjeVolgende = t + 3.5 + Math.random() * 3;
+    }
+  }
+}
+
+function naLaagwissel(t) {
+  const laag = mod12(camera.n0);
+  /* Het oog: de eerste keer dat je erin (of eruit!) valt en het je ziet. */
+  if (laag === 11 && !oog.ontdekt) {
+    oog.ontdekt = true; oog.knipper = 1;
+    bel(261.6);
+  }
+  /* De lus: twaalf lagen in één richting — terug waar je begon.
+     Vanaf dan staat er bij de kiezel een vlaggetje: je was hier al. */
+  if (!lus.ontdekt && Math.abs(camera.n0) >= LAGEN) {
+    lus.ontdekt = true;
+    bel(392);
+  }
+}
+
+function bijwerkenBewoner(t) {
+  if (bewoner.status === 'weg') return;
+  if (mod12(camera.n0) !== bewoner.laag) return;
+  /* Je bent in zijn laag; kom je dichtbij genoeg om hem echt te zien... */
+  const P = PORTAAL[bewoner.laag];
+  const bx = P.x + 52, by = P.y - 40;
+  const dichtbij = camera.zoom > 4.5 && Math.hypot(camera.cx - bx, camera.cy - by) < 190;
+  if (!dichtbij) return;
+  if (bewoner.gevlucht < 3) {
+    /* ...dan wipt hij de doorgang in, een wereld dieper. */
+    bewoner.gevlucht++;
+    bewoner.laag = mod12(bewoner.laag + 1);
+    bewoner.hup = 1;
+    piep();
+  } else if (!bewoner.ontdekt) {
+    /* Drie keer opgejaagd is genoeg: hij blijft, en zwaait voortaan. */
+    bewoner.ontdekt = true;
+    bewoner.status = 'zwaait';
+    bel(329.6);
+  }
+}
+
+/* ------------------------------ tekenhulpjes ----------------------------- */
+
+function cirkel(x, y, r, kleur) {
+  ctx.fillStyle = kleur;
+  ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill();
+}
+function ring(x, y, r, kleur, dikte) {
+  ctx.strokeStyle = kleur; ctx.lineWidth = dikte;
+  ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.stroke();
+}
+
+/* Elke wereld is een schijf. */
+function schijf(n) {
+  cirkel(0, 0, 560, KLEUR_BG[n]);
+  ring(0, 0, 552, 'rgba(0,0,0,0.12)', 8);
+}
+
+/* ------------------------------- de scenes ------------------------------- */
+
+const scenes = [];
+
+scenes[0] = (t) => {   // het veld met de kiezel
+  schijf(0);
+  ctx.strokeStyle = 'rgba(120,130,90,0.5)'; ctx.lineWidth = 3;
+  for (let i = 0; i < 14; i++) {
+    const x = -460 + i * 70, y = 200 + (i % 3) * 90;
+    ctx.beginPath(); ctx.moveTo(x, y);
+    ctx.quadraticCurveTo(x + 6, y - 26, x + 14 + Math.sin(t * 0.7 + i) * 3, y - 38);
+    ctx.stroke();
+  }
+  ctx.fillStyle = 'rgba(0,0,0,0.1)';
+  ctx.beginPath(); ctx.ellipse(10, 170, 230, 40, 0, 0, TAU); ctx.fill();
+  ctx.fillStyle = '#a8a49a';
+  ctx.beginPath(); ctx.ellipse(0, 40, 220, 160, -0.08, 0, TAU); ctx.fill();
+  ctx.fillStyle = '#bdb9af';
+  ctx.beginPath(); ctx.ellipse(-50, -10, 120, 80, -0.2, 0, TAU); ctx.fill();
+  for (const [sx, sy, sr] of [[-120, 60, 9], [-30, 100, 7], [130, 70, 8], [90, -50, 6], [-60, -60, 5], [150, -10, 5]]) {
+    cirkel(sx, sy, sr, '#6e6a62');
+  }
+  if (lus.ontdekt) {   // je was hier al eens
+    ctx.strokeStyle = '#59493a'; ctx.lineWidth = 5;
+    ctx.beginPath(); ctx.moveTo(300, 180); ctx.lineTo(300, 100); ctx.stroke();
+    ctx.fillStyle = '#c25b3f';
+    ctx.beginPath(); ctx.moveTo(300, 100); ctx.lineTo(345, 114); ctx.lineTo(300, 128);
+    ctx.closePath(); ctx.fill();
+  }
+};
+
+scenes[1] = (t) => {   // mos
+  schijf(1);
+  const groenen = ['#aabf93', '#93af7e', '#b8cba2', '#87a374'];
+  const posities = [[-300, -200, 130], [-80, -280, 100], [180, -180, 150], [340, 40, 110],
+    [200, 240, 140], [-40, 300, 120], [-300, 180, 130], [-360, -20, 90], [80, 40, 170], [-160, -40, 110]];
+  posities.forEach(([x, y, r], i) => cirkel(x, y, r, groenen[i % 4]));
+  ctx.strokeStyle = 'rgba(70,90,55,0.5)'; ctx.lineWidth = 3;
+  for (let i = 0; i < 16; i++) {
+    const hoek = i / 16 * TAU;
+    const x = Math.cos(hoek) * (200 + (i % 4) * 70), y = Math.sin(hoek) * (200 + (i % 3) * 80);
+    ctx.beginPath(); ctx.moveTo(x, y);
+    ctx.quadraticCurveTo(x + 8, y - 22, x + Math.sin(t * 0.8 + i) * 6, y - 34);
+    ctx.stroke();
+  }
+};
+
+scenes[2] = (t) => {   // het kamertje
+  schijf(2);
+  ctx.fillStyle = '#c9b393'; ctx.fillRect(-560, 200, 1120, 360);   // vloer
+  ctx.strokeStyle = 'rgba(90,70,50,0.3)'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(-560, 200); ctx.lineTo(560, 200); ctx.stroke();
+  /* raam met avondlicht */
+  ctx.fillStyle = '#f6eeda'; ctx.fillRect(200, -260, 160, 200);
+  ctx.strokeStyle = '#8a6f52'; ctx.lineWidth = 10;
+  ctx.strokeRect(200, -260, 160, 200);
+  ctx.beginPath(); ctx.moveTo(280, -260); ctx.lineTo(280, -60);
+  ctx.moveTo(200, -160); ctx.lineTo(360, -160); ctx.stroke();
+  /* schilderijtje */
+  ctx.fillStyle = '#8a6f52'; ctx.fillRect(-300, -220, 90, 70);
+  ctx.fillStyle = '#5a748a'; ctx.fillRect(-292, -212, 74, 54);
+  /* tafel met theekopje — de stoom wijst je de weg */
+  ctx.fillStyle = '#7a5c3e';
+  ctx.fillRect(-60, 120, 240, 16);
+  ctx.fillRect(-40, 136, 14, 80); ctx.fillRect(146, 136, 14, 80);
+  ctx.fillStyle = '#e8e4dc';
+  ctx.beginPath(); ctx.arc(60, 100, 34, 0, Math.PI); ctx.fill();
+  ctx.strokeStyle = '#e8e4dc'; ctx.lineWidth = 7;
+  ctx.beginPath(); ctx.arc(100, 92, 14, -1.2, 1.4); ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.lineWidth = 5;
+  for (const fase of [0, 2.6]) {
+    ctx.beginPath();
+    let sx = 58 + Math.sin(fase) * 8;
+    ctx.moveTo(sx, 62);
+    for (let i = 1; i <= 4; i++) {
+      ctx.quadraticCurveTo(
+        sx + Math.sin(t * 1.1 + fase + i) * 14, 62 - i * 28 - 14,
+        sx + Math.sin(t * 1.1 + fase + i + 0.5) * 10, 62 - i * 28 - 28);
+    }
+    ctx.stroke();
+  }
+};
+
+scenes[3] = (t) => {   // de zee in het kopje
+  schijf(3);
+  ctx.save();
+  ctx.beginPath(); ctx.arc(0, 0, 552, 0, TAU); ctx.clip();
+  ctx.fillStyle = '#9cc3cf'; ctx.fillRect(-560, -20, 1120, 580);
+  cirkel(200, -280, 70, '#f5d76e');
+  cirkel(200, -280, 100, 'rgba(245,215,110,0.25)');
+  ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 4;
+  for (let rij = 0; rij < 5; rij++) {
+    const y = 40 + rij * 90;
+    const schuif = (t * 26 + rij * 40) % 80;
+    ctx.beginPath();
+    for (let x = -600 + schuif; x < 600; x += 80) {
+      ctx.moveTo(x, y); ctx.arc(x, y, 16, Math.PI * 1.15, Math.PI * 1.85);
+    }
+    ctx.stroke();
+  }
+  /* het bootje deint */
+  const deinY = -14 + Math.sin(t * 0.9) * 7;
+  ctx.save();
+  ctx.translate(-60, deinY); ctx.rotate(Math.sin(t * 0.9 + 1) * 0.05);
+  ctx.fillStyle = '#7a4a30';
+  ctx.beginPath(); ctx.moveTo(-55, 0); ctx.lineTo(55, 0); ctx.lineTo(38, 26); ctx.lineTo(-38, 26);
+  ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = '#5c4432'; ctx.lineWidth = 5;
+  ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -66); ctx.stroke();
+  ctx.fillStyle = '#eee6d2';
+  ctx.beginPath(); ctx.moveTo(4, -64); ctx.lineTo(50, -18); ctx.lineTo(4, -14);
+  ctx.closePath(); ctx.fill();
+  ctx.restore();
+  /* draaikolk rond de doorgang */
+  ctx.strokeStyle = 'rgba(255,255,255,0.4)'; ctx.lineWidth = 4;
+  ctx.beginPath();
+  for (let h = 0; h < 3 * TAU; h += 0.15) {
+    const r = 42 + h * 7;
+    const x = PORTAAL[3].x + Math.cos(h + t * 0.5) * r;
+    const y = PORTAAL[3].y + Math.sin(h + t * 0.5) * r * 0.6;
+    if (h === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  ctx.restore();
+};
+
+scenes[4] = (t) => {   // onder water
+  schijf(4);
+  ctx.save();
+  ctx.beginPath(); ctx.arc(0, 0, 552, 0, TAU); ctx.clip();
+  ctx.fillStyle = 'rgba(230,245,250,0.1)';
+  for (const [x, breed] of [[-260, 120], [40, 90], [300, 140]]) {
+    ctx.beginPath();
+    ctx.moveTo(x - breed / 2, -560); ctx.lineTo(x + breed / 2, -560);
+    ctx.lineTo(x + breed * 1.4, 560); ctx.lineTo(x - breed * 1.4, 560);
+    ctx.closePath(); ctx.fill();
+  }
+  ctx.strokeStyle = 'rgba(50,90,70,0.6)'; ctx.lineWidth = 9;
+  for (const [wx, hoogte, fase] of [[-340, 300, 0], [-240, 240, 2], [260, 320, 4], [380, 220, 1]]) {
+    ctx.beginPath(); ctx.moveTo(wx, 560);
+    for (let i = 1; i <= 4; i++) {
+      ctx.quadraticCurveTo(
+        wx + Math.sin(t * 0.8 + fase + i) * 26, 560 - hoogte * i / 4 + 20,
+        wx + Math.sin(t * 0.8 + fase + i + 0.6) * 30, 560 - hoogte * i / 4);
+    }
+    ctx.stroke();
+  }
+  for (let i = 0; i < 7; i++) {
+    const y = 560 - ((t * 34 + i * 170) % 1120);
+    const x = -380 + i * 120 + Math.sin(t * 1.2 + i * 2) * 24;
+    ring(x, y, 8 + (i % 3) * 4, 'rgba(235,248,252,0.55)', 3);
+  }
+  ctx.fillStyle = 'rgba(40,70,85,0.7)';
+  for (const [vx, vy, kant] of [[-140, -120, 1], [-80, -80, 1], [180, 160, -1]]) {
+    const x = vx + Math.sin(t * 0.6 + vy) * 40 * kant;
+    ctx.beginPath();
+    ctx.moveTo(x, vy); ctx.lineTo(x - 26 * kant, vy - 12); ctx.lineTo(x - 26 * kant, vy + 12);
+    ctx.closePath(); ctx.fill();
+  }
+  ctx.restore();
+};
+
+scenes[5] = (t) => {   // de celtuin
+  schijf(5);
+  const cellen = [[-260, -220, 130], [60, -280, 110], [320, -140, 120], [340, 160, 100],
+    [120, 300, 130], [-220, 260, 120], [-380, 40, 100], [-30, 30, 180], [180, 60, 90]];
+  cellen.forEach(([x, y, r], i) => {
+    cirkel(x, y, r, 'rgba(180,200,150,0.5)');
+    ring(x, y, r, 'rgba(110,140,90,0.6)', 5);
+    const puls = 1 + Math.sin(t * 1.1 + i * 2) * 0.08;
+    if (!(Math.abs(x - (-30)) < 1 && Math.abs(y - 30) < 1)) {
+      cirkel(x + r * 0.15, y - r * 0.1, r * 0.3 * puls, 'rgba(100,130,80,0.7)');
+    }
+  });
+};
+
+scenes[6] = (t) => {   // de ruimte
+  schijf(6);
+  ctx.fillStyle = 'rgba(255,255,255,0.06)';
+  ctx.beginPath(); ctx.ellipse(0, 40, 520, 150, -0.4, 0, TAU); ctx.fill();
+  for (let i = 0; i < 42; i++) {
+    const hoek = i * 2.4, r = 40 + (i * 71 % 500);
+    const x = Math.cos(hoek) * r, y = Math.sin(hoek) * r * 0.95;
+    const twinkel = 0.4 + 0.6 * Math.abs(Math.sin(t * 0.8 + i * 1.7));
+    cirkel(x, y, 2 + (i % 3), `rgba(235,240,255,${0.5 * twinkel})`);
+  }
+  cirkel(150, 100, 60, '#b88a5e');
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  ctx.beginPath(); ctx.arc(150, 100, 60, -1.4, 1.7); ctx.fill();
+  ctx.strokeStyle = 'rgba(220,210,190,0.7)'; ctx.lineWidth = 6;
+  ctx.beginPath(); ctx.ellipse(150, 100, 105, 26, -0.35, 0, TAU); ctx.stroke();
+  /* de ene ster waar je in kunt */
+  const P = PORTAAL[6];
+  ctx.strokeStyle = 'rgba(255,230,170,0.8)'; ctx.lineWidth = 3;
+  for (let i = 0; i < 4; i++) {
+    const h = i / 4 * TAU + 0.4;
+    ctx.beginPath();
+    ctx.moveTo(P.x + Math.cos(h) * 46, P.y + Math.sin(h) * 46);
+    ctx.lineTo(P.x + Math.cos(h) * 70, P.y + Math.sin(h) * 70);
+    ctx.stroke();
+  }
+};
+
+scenes[7] = (t) => {   // de ster
+  schijf(7);
+  for (let i = 0; i < 12; i++) {
+    const h = i / 12 * TAU + t * 0.05;
+    const lengte = 60 + Math.sin(t * 0.9 + i * 2.3) * 26;
+    ctx.fillStyle = 'rgba(240,160,70,0.6)';
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(h - 0.09) * 540, Math.sin(h - 0.09) * 540);
+    ctx.lineTo(Math.cos(h) * (540 + lengte), Math.sin(h) * (540 + lengte));
+    ctx.lineTo(Math.cos(h + 0.09) * 540, Math.sin(h + 0.09) * 540);
+    ctx.closePath(); ctx.fill();
+  }
+  for (let i = 0; i < 16; i++) {
+    const h = i * 2.1, r = (i * 97 % 420);
+    const x = Math.cos(h) * r, y = Math.sin(h) * r;
+    cirkel(x, y, 40 + (i % 3) * 22, i % 2 ? 'rgba(235,170,80,0.5)' : 'rgba(250,210,120,0.5)');
+  }
+  ring(PORTAAL[7].x, PORTAAL[7].y, 52, 'rgba(120,60,30,0.5)', 8);
+};
+
+scenes[8] = (t) => {   // de grot
+  schijf(8);
+  ctx.fillStyle = '#1c1725';
+  for (let i = 0; i < 9; i++) {
+    const x = -480 + i * 120;
+    const lengte = 90 + (i * 53 % 130);
+    ctx.beginPath();
+    ctx.moveTo(x - 34, -545 + Math.abs(x) * 0.1);
+    ctx.lineTo(x, -545 + lengte);
+    ctx.lineTo(x + 34, -545 + Math.abs(x) * 0.1);
+    ctx.closePath(); ctx.fill();
+  }
+  for (const [kx, ky, kr, fase] of [[-300, 200, 26, 0], [-150, 320, 20, 2], [200, 280, 30, 4], [350, 60, 22, 1], [-380, -60, 18, 3]]) {
+    const glinster = 0.35 + 0.4 * Math.abs(Math.sin(t * 0.7 + fase));
+    ctx.strokeStyle = `rgba(150,220,235,${glinster})`;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(kx, ky - kr); ctx.lineTo(kx + kr * 0.6, ky);
+    ctx.lineTo(kx, ky + kr); ctx.lineTo(kx - kr * 0.6, ky);
+    ctx.closePath(); ctx.stroke();
+  }
+  /* het grote kristal om de doorgang */
+  const P = PORTAAL[8];
+  ctx.strokeStyle = 'rgba(170,230,245,0.8)'; ctx.lineWidth = 5;
+  ctx.beginPath();
+  ctx.moveTo(P.x, P.y - 90); ctx.lineTo(P.x + 56, P.y);
+  ctx.lineTo(P.x, P.y + 90); ctx.lineTo(P.x - 56, P.y);
+  ctx.closePath(); ctx.stroke();
+};
+
+scenes[9] = (t) => {   // binnenin het kristal
+  schijf(9);
+  ctx.strokeStyle = 'rgba(120,150,180,0.35)'; ctx.lineWidth = 3;
+  for (let i = 0; i < 9; i++) {
+    const h1 = i * 1.55, h2 = i * 1.55 + 2.4;
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(h1) * 540, Math.sin(h1) * 540);
+    ctx.lineTo(Math.cos(h2) * 540, Math.sin(h2) * 540);
+    ctx.stroke();
+  }
+  for (let i = 0; i < 5; i++) {
+    const kleuren = ['rgba(235,120,120,0.3)', 'rgba(235,200,110,0.3)', 'rgba(120,200,140,0.3)', 'rgba(110,160,235,0.3)', 'rgba(180,130,220,0.3)'];
+    ctx.strokeStyle = kleuren[i]; ctx.lineWidth = 7;
+    ctx.beginPath();
+    ctx.arc(120, 60, 190 + i * 14, Math.PI * 0.9 + Math.sin(t * 0.3) * 0.1, Math.PI * 1.5);
+    ctx.stroke();
+  }
+  for (const [gx, gy, fase] of [[-200, 140, 0], [240, -220, 2], [60, 320, 4]]) {
+    const glim = 0.3 + 0.5 * Math.abs(Math.sin(t * 0.9 + fase));
+    cirkel(gx, gy, 6, `rgba(255,255,255,${glim})`);
+  }
+};
+
+scenes[10] = (t) => {   // sneeuw
+  schijf(10);
+  ctx.save();
+  ctx.beginPath(); ctx.arc(0, 0, 552, 0, TAU); ctx.clip();
+  ctx.fillStyle = '#dfe6ea';
+  ctx.beginPath();
+  ctx.moveTo(-560, 240);
+  ctx.quadraticCurveTo(-200, 140, 100, 220);
+  ctx.quadraticCurveTo(360, 280, 560, 200);
+  ctx.lineTo(560, 560); ctx.lineTo(-560, 560);
+  ctx.closePath(); ctx.fill();
+  /* het huisje */
+  ctx.fillStyle = '#6e5a48'; ctx.fillRect(-50, 20, 150, 130);
+  ctx.fillStyle = '#4e4038';
+  ctx.beginPath(); ctx.moveTo(-70, 24); ctx.lineTo(25, -60); ctx.lineTo(120, 24);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#5a4a3e'; ctx.fillRect(60, -46, 22, 50);
+  ctx.strokeStyle = 'rgba(240,244,248,0.8)'; ctx.lineWidth = 6;
+  ctx.beginPath();
+  for (let i = 0; i < 3; i++) {
+    const rx = 71 + Math.sin(t * 0.9 + i * 1.8) * 10;
+    ctx.moveTo(rx, -56 - i * 30);
+    ctx.arc(rx, -56 - i * 30, 6 + i * 3, 0, TAU);
+  }
+  ctx.stroke();
+  /* het raampje gloeit — en er lijkt iets door naar buiten te kijken */
+  ctx.fillStyle = '#f4d9a0';
+  ctx.fillRect(PORTAAL[10].x - 26, PORTAAL[10].y - 26, 52, 52);
+  ctx.strokeStyle = '#4e4038'; ctx.lineWidth = 6;
+  ctx.strokeRect(PORTAAL[10].x - 26, PORTAAL[10].y - 26, 52, 52);
+  for (let i = 0; i < 16; i++) {
+    const y = ((t * 26 + i * 89) % 1120) - 560;
+    const x = -520 + i * 68 + Math.sin(t * 0.7 + i * 2) * 30;
+    cirkel(x, y, 4, 'rgba(255,255,255,0.75)');
+  }
+  ctx.restore();
+};
+
+scenes[11] = (t) => {   // het oog
+  schijf(11);
+  /* oogwit */
+  ctx.fillStyle = '#f4efe6';
+  ctx.beginPath();
+  ctx.moveTo(-460, 0);
+  ctx.quadraticCurveTo(0, -330, 460, 0);
+  ctx.quadraticCurveTo(0, 330, -460, 0);
+  ctx.closePath(); ctx.fill();
+  /* iris kijkt naar je wijzer; de pupil blijft de doorgang */
+  const kx = klem((wijzer.x - W / 2) / W, -0.5, 0.5) * 40;
+  const ky = klem((wijzer.y - H / 2) / H, -0.5, 0.5) * 24;
+  cirkel(kx, ky, 130, '#7a9464');
+  ring(kx, ky, 130, 'rgba(60,80,50,0.6)', 6);
+  cirkel(kx - 40, ky - 46, 18, 'rgba(255,255,255,0.65)');
+  /* wimpers */
+  ctx.strokeStyle = 'rgba(70,55,45,0.7)'; ctx.lineWidth = 6;
+  for (let i = 0; i < 7; i++) {
+    const x = -300 + i * 100;
+    const y = -330 * (1 - (x / 460) * (x / 460)) * 0.72;
+    ctx.beginPath(); ctx.moveTo(x, y);
+    ctx.lineTo(x + (i - 3) * 8, y - 40); ctx.stroke();
+  }
+  /* knipperen: het ooglid valt heel even dicht */
+  if (oog.knipper > 0) {
+    const dicht = Math.sin(Math.min(1, oog.knipper) * Math.PI);
+    ctx.fillStyle = KLEUR_BG[11];
+    ctx.beginPath();
+    ctx.moveTo(-461, 0);
+    ctx.quadraticCurveTo(0, -330 + 660 * dicht * 0.5, 461, 0);
+    ctx.quadraticCurveTo(0, -330, -461, 0);
+    ctx.closePath(); ctx.fill();
+  }
+};
+
+/* De bewoner: een klein oranje wezentje dat bij een doorgang scharrelt. */
+function tekenBewoner(laag, t) {
+  if (bewoner.status === 'weg' || bewoner.laag !== laag) return;
+  const P = PORTAAL[laag];
+  const x = P.x + 52, y = P.y - 40 - bewoner.hup * 30;
+  const wip = Math.sin(t * 2.2) * 2;
+  ctx.fillStyle = '#d4713f';
+  ctx.beginPath(); ctx.ellipse(x, y + wip, 11, 13, 0, 0, TAU); ctx.fill();
+  cirkel(x - 4, y - 5 + wip, 2.2, '#241a14');
+  cirkel(x + 4, y - 5 + wip, 2.2, '#241a14');
+  ctx.strokeStyle = '#d4713f'; ctx.lineWidth = 3.5; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(x - 5, y + 12 + wip); ctx.lineTo(x - 7, y + 19 + wip); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x + 5, y + 12 + wip); ctx.lineTo(x + 7, y + 19 + wip); ctx.stroke();
+  if (bewoner.status === 'zwaait') {
+    const zw = Math.sin(t * 7) * 0.7;
+    ctx.beginPath(); ctx.moveTo(x + 9, y + 2 + wip);
+    ctx.lineTo(x + 16, y - 7 + wip + zw * 6); ctx.stroke();
+  }
+}
+
+/* ---------------------------------- tekenen ------------------------------ */
+
+function beeldLagen(t) {
+  /* Teken ouder, huidige laag, kind en kleinkind in één keten. De oorsprong
+     van laag k, uitgedrukt in coordinaten van de huidige laag: */
+  const s = basis * camera.zoom;
+  for (let k = camera.n0 - 1; k <= camera.n0 + 2; k++) {
+    let ox = 0, oy = 0, schaal = 1;
+    if (k === camera.n0 - 1) {
+      const P = PORTAAL[mod12(k)];
+      ox = -P.x * Z; oy = -P.y * Z; schaal = Z;
+    } else {
+      for (let m = camera.n0; m < k; m++) {
+        const P = PORTAAL[mod12(m)];
+        const deel = Math.pow(Z, m - camera.n0);
+        ox += P.x / deel; oy += P.y / deel;
+      }
+      schaal = Math.pow(Z, camera.n0 - k);
+    }
+    const sk = s * schaal;
+    if (sk * 1120 < 10) continue;   // te klein om te zien
+    ctx.setTransform(
+      dpr * sk, 0, 0, dpr * sk,
+      dpr * (W / 2 + (ox - camera.cx) * s),
+      dpr * (H / 2 + (oy - camera.cy) * s));
+    const laag = mod12(k);
+    scenes[laag](t);
+    /* Waar de volgende wereld zit, schemert alvast haar kleur. */
+    cirkel(PORTAAL[laag].x, PORTAAL[laag].y, 38, KLEUR_BG[mod12(k + 1)]);
+    ring(PORTAAL[laag].x, PORTAAL[laag].y, 38, 'rgba(0,0,0,0.25)', 3);
+    tekenBewoner(laag, t);
+  }
+}
+
+/* ----------------------------------- lus --------------------------------- */
+
+let vorige = performance.now();
+
+function beeld(nu) {
+  const dt = Math.min(0.05, (nu - vorige) / 1000);
+  vorige = nu;
+  const t = nu / 1000;
+
+  bijwerken(dt, t);
+
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = '#0f0d16'; ctx.fillRect(0, 0, W, H);
+
+  beeldLagen(t);
+
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.drawImage(vignet, 0, 0);
+  ctx.globalAlpha = 0.45;
+  ctx.drawImage(korrel, Math.floor(Math.random() * 80) - 80, Math.floor(Math.random() * 80) - 80, W + 160, H + 160);
+  ctx.globalAlpha = 1;
+
+  requestAnimationFrame(beeld);
+}
+requestAnimationFrame(beeld);
+</script>
+</body>
+</html>

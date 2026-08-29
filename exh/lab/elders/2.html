@@ -1,0 +1,1053 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="robots" content="noindex, nofollow">
+  <title>elders · er is geen wit licht</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#000000">
+  <meta name="color-scheme" content="dark">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="description" content="Je kiest één licht en houdt die kleur je hele bezoek. Een kleur laat dingen zien door alle andere te verzwijgen. Er is geen wit licht — maar er lopen anderen rond, en waar hun bundel de jouwe raakt is heel even meer te zien dan één van jullie alleen kan.">
+  <meta name="author" content="Rick van der Wolk">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; background: #000; }
+    body {
+      background: #000;
+      overflow: hidden;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: none;
+      font-family: system-ui, 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    }
+    body.binnen { cursor: none; }
+
+    /* -- het licht: een doek waarop alle bundels bij elkaar worden opgeteld.
+          Optellen is hier geen effect maar natuurkunde: rood licht plus groen
+          licht ís geel licht. Daarom moet dit een canvas zijn met
+          globalCompositeOperation 'lighter' en geen stapeltje css-verlopen. -- */
+    /* width/height moeten er expliciet staan: een canvas is een vervangen
+       element, dus inset:0 rekt hem niet op maar laat hem op zijn eigen
+       bitmapmaat staan. Op een scherm met dubbele dichtheid stond het licht
+       zonder deze twee regels op dubbele afstand van je cursor. */
+    #lampdoek {
+      position: fixed; inset: 0;
+      width: 100%; height: 100%;
+      pointer-events: none;
+    }
+
+    /* -- de muur: een witte laag met vormen in geheime inkt, vermenigvuldigd
+          met het licht eronder (mix-blend-mode: multiply). Een oppervlak
+          kaatst alleen kleuren terug die het licht bevat:
+
+            cyaan   kaatst groen+blauw  → alleen onder ROOD licht donker
+            magenta kaatst rood+blauw   → alleen onder GROEN licht donker
+            geel    kaatst rood+groen   → alleen onder BLAUW licht donker
+
+          Onder de twee andere kleuren valt zo'n vorm exact weg tegen de
+          aangelichte muur. Zwart blijft onder elke kleur een silhouet. -- */
+    #muur {
+      /* Geen background-color hier: het doek vult zichzelf elk frame wit.
+         iOS 26 kleurt zijn status- en werkbalk naar de background-color van
+         fixed elementen aan de randen (zonder de blend mee te rekenen). */
+      position: fixed; inset: 0;
+      mix-blend-mode: multiply;
+      pointer-events: none;
+      overflow: hidden;
+    }
+
+    /* -- de randen: theme-color doet op iOS 26 niets meer; Safari leest de
+          background-color van fixed elementen die de randen raken. Twee
+          zwarte strookjes houden de balken donker. -- */
+    .balk {
+      position: fixed;
+      left: 0; right: 0;
+      height: 12px;
+      background-color: #000;
+      pointer-events: none;
+      z-index: 10;
+    }
+    #balkboven { top: -8px; }
+    #balkonder { bottom: -8px; }
+
+    #wereld { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+    /* -- de drempel: hier staat waar dit over gaat, en hier kies je -- */
+    #drempel {
+      position: fixed; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      padding: 24px;
+      overflow-y: auto;
+      opacity: 1;
+      transition: opacity 2.2s ease;
+    }
+    #drempel.weg { opacity: 0; pointer-events: none; }
+    #kader {
+      max-width: 27em;
+      border: 1px solid #2a2a2a;
+      background: #050505;
+      padding: 40px 44px 34px;
+    }
+    #kader p {
+      color: #8f8f8f;
+      font-size: 15px;
+      line-height: 1.9;
+      letter-spacing: 0.02em;
+      margin-bottom: 22px;
+    }
+    #kern {
+      color: #e2e2e2;
+      letter-spacing: 0.06em;
+    }
+    #kies {
+      color: #6a6a6a;
+      font-size: 12px;
+      letter-spacing: 0.22em;
+      text-align: center;
+      margin: 34px 0 20px;
+    }
+    #lampen {
+      display: flex;
+      justify-content: center;
+      gap: 26px;
+    }
+    .lamp {
+      width: 58px; height: 58px;
+      border: 0; padding: 0;
+      background: none;
+      border-radius: 50%;
+      cursor: pointer;
+      transition: transform 0.35s ease;
+    }
+    .lamp span {
+      display: block;
+      width: 100%; height: 100%;
+      border-radius: 50%;
+      opacity: 0.55;
+      transition: opacity 0.35s ease;
+    }
+    .lamp:hover, .lamp:focus-visible { outline: none; transform: scale(1.14); }
+    .lamp:hover span, .lamp:focus-visible span { opacity: 1; }
+  </style>
+</head>
+<body>
+
+<div class="balk" id="balkboven"></div>
+<div class="balk" id="balkonder"></div>
+<canvas id="lampdoek"></canvas>
+<div id="muur">
+  <canvas id="wereld"></canvas>
+</div>
+
+<div id="drempel">
+  <div id="kader">
+    <p>Je krijgt één licht mee, en het heeft een kleur. Een kleur laat dingen
+    zien door alle andere te verzwijgen. Wat je hier vanavond niet ziet is er
+    wel — je zult alleen nooit weten wát.</p>
+    <p id="kern">Er is geen wit licht.</p>
+    <p>Er lopen anderen rond met een ander licht. Waar hun bundel de jouwe
+    raakt is heel even meer te zien dan één van jullie alleen kan.</p>
+    <p id="kies">kies</p>
+    <div id="lampen"></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+/* ---------------------------------------------------------------------------
+   elders · er is geen wit licht
+
+   Je kiest bij de deur één van drie lampen op. Dat is je kleur, dit hele
+   bezoek — er is geen knopje dat je van gedachten laat veranderen en er is
+   geen witte stand. Twee derde van deze kamer zul je vanavond niet zien, en
+   je kunt niet weten wat.
+
+   In de kamer staat een menigte, honderden mensen, allemaal met hun gezicht
+   dezelfde kant op. Ze staan er drie keer, in drie inkten, precies over
+   elkaar heen — het is niet drie keer iets anders, het is drie keer
+   hetzelfde:
+
+     onder rood   (cyaan)   hun lichaam — wat er van buiten te zien is
+     onder groen  (magenta) hun hart — ieder in zijn eigen tempo
+     onder blauw  (geel)    hun blik — waar ze naar staan te kijken
+
+   Waar ze naar kijken staat in het midden, met een zwarte ring eromheen die
+   onder elk licht te zien is. Iedereen vindt die plek dus. Niemand ziet in
+   zijn eentje wat daar staat.
+
+   Want je bent niet alleen. Er dwalen twee mensen rond met de kleuren die
+   jij niet hebt, en al je eerdere bezoeken lopen hier ook nog rond — wat je
+   vorige keer deed is bewaard en loopt nu voor je uit, met de kleur die je
+   toen koos. Hun licht is echt licht: waar hun bundel op de muur valt zie
+   jij hun kleur inkt tevoorschijn komen, en waar twee bundels elkaar
+   overlappen wordt het licht opgeteld tot een kleur die geen van jullie
+   heeft. Drie bundels op één plek is wit.
+
+   Slepen, vegen, scrollen of de pijltjes schuiven de wereld; knijpen of
+   ctrl+scroll of +/− zoomt. Ver uitzoomen is hier het loont: dan zie je de
+   lichtjes van de anderen ergens in het zwart bewegen.
+--------------------------------------------------------------------------- */
+
+/* --------------------------------- de kleuren ----------------------------- */
+
+/* Drie echt monochrome standen — hoe zuiverder de bundel, hoe schoner de
+   inkt wegvalt onder de verkeerde kleur, en hoe eerlijker twee bundels bij
+   elkaar optellen. */
+const KLEUREN = [
+  { naam: 'rood',  kern: '255, 34, 12',  rand: '214, 12, 4',   toon: 191 },
+  { naam: 'groen', kern: '34, 245, 40',  rand: '10, 202, 24',  toon: 227 },
+  { naam: 'blauw', kern: '34, 40, 255',  rand: '14, 20, 224',  toon: 271 },
+];
+
+const CYAAN = 'rgb(0, 255, 255)';
+const MAGENTA = 'rgb(255, 0, 255)';
+const GEEL = 'rgb(255, 255, 0)';
+
+/* Halfdoorzichtige inkt blijft trouwens netjes geheim: minder dekking duwt
+   een kleur richting wit, en dat verandert alleen het kanaal dat toch al
+   werd teruggekaatst. Zwakke gele lijnen zijn onder rood en groen dus even
+   onzichtbaar als volle. Daarom mogen de blikken uitdoven. */
+
+/* -------------------------------- de drempel ------------------------------ */
+
+const drempel = document.getElementById('drempel');
+const lampen = document.getElementById('lampen');
+let binnen = false;
+let mijnKleur = 0;
+
+KLEUREN.forEach((k, i) => {
+  const b = document.createElement('button');
+  b.className = 'lamp';
+  b.type = 'button';
+  b.setAttribute('aria-label', k.naam);
+  const s = document.createElement('span');
+  s.style.background =
+    `radial-gradient(circle at 50% 50%, rgba(${k.kern}, 1) 0%,` +
+    ` rgba(${k.rand}, 0.85) 45%, rgba(${k.rand}, 0) 100%)`;
+  b.appendChild(s);
+  b.addEventListener('click', () => gaBinnen(i));
+  lampen.appendChild(b);
+});
+lampen.firstChild.focus();
+
+function gaBinnen(i) {
+  if (binnen) return;
+  binnen = true;
+  mijnKleur = i;
+  drempel.classList.add('weg');
+  document.body.classList.add('binnen');
+  maakBezoekers();
+  startGeluid();
+}
+
+window.addEventListener('keydown', (e) => {
+  if (!binnen && (e.key === '1' || e.key === '2' || e.key === '3')) {
+    gaBinnen(Number(e.key) - 1);
+  }
+});
+
+/* -------------------------------- de wereld ------------------------------- */
+
+const WERELD = { w: 3800, h: 2800 };
+const MIDDEN = { x: WERELD.w / 2, y: WERELD.h / 2 };
+
+/* De menigte. Allemaal even groot — het is een menigte, niemand steekt
+   erbovenuit — en dichter naarmate je het midden nadert. Iedereen kijkt
+   dezelfde kant op. */
+const MENSEN = Array.from({ length: 520 }, () => {
+  const hoek = Math.random() * Math.PI * 2;
+  const straal = 280 + Math.pow(Math.random(), 0.62) * 1450;
+  return {
+    x: MIDDEN.x + Math.cos(hoek) * straal,
+    y: MIDDEN.y + Math.sin(hoek) * straal * 0.78,
+    tempo: 0.75 + Math.random() * 0.95,
+    fase: Math.random() * Math.PI * 2,
+  };
+});
+for (const m of MENSEN) {
+  const dx = MIDDEN.x - m.x, dy = MIDDEN.y - m.y;
+  const d = Math.hypot(dx, dy) || 1;
+  m.kx = dx / d;                     // de richting waarin hij staat te kijken
+  m.ky = dy / d;
+}
+
+const doek = document.getElementById('wereld');
+const dctx = doek.getContext('2d');
+const lampdoek = document.getElementById('lampdoek');
+const lctx = lampdoek.getContext('2d');
+let dpr = 1;
+
+/* Het wereldoek staat scherp; daar zitten de dunne lijnen in. Het lichtdoek
+   staat expres op de helft van de schermdichtheid, en op retina dus op een
+   kwart van het aantal beeldpunten: licht is hier niets dan een zacht verloop
+   zonder één scherpe rand, en opgerekt is dat niet van het origineel te
+   onderscheiden. Wel scheelt het een hoop — met jou en zes anderen in de
+   kamer worden er zeven bundels per frame gevuld, en de buitenste gloed van
+   één bundel beslaat al bijna de helft van het scherm. */
+const LICHT_DICHTHEID = 0.5;
+
+function pasDoekenAan() {
+  dpr = Math.min(devicePixelRatio || 1, 2);
+  doek.width = Math.round(innerWidth * dpr);
+  doek.height = Math.round(innerHeight * dpr);
+  lampdoek.width = Math.max(1, Math.round(innerWidth * LICHT_DICHTHEID));
+  lampdoek.height = Math.max(1, Math.round(innerHeight * LICHT_DICHTHEID));
+}
+pasDoekenAan();
+
+/* ------------------------------- de camera -------------------------------- */
+
+let cx = MIDDEN.x;                 // wereldpunt in het midden van het scherm
+let cy = MIDDEN.y;
+let zoom = 1;
+const ZOOM_MIN = 0.16;
+const ZOOM_MAX = 3.5;
+
+function houdBinnen() {
+  cx = Math.max(0, Math.min(WERELD.w, cx));
+  cy = Math.max(0, Math.min(WERELD.h, cy));
+}
+
+/* Zoomen om een schermpunt heen: wat onder je vinger ligt blijft daar. */
+function zoomNaar(factor, mx, my) {
+  const wx = cx + (mx - innerWidth / 2) / zoom;
+  const wy = cy + (my - innerHeight / 2) / zoom;
+  zoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, zoom * factor));
+  cx = wx - (mx - innerWidth / 2) / zoom;
+  cy = wy - (my - innerHeight / 2) / zoom;
+  houdBinnen();
+}
+
+houdBinnen();
+window.addEventListener('resize', () => { pasDoekenAan(); houdBinnen(); });
+
+/* De straal van de lichtvlek. Op een telefoon is de korte schermkant zo smal
+   dat een deel daarvan bijna niets is, maar de lange kant nemen toont juist
+   te veel — het gemiddelde zit er netjes tussenin. */
+function lampStraal() {
+  const kort = Math.min(innerWidth, innerHeight);
+  return kort < 600 ? (innerWidth + innerHeight) * 0.08 : kort * 0.16;
+}
+
+/* -------------------------------- de anderen ------------------------------ */
+
+/* Twee soorten. Een 'dwaler' is er nu: hij loopt rond, hij heeft een van de
+   twee kleuren die jij niet koos, zodat er altijd alle drie de kleuren in de
+   kamer zijn. Een 'echo' ben jij, een vorig bezoek: zijn pad is toen
+   opgeschreven en wordt nu afgespeeld, in de kleur die je toen oppakte. Een
+   echo loopt zijn ronde, verdwijnt, en komt na een tijdje opnieuw binnen.
+
+   Ze weten allebei niet dat je er bent. Je kunt ze niet roepen. Je kunt
+   alleen zorgen dat je op dezelfde plek staat. */
+
+const BEZOEKERS = [];
+const OPSLAG = 'elders.bezoeken';
+const PAD_HZ = 8;                  // zo vaak wordt je plek onthouden
+const PAD_MAX = 640;               // en zo lang (80 seconden)
+
+function maakBezoekers() {
+  for (let i = 0; i < 3; i++) {
+    if (i === mijnKleur) continue;
+    const hoek = Math.random() * Math.PI * 2;
+    BEZOEKERS.push({
+      soort: 'dwaler',
+      kleur: i,
+      x: MIDDEN.x + Math.cos(hoek) * 900,
+      y: MIDDEN.y + Math.sin(hoek) * 700,
+      vx: 0, vy: 0,
+      doelX: MIDDEN.x, doelY: MIDDEN.y,
+      helder: 0,
+      aanwezig: true,
+    });
+  }
+  for (const bezoek of leesBezoeken()) {
+    if (!bezoek.p || bezoek.p.length < 8) continue;
+    BEZOEKERS.push({
+      soort: 'echo',
+      kleur: bezoek.k,
+      punten: bezoek.p,
+      klok: -(2 + Math.random() * 10),   // even wachten voor hij binnenkomt
+      x: bezoek.p[0], y: bezoek.p[1],
+      helder: 0,
+      aanwezig: false,
+    });
+  }
+  kiesDoel(BEZOEKERS[0]);
+  if (BEZOEKERS[1]) kiesDoel(BEZOEKERS[1]);
+}
+
+function kiesDoel(b) {
+  if (!b || b.soort !== 'dwaler') return;
+  const hoek = Math.random() * Math.PI * 2;
+  const straal = 200 + Math.pow(Math.random(), 0.7) * 1300;
+  b.doelX = MIDDEN.x + Math.cos(hoek) * straal;
+  b.doelY = MIDDEN.y + Math.sin(hoek) * straal * 0.78;
+}
+
+function werkBezoekersBij(dt) {
+  for (const b of BEZOEKERS) {
+    if (b.soort === 'dwaler') {
+      const dx = b.doelX - b.x, dy = b.doelY - b.y;
+      const d = Math.hypot(dx, dy);
+      if (d < 40) kiesDoel(b);
+      else {
+        const wil = Math.min(105, d * 0.8);
+        b.vx += ((dx / d) * wil - b.vx) * Math.min(1, 0.9 * dt);
+        b.vy += ((dy / d) * wil - b.vy) * Math.min(1, 0.9 * dt);
+        b.x += b.vx * dt;
+        b.y += b.vy * dt;
+      }
+      b.helder = Math.min(1, b.helder + dt * 0.4);
+    } else {
+      const n = b.punten.length / 2;
+      const duur = n / PAD_HZ;
+      b.klok += dt;
+      if (b.klok < 0) { b.aanwezig = false; b.helder = 0; continue; }
+      if (b.klok > duur) { b.klok = -(6 + Math.random() * 12); b.aanwezig = false; continue; }
+      b.aanwezig = true;
+      const f = b.klok * PAD_HZ;
+      const i = Math.min(n - 1, Math.floor(f));
+      const j = Math.min(n - 1, i + 1);
+      const r = f - i;
+      b.x = b.punten[i * 2] * (1 - r) + b.punten[j * 2] * r;
+      b.y = b.punten[i * 2 + 1] * (1 - r) + b.punten[j * 2 + 1] * r;
+      /* zacht opkomen en zacht weggaan, anders ploft er iemand in beeld */
+      const rand = Math.min(b.klok, duur - b.klok);
+      b.helder = Math.max(0, Math.min(1, rand / 1.6));
+    }
+  }
+}
+
+function leesBezoeken() {
+  try {
+    const rauw = localStorage.getItem(OPSLAG);
+    if (!rauw) return [];
+    const lijst = JSON.parse(rauw);
+    return Array.isArray(lijst) ? lijst.slice(-5) : [];
+  } catch (e) { return []; }
+}
+
+/* Jouw eigen pad, in wereldcoördinaten, voor de volgende keer. */
+const mijnPad = [];
+let padKlok = 0;
+
+function onthoud(dt, lx, ly) {
+  if (mijnPad.length >= PAD_MAX * 2) return;
+  padKlok += dt;
+  if (padKlok < 1 / PAD_HZ) return;
+  padKlok = 0;
+  mijnPad.push(Math.round(lx), Math.round(ly));
+}
+
+function bewaar() {
+  if (mijnPad.length < 40) return;
+  try {
+    const lijst = leesBezoeken();
+    lijst.push({ k: mijnKleur, p: mijnPad });
+    localStorage.setItem(OPSLAG, JSON.stringify(lijst.slice(-5)));
+  } catch (e) { /* geen opslag, geen echo's — dat mag */ }
+}
+addEventListener('pagehide', bewaar);
+addEventListener('visibilitychange', () => { if (document.hidden) bewaar(); });
+
+/* --------------------------------- het licht ------------------------------ */
+
+/* Twee lagen per bundel: een kleine hete kern en een ruime zwakke gloed. De
+   vele tussenstappen benaderen het kwadratische verval van echt licht — dat
+   oogt zachter en voorkomt harde randen en banding. */
+function bundel(sx, sy, r, kleur, kracht) {
+  if (kracht <= 0.004 || r <= 0) return;
+  const k = KLEUREN[kleur];
+  const a = (v) => (v * kracht).toFixed(4);
+
+  let g = lctx.createRadialGradient(sx, sy, 0, sx, sy, r);
+  g.addColorStop(0, `rgba(${k.kern}, ${a(0.9)})`);
+  g.addColorStop(0.22, `rgba(${k.kern}, ${a(0.62)})`);
+  g.addColorStop(0.44, `rgba(${k.rand}, ${a(0.34)})`);
+  g.addColorStop(0.66, `rgba(${k.rand}, ${a(0.14)})`);
+  g.addColorStop(0.84, `rgba(${k.rand}, ${a(0.04)})`);
+  g.addColorStop(1, 'rgba(0, 0, 0, 0)');
+  lctx.fillStyle = g;
+  lctx.fillRect(sx - r, sy - r, r * 2, r * 2);
+
+  const R = r * 2.6;
+  g = lctx.createRadialGradient(sx, sy, 0, sx, sy, R);
+  g.addColorStop(0, `rgba(${k.rand}, ${a(0.1)})`);
+  g.addColorStop(0.45, `rgba(${k.rand}, ${a(0.05)})`);
+  g.addColorStop(0.72, `rgba(${k.rand}, ${a(0.015)})`);
+  g.addColorStop(1, 'rgba(0, 0, 0, 0)');
+  lctx.fillStyle = g;
+  lctx.fillRect(sx - R, sy - R, R * 2, R * 2);
+}
+
+/* Alle bundels op één doek, bij elkaar opgeteld. 'lighter' doet precies wat
+   licht doet: rood erbij groen is geel, en alle drie is wit. Nergens wordt
+   iets afgetrokken, dus je kunt met licht ook niets verbergen. */
+function tekenLicht() {
+  lctx.setTransform(LICHT_DICHTHEID, 0, 0, LICHT_DICHTHEID, 0, 0);
+  lctx.globalCompositeOperation = 'source-over';
+  lctx.fillStyle = '#000';
+  lctx.fillRect(0, 0, innerWidth, innerHeight);
+  lctx.globalCompositeOperation = 'lighter';
+
+  const r = lampStraal();
+  for (const b of BEZOEKERS) {
+    if (b.helder <= 0.004) continue;
+    const sx = (b.x - cx) * zoom + innerWidth / 2;
+    const sy = (b.y - cy) * zoom + innerHeight / 2;
+    const br = r * zoom;             // hun lamp staat in de kamer, niet op je scherm
+    if (sx < -br * 3 || sy < -br * 3 || sx > innerWidth + br * 3 || sy > innerHeight + br * 3) continue;
+    bundel(sx, sy, br, b.kleur, b.helder);
+  }
+  bundel(px, py, r, mijnKleur, 1);
+
+  lctx.globalCompositeOperation = 'source-over';
+}
+
+/* --------------------------------- de inkt -------------------------------- */
+
+/* Elke laag wordt in één pad getekend en één keer aangezet — vijfhonderd
+   mensen maal drie inkten is anders te veel losse streken voor een telefoon. */
+function tekenWereld(t, lx, ly) {
+  dctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  dctx.fillStyle = '#fff';
+  dctx.fillRect(0, 0, innerWidth, innerHeight);
+  dctx.setTransform(dpr * zoom, 0, 0, dpr * zoom,
+    dpr * (innerWidth / 2 - cx * zoom), dpr * (innerHeight / 2 - cy * zoom));
+  dctx.lineCap = 'round';
+
+  const marge = 300;
+  const halveB = innerWidth / (2 * zoom) + marge;
+  const halveH = innerHeight / (2 * zoom) + marge;
+  const links = cx - halveB, rechts = cx + halveB;
+  const boven = cy - halveH, onder = cy + halveH;
+
+  const zicht = [];
+  for (const m of MENSEN) {
+    if (m.x < links || m.x > rechts || m.y < boven || m.y > onder) continue;
+    zicht.push(m);
+  }
+
+  /* rood → de lichamen (cyaan) */
+  dctx.strokeStyle = CYAAN;
+  dctx.lineWidth = 7;
+  dctx.beginPath();
+  for (const m of zicht) {
+    dctx.moveTo(m.x, m.y + 11);
+    dctx.lineTo(m.x, m.y + 33);
+  }
+  dctx.stroke();
+  dctx.lineWidth = 2.2;
+  dctx.beginPath();
+  for (const m of zicht) {
+    dctx.moveTo(m.x + 8, m.y);
+    dctx.arc(m.x, m.y, 8, 0, Math.PI * 2);
+  }
+  dctx.stroke();
+
+  /* groen → de harten (magenta), ieder in zijn eigen tempo */
+  dctx.fillStyle = MAGENTA;
+  dctx.beginPath();
+  for (const m of zicht) {
+    const s = Math.max(0, Math.sin(t * m.tempo + m.fase));
+    const puls = s * s * s * s;
+    const r = 3.2 + 3.4 * puls;
+    dctx.moveTo(m.x + r, m.y + 19);
+    dctx.arc(m.x, m.y + 19, r, 0, Math.PI * 2);
+  }
+  dctx.fill();
+
+  /* blauw → de blikken (geel). Ze doven uit met de afstand; halfdoorzichtig
+     geel blijft onder rood en groen even onzichtbaar als vol geel. */
+  dctx.strokeStyle = GEEL;
+  dctx.lineWidth = 2.4;
+  dctx.globalAlpha = 0.8;
+  dctx.beginPath();
+  for (const m of zicht) {
+    dctx.moveTo(m.x + m.kx * 12, m.y + m.ky * 12);
+    dctx.lineTo(m.x + m.kx * 120, m.y + m.ky * 120);
+  }
+  dctx.stroke();
+  dctx.globalAlpha = 0.34;
+  dctx.beginPath();
+  for (const m of zicht) {
+    dctx.moveTo(m.x + m.kx * 120, m.y + m.ky * 120);
+    dctx.lineTo(m.x + m.kx * 250, m.y + m.ky * 250);
+  }
+  dctx.stroke();
+  dctx.globalAlpha = 1;
+
+  tekenDeAnder(t, lx, ly);
+}
+
+/* Waar iedereen naar staat te kijken. De ring eromheen is zwart: zwarte inkt
+   kaatst onder elk licht niets terug, dus die vindt iedereen. Wie er staat
+   vindt niemand in zijn eentje. */
+function tekenDeAnder(t, lx, ly) {
+  const x = MIDDEN.x, y = MIDDEN.y;
+
+  dctx.strokeStyle = '#000';
+  dctx.lineWidth = 5;
+  dctx.beginPath();
+  dctx.arc(x, y + 26, 210, 0, Math.PI * 2);
+  dctx.stroke();
+
+  dctx.strokeStyle = CYAAN;
+  dctx.lineWidth = 20;
+  dctx.beginPath();
+  dctx.moveTo(x, y - 4);
+  dctx.lineTo(x, y + 68);
+  dctx.stroke();
+  dctx.lineWidth = 6;
+  dctx.beginPath();
+  dctx.arc(x, y - 40, 26, 0, Math.PI * 2);
+  dctx.stroke();
+
+  const s = Math.max(0, Math.sin(t * 0.42));
+  hartSlag = s * s * s * s;
+  dctx.fillStyle = MAGENTA;
+  dctx.beginPath();
+  dctx.arc(x, y + 22, 8 + 8 * hartSlag, 0, Math.PI * 2);
+  dctx.fill();
+
+  /* Hij kijkt als enige niet naar het midden. Hij kijkt naar jouw licht. */
+  const dx = lx - x, dy = ly - (y - 40);
+  const d = Math.hypot(dx, dy) || 1;
+  dctx.strokeStyle = GEEL;
+  dctx.lineWidth = 4;
+  dctx.globalAlpha = 0.85;
+  dctx.beginPath();
+  dctx.moveTo(x + (dx / d) * 30, y - 40 + (dy / d) * 30);
+  dctx.lineTo(x + (dx / d) * 200, y - 40 + (dy / d) * 200);
+  dctx.stroke();
+  dctx.globalAlpha = 0.3;
+  dctx.beginPath();
+  dctx.moveTo(x + (dx / d) * 200, y - 40 + (dy / d) * 200);
+  dctx.lineTo(x + (dx / d) * 380, y - 40 + (dy / d) * 380);
+  dctx.stroke();
+  dctx.globalAlpha = 1;
+}
+
+/* ----------------------------------- lus ---------------------------------- */
+
+let px = innerWidth / 2;           // je lamp, in schermpunten
+let py = innerHeight / 2;
+let hartSlag = 0;
+let vorigeMs = 0;
+
+requestAnimationFrame(function stap(ms) {
+  const t = ms / 1000;
+  const dt = Math.min((ms - vorigeMs) / 1000, 0.1) || 0;
+  vorigeMs = ms;
+
+  /* uitrol: na een veeg rolt de kamer nog even door */
+  if (vingers.size === 0 && (vaartX || vaartY)) {
+    cx -= vaartX * dt / zoom;
+    cy -= vaartY * dt / zoom;
+    houdBinnen();
+    const rem = Math.exp(-4 * dt);
+    vaartX *= rem;
+    vaartY *= rem;
+    if (Math.hypot(vaartX, vaartY) < 6) { vaartX = 0; vaartY = 0; }
+  }
+
+  /* je lamp in wereldcoördinaten */
+  const lx = cx + (px - innerWidth / 2) / zoom;
+  const ly = cy + (py - innerHeight / 2) / zoom;
+
+  if (binnen) {
+    werkBezoekersBij(dt);
+    onthoud(dt, lx, ly);
+  }
+  tekenLicht();
+  tekenWereld(t, lx, ly);
+  if (binnen) werkGeluidBij(dt, lx, ly);
+
+  requestAnimationFrame(stap);
+});
+
+/* ------------------------------ de besturing ------------------------------
+
+   Desktop: de muis is je lamp, slepen of scrollen schuift de kamer,
+   ctrl+scroll of +/− zoomt, pijltjes schuiven ook.
+
+   Mobiel:
+     vegen         — de kamer schuiven (met uitrol); het licht blijft staan
+     tikken        — het licht verplaatsen naar waar je tikt
+     vasthouden    — na een tel heb je de lamp beet en gaat hij mee
+     twee vingers  — knijpen zoomt, samen bewegen schuift                    */
+
+const vingers = new Map();
+let sleep = 0;
+let modus = null;                  // null | 'lamp' | 'schuif' | 'knijp'
+let greep = 0;
+let vaartX = 0, vaartY = 0;
+
+const GREEP_MS = 300;
+const TIK_PX = 10;
+
+window.addEventListener('pointerdown', (e) => {
+  if (!binnen || drempel.contains(e.target)) return;
+  if (e.pointerType === 'mouse' && e.button !== 0) return;
+  vaartX = 0;
+  vaartY = 0;
+  const v = { x: e.clientX, y: e.clientY, t: e.timeStamp };
+  vingers.set(e.pointerId, v);
+  if (vingers.size === 1) {
+    sleep = 0;
+    modus = null;
+    if (e.pointerType !== 'mouse') {
+      greep = setTimeout(() => {
+        if (modus !== null) return;
+        modus = 'lamp';
+        px = v.x;
+        py = v.y;
+      }, GREEP_MS);
+    }
+  } else {
+    clearTimeout(greep);
+    modus = 'knijp';
+  }
+});
+
+window.addEventListener('pointermove', (e) => {
+  if (e.pointerType === 'mouse') {
+    px = e.clientX;
+    py = e.clientY;
+  }
+  const v = vingers.get(e.pointerId);
+  if (!v || !binnen) return;
+
+  if (modus === 'knijp') {
+    if (vingers.size !== 2) return;
+    const [a, b] = [...vingers.values()];
+    const oudeAfstand = Math.hypot(a.x - b.x, a.y - b.y);
+    const oudeMx = (a.x + b.x) / 2;
+    const oudeMy = (a.y + b.y) / 2;
+    v.x = e.clientX;
+    v.y = e.clientY;
+    const nieuweAfstand = Math.hypot(a.x - b.x, a.y - b.y);
+    const mx = (a.x + b.x) / 2;
+    const my = (a.y + b.y) / 2;
+    cx -= (mx - oudeMx) / zoom;
+    cy -= (my - oudeMy) / zoom;
+    if (oudeAfstand > 0) zoomNaar(nieuweAfstand / oudeAfstand, mx, my);
+  } else if (modus === 'lamp') {
+    v.x = e.clientX;
+    v.y = e.clientY;
+    px = e.clientX;
+    py = e.clientY;
+  } else {
+    const dx = e.clientX - v.x;
+    const dy = e.clientY - v.y;
+    const dt = (e.timeStamp - v.t) / 1000;
+    v.x = e.clientX;
+    v.y = e.clientY;
+    v.t = e.timeStamp;
+    sleep += Math.abs(dx) + Math.abs(dy);
+    if (modus === null) {
+      if (sleep <= TIK_PX) return;
+      clearTimeout(greep);
+      modus = 'schuif';
+    }
+    cx -= dx / zoom;
+    cy -= dy / zoom;
+    houdBinnen();
+    if (e.pointerType !== 'mouse' && dt > 0) {
+      vaartX = 0.75 * vaartX + 0.25 * (dx / dt);
+      vaartY = 0.75 * vaartY + 0.25 * (dy / dt);
+    }
+  }
+});
+
+window.addEventListener('pointerup', (e) => {
+  const v = vingers.get(e.pointerId);
+  vingers.delete(e.pointerId);
+  if (!v || !binnen) return;
+  if (vingers.size === 0) {
+    clearTimeout(greep);
+    if (modus === null && sleep <= TIK_PX) {
+      px = e.clientX;
+      py = e.clientY;
+    }
+    if (modus !== 'schuif' || e.timeStamp - v.t > 80) { vaartX = 0; vaartY = 0; }
+    modus = null;
+  } else if (modus === 'knijp' && vingers.size === 1) {
+    const rest = vingers.values().next().value;
+    rest.t = e.timeStamp;
+    modus = 'schuif';
+  }
+});
+
+window.addEventListener('pointercancel', (e) => {
+  vingers.delete(e.pointerId);
+  if (vingers.size === 0) { clearTimeout(greep); modus = null; }
+});
+
+window.addEventListener('wheel', (e) => {
+  if (!binnen) return;
+  e.preventDefault();
+  if (e.ctrlKey) {
+    zoomNaar(Math.exp(-e.deltaY * 0.01), e.clientX, e.clientY);
+  } else {
+    cx += e.deltaX / zoom;
+    cy += e.deltaY / zoom;
+    houdBinnen();
+  }
+}, { passive: false });
+
+window.addEventListener('keydown', (e) => {
+  if (!binnen) return;
+  const stap = 90 / zoom;
+  if (e.key === 'ArrowLeft') cx -= stap;
+  else if (e.key === 'ArrowRight') cx += stap;
+  else if (e.key === 'ArrowUp') cy -= stap;
+  else if (e.key === 'ArrowDown') cy += stap;
+  else if (e.key === '+' || e.key === '=') { zoomNaar(1.18, innerWidth / 2, innerHeight / 2); return; }
+  else if (e.key === '-') { zoomNaar(1 / 1.18, innerWidth / 2, innerHeight / 2); return; }
+  else return;
+  e.preventDefault();
+  houdBinnen();
+});
+
+/* -------------------------------- het geluid ------------------------------ */
+
+let ctx = null;
+let hartGain = null;
+let geluidKlok = 0;
+
+function zet(param, waarde) {
+  param.setTargetAtTime(waarde, ctx.currentTime, 0.09);
+}
+
+function startGeluid() {
+  /* Vraag de browser dit als media te behandelen: dan speelt het door met de
+     stilschakelaar om en op de achtergrond waar dat mag. */
+  if (navigator.audioSession) navigator.audioSession.type = 'playback';
+
+  ctx = new (window.AudioContext || window.webkitAudioContext)();
+  if (ctx.state === 'suspended') ctx.resume();
+
+  /* Vooral iOS zet de context stil bij tabwissel of vergrendelen en niet
+     vanzelf weer aan; wek hem bij elk teken van leven. */
+  const wek = () => { if (ctx.state !== 'running') ctx.resume().catch(() => {}); };
+  ctx.onstatechange = wek;
+  document.addEventListener('visibilitychange', wek);
+  window.addEventListener('focus', wek);
+  window.addEventListener('pointerdown', wek);
+
+  const eind = ctx.createDynamicsCompressor();
+  eind.threshold.value = -18;
+  eind.ratio.value = 8;
+  eind.connect(ctx.destination);
+
+  const master = ctx.createGain();
+  master.gain.setValueAtTime(0.0001, ctx.currentTime);
+  master.gain.setTargetAtTime(0.5, ctx.currentTime + 0.5, 4.5);
+  master.connect(eind);
+
+  const ruimte = maakRuimte(master);
+
+  drone(master);
+  adem(master);
+  planFlard(ruimte);
+  hart(master);
+  for (const b of BEZOEKERS) stem(b, master);
+}
+
+/* Laag 1 — de drone. Twee paren sinussen die elkaar nét niet raken (trage
+   zwevingen), plus een kwint die een fractie te hoog ligt. */
+function drone(dest) {
+  const g = ctx.createGain();
+  g.gain.value = 1;
+  g.connect(dest);
+
+  const drift = ctx.createOscillator();
+  drift.frequency.value = 0.017;
+  const driftDiepte = ctx.createGain();
+  driftDiepte.gain.value = 9;      // cents
+  drift.connect(driftDiepte);
+  drift.start();
+
+  [[49, 0.22], [49.38, 0.22], [98, 0.1], [98.71, 0.1], [148.6, 0.045]]
+    .forEach(([freq, vol]) => {
+      const o = ctx.createOscillator();
+      o.type = 'sine';
+      o.frequency.value = freq;
+      driftDiepte.connect(o.detune);
+      const og = ctx.createGain();
+      og.gain.value = vol;
+      o.connect(og).connect(g);
+      o.start();
+    });
+}
+
+/* Laag 2 — adem. Gefilterde ruis, heel zacht, als een ruimte die te groot is
+   voor wie erin staat. */
+function adem(dest) {
+  const duur = 4;
+  const buf = ctx.createBuffer(1, ctx.sampleRate * duur, ctx.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+
+  const bron = ctx.createBufferSource();
+  bron.buffer = buf;
+  bron.loop = true;
+
+  const band = ctx.createBiquadFilter();
+  band.type = 'bandpass';
+  band.frequency.value = 700;
+  band.Q.value = 7;
+
+  const zwerf = ctx.createOscillator();
+  zwerf.frequency.value = 0.011;
+  const zwerfDiepte = ctx.createGain();
+  zwerfDiepte.gain.value = 380;
+  zwerf.connect(zwerfDiepte).connect(band.frequency);
+  zwerf.start();
+
+  const g = ctx.createGain();
+  g.gain.value = 0.03;
+  bron.connect(band).connect(g).connect(dest);
+  bron.start();
+}
+
+/* Laag 3 — flarden. Op onregelmatige momenten zwelt ergens een toon aan en
+   houdt dan abrupt op; de galm maakt het af. */
+function planFlard(ruimte) {
+  const wacht = 8 + Math.random() * 16;
+  setTimeout(() => {
+    if (ctx) flard(ruimte);
+    planFlard(ruimte);
+  }, wacht * 1000);
+}
+
+function flard(ruimte) {
+  const t = ctx.currentTime;
+  const zwel = 2.5 + Math.random() * 4;
+  const freq = 240 * Math.pow(2, Math.random() * 2.3);
+
+  const o = ctx.createOscillator();
+  o.type = 'sine';
+  o.frequency.setValueAtTime(freq, t);
+  o.frequency.linearRampToValueAtTime(freq * (0.985 + Math.random() * 0.03), t + zwel);
+
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.055, t + zwel);
+  g.gain.setValueAtTime(0.0001, t + zwel);
+
+  const pan = ctx.createStereoPanner();
+  pan.pan.value = Math.random() * 1.6 - 0.8;
+
+  o.connect(g).connect(pan).connect(ruimte);
+  o.start(t);
+  o.stop(t + zwel + 0.1);
+}
+
+/* Laag 4 — het hart in het midden. Je hoort het voor je het kunt zien, en
+   het klopt trager dan alle andere. */
+function hart(dest) {
+  hartGain = ctx.createGain();
+  hartGain.gain.value = 0;
+  const laag = ctx.createBiquadFilter();
+  laag.type = 'lowpass';
+  laag.frequency.value = 220;
+  hartGain.connect(laag).connect(dest);
+  for (const f of [41, 62.4]) {
+    const o = ctx.createOscillator();
+    o.type = 'sine';
+    o.frequency.value = f;
+    const g = ctx.createGain();
+    g.gain.value = f < 50 ? 1 : 0.4;
+    o.connect(g).connect(hartGain);
+    o.start();
+  }
+}
+
+/* Laag 5 — de anderen. Iedereen die hier rondloopt zoemt zachtjes, uit de
+   goede richting, en harder naarmate hij dichterbij is. Wie op jouw plek
+   staat, is niet meer te overhoren. */
+function stem(b, dest) {
+  const o = ctx.createOscillator();
+  o.type = 'sine';
+  o.frequency.value = KLEUREN[b.kleur].toon;
+  const boven = ctx.createOscillator();
+  boven.type = 'sine';
+  boven.frequency.value = KLEUREN[b.kleur].toon * 2.005;
+  const bg = ctx.createGain();
+  bg.gain.value = 0.25;
+
+  b.gain = ctx.createGain();
+  b.gain.gain.value = 0;
+  b.pan = ctx.createStereoPanner();
+  o.connect(b.gain);
+  boven.connect(bg).connect(b.gain);
+  b.gain.connect(b.pan).connect(dest);
+  o.start();
+  boven.start();
+}
+
+function werkGeluidBij(dt, lx, ly) {
+  if (!ctx) return;
+  geluidKlok += dt;
+  if (geluidKlok < 0.06) return;
+  geluidKlok = 0;
+
+  /* het hart: hoorbaar vanaf een meter of wat, kloppend mee met wat je
+     onder groen licht zou zien */
+  const dm = Math.hypot(lx - MIDDEN.x, ly - MIDDEN.y);
+  const nabij = Math.max(0, 1 - dm / 1100);
+  if (hartGain) zet(hartGain.gain, nabij * nabij * (0.06 + 0.5 * hartSlag));
+
+  /* de anderen: richting en afstand op het scherm, want daar sta jij */
+  const r = lampStraal();
+  for (const b of BEZOEKERS) {
+    if (!b.gain) continue;
+    if (!b.aanwezig && b.soort === 'echo') { zet(b.gain.gain, 0); continue; }
+    const sx = (b.x - cx) * zoom + innerWidth / 2;
+    const sy = (b.y - cy) * zoom + innerHeight / 2;
+    const d = Math.hypot(sx - px, sy - py);
+    const raak = Math.max(0, 1 - d / (r * 2.2));
+    zet(b.pan.pan, Math.max(-0.9, Math.min(0.9, (sx - px) / (innerWidth * 0.6))));
+    zet(b.gain.gain, b.helder * (0.006 + 0.05 * raak * raak));
+  }
+}
+
+/* De ruimte: twee delays die elkaar voeden, met een donker filter in de lus
+   zodat elke herhaling doffer wordt. */
+function maakRuimte(dest) {
+  const inlaat = ctx.createGain();
+  inlaat.gain.value = 1;
+
+  const d1 = ctx.createDelay(2);
+  d1.delayTime.value = 0.41;
+  const d2 = ctx.createDelay(2);
+  d2.delayTime.value = 0.63;
+
+  const terug1 = ctx.createGain();
+  terug1.gain.value = 0.5;
+  const terug2 = ctx.createGain();
+  terug2.gain.value = 0.5;
+
+  const dof = ctx.createBiquadFilter();
+  dof.type = 'lowpass';
+  dof.frequency.value = 1600;
+
+  inlaat.connect(dest);            // droog
+  inlaat.connect(dof);
+  dof.connect(d1);
+  dof.connect(d2);
+  d1.connect(terug1).connect(d2);
+  d2.connect(terug2).connect(d1);
+  d1.connect(dest);
+  d2.connect(dest);
+
+  return inlaat;
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,1002 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="robots" content="noindex, nofollow">
+  <title>elders · de stroom</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#000000">
+  <meta name="color-scheme" content="dark">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="description" content="Een zwarte kamer met een zaklamp met drie kleuren. Onder rood drijft er iets rond dat nergens op slaat. Onder groen staan de muren waar het langs schampt. Onder blauw ligt de stroming die het duwt.">
+  <meta name="author" content="Rick van der Wolk">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; background: #000; }
+    body {
+      background: #000;
+      overflow: hidden;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: none;
+      font-family: system-ui, 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    }
+    body.binnen { cursor: none; }
+
+    /* -- de lamp: een lichtvlek die de cursor vervangt -- */
+    #lamp {
+      position: fixed; inset: 0;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.09s ease;
+    }
+    #lamp.aan { opacity: 1; }
+
+    /* -- de muur: een witte laag met vormen in geheime inkt, vermenig-
+          vuldigd met het licht eronder (mix-blend-mode: multiply). Echte
+          kleurfysica: een oppervlak kaatst alleen kleuren terug die het
+          licht bevat. De vormen staan in complementaire kleuren:
+
+            cyaan   kaatst groen+blauw  → alleen onder ROOD licht donker
+            magenta kaatst rood+blauw   → alleen onder GROEN licht donker
+            geel    kaatst rood+groen   → alleen onder BLAUW licht donker
+
+          Onder de twee andere kleuren valt zo'n vorm exact weg tegen de
+          aangelichte muur. Zwart blijft onder elke kleur een silhouet. -- */
+    #muur {
+      /* Geen background-color hier: het doek vult zichzelf elk frame wit.
+         iOS 26 kleurt zijn status- en werkbalk naar de background-color van
+         fixed elementen aan de randen (zonder de blend mee te rekenen). */
+      position: fixed; inset: 0;
+      mix-blend-mode: multiply;
+      pointer-events: none;
+      overflow: hidden;
+    }
+
+    /* -- de randen: theme-color doet op iOS 26 niets meer; Safari leest de
+          background-color van fixed elementen die de randen raken. Twee
+          zwarte strookjes houden de balken donker. -- */
+    .balk {
+      position: fixed;
+      left: 0; right: 0;
+      height: 12px;
+      background-color: #000;
+      pointer-events: none;
+      z-index: 10;
+    }
+    #balkboven { top: -8px; }
+    #balkonder { bottom: -8px; }
+
+    #wereld {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+    }
+
+    /* -- de drempel -- */
+    #drempel {
+      position: fixed; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      padding: 24px;
+      opacity: 1;
+      transition: opacity 1.8s ease;
+    }
+    #drempel.weg { opacity: 0; pointer-events: none; }
+    #kader {
+      max-width: 26em;
+      border: 1px solid #2a2a2a;
+      background: #050505;
+      padding: 40px 44px 36px;
+    }
+    #kader p {
+      color: #9a9a9a;
+      font-size: 15px;
+      line-height: 1.9;
+      letter-spacing: 0.02em;
+      margin-bottom: 32px;
+    }
+    #ok {
+      display: block;
+      margin: 0 auto;
+      background: none;
+      border: 1px solid #3a3a3a;
+      color: #9a9a9a;
+      font: inherit;
+      font-size: 14px;
+      letter-spacing: 0.12em;
+      padding: 9px 34px;
+      cursor: pointer;
+      transition: border-color 0.4s ease, color 0.4s ease;
+    }
+    #ok:hover, #ok:focus-visible {
+      border-color: #777;
+      color: #ddd;
+      outline: none;
+    }
+  </style>
+</head>
+<body>
+
+<div class="balk" id="balkboven"></div>
+<div class="balk" id="balkonder"></div>
+<div id="lamp"></div>
+<div id="muur">
+  <canvas id="wereld"></canvas>
+</div>
+
+<div id="drempel">
+  <div id="kader">
+    <p>Een zwarte kamer, groter dan je scherm. Je hebt een zaklamp met drie
+    kleuren, en er is geen wit licht. Wat er staat hangt af van welke kleur
+    je aan hebt — en wat er gebeurt begrijp je pas als je er een andere op
+    zet.</p>
+    <button id="ok" type="button">ok</button>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+/* ---------------------------------------------------------------------------
+   elders · de stroom
+
+   Dezelfde kamer, dezelfde lamp: klikken draait het filter door, rood →
+   groen → blauw → donker. Maar hier zijn de drie inkten geen drie
+   verschillende dingen. Het is één ding, drie keer anders gelezen — en de
+   drie lezingen zijn oorzaak en gevolg van elkaar.
+
+     rood  (cyaan)   wat er gebeurt. Duizend deeltjes drijven door de
+                     kamer, trekken sporen, buigen om onzichtbare hoeken,
+                     lopen ergens vast en persen zich dan ergens anders
+                     ineens met z'n allen doorheen. Onder rood alleen slaat
+                     dat nergens op.
+     groen (magenta) de muren. Een plattegrond van kamers en deuren. Dit is
+                     de eerste helft van het antwoord: ze buigen niet, ze
+                     stuiten. Die opstopping is een deur.
+     blauw (geel)    de stroming. Het veld dat ze duwt, getekend als lange
+                     stroomlijnen, met de plekken waar ze vandaan komen en
+                     waar ze verdwijnen. Dit is de tweede helft: ze gaan
+                     niet zomaar die kant op, ze worden gedragen.
+
+   De muren staan de deeltjes echt in de weg en het veld duwt ze echt: als
+   je de muren weghaalt gaan ze ergens anders heen. Er wordt niets
+   nagebootst dat er niet is.
+
+   Slepen, vegen, scrollen of de pijltjes schuiven de wereld onder je licht
+   door; knijpen of ctrl+scroll of +/− zoomt.
+--------------------------------------------------------------------------- */
+
+const drempel = document.getElementById('drempel');
+const ok = document.getElementById('ok');
+let binnen = false;
+
+function gaBinnen() {
+  if (binnen) return;
+  binnen = true;
+  drempel.classList.add('weg');
+  document.body.classList.add('binnen');
+  startGeluid();
+}
+
+ok.addEventListener('click', gaBinnen);
+window.addEventListener('keydown', (e) => { if (e.key === 'Enter') gaBinnen(); });
+ok.focus();
+
+/* --------------------------------- de lamp -------------------------------- */
+
+/* Alleen de drie kleuren — er is geen wit of warm licht, dus geen stand die
+   alle inkten tegelijk verraadt. De standen zijn echt monochroom, anders
+   lekt er alsnog van alles door. */
+const STANDEN = [
+  { kern: '255, 34, 12', rand: '214, 12, 4' },     // rood
+  { kern: '34, 245, 40', rand: '10, 202, 24' },    // groen
+  { kern: '34, 40, 255', rand: '14, 20, 224' },    // blauw
+];
+
+const lamp = document.getElementById('lamp');
+let stand = -1;                    // -1 = uit
+let px = innerWidth / 2;
+let py = innerHeight / 2;
+
+/* -------------------------------- de wereld ------------------------------- */
+
+/* Kleiner dan de andere kamers, en met opzet. Je lichtvlek is ongeveer een
+   zesde van de schermbreedte; in een kamer van 4000×3000 vielen er drie
+   deeltjes in je licht en dwaalde je verder door leegte. Alles moet dicht
+   genoeg op elkaar staan dat je overal waar je schijnt iets ziet — anders
+   kun je de drie kleuren nooit met elkaar in verband brengen, en dat is
+   het enige wat hier te doen valt. */
+const WERELD = { w: 2400, h: 1800 };
+const CYAAN = 'rgb(0, 255, 255)';
+const MAGENTA = 'rgb(255, 0, 255)';
+const GEEL = 'rgb(255, 255, 0)';
+
+const doek = document.getElementById('wereld');
+const dctx = doek.getContext('2d');
+let dpr = 1;
+
+function pasDoekAan() {
+  dpr = Math.min(devicePixelRatio || 1, 2);
+  doek.width = Math.round(innerWidth * dpr);
+  doek.height = Math.round(innerHeight * dpr);
+}
+pasDoekAan();
+
+/* ------------------------------- de plattegrond ---------------------------- */
+
+/* Een rooster van cellen, en tussen twee cellen staat wel of geen muur. Dat
+   is niet alleen goedkoop om te tekenen maar vooral goedkoop om tegenaan te
+   botsen: een deeltje hoeft niet duizend muurtjes af te gaan, het kijkt
+   alleen of de rand die het net overstak dicht was.
+
+   De indeling komt uit herhaald doormidden delen, met in elke tussenmuur
+   één of twee deuren. Dat geeft kamers met gangen ertussen in plaats van
+   een doolhof; een doolhof is een puzzel en dit is er geen. */
+
+const CEL = 75;
+const GW = Math.round(WERELD.w / CEL);     // cellen breed
+const GH = Math.round(WERELD.h / CEL);     // cellen hoog
+
+const vmuur = new Uint8Array((GW + 1) * GH);   // muur links van cel (x, y)
+const hmuur = new Uint8Array(GW * (GH + 1));   // muur boven cel (x, y)
+
+const vIdx = (x, y) => y * (GW + 1) + x;
+const hIdx = (x, y) => y * GW + x;
+
+function bouwPlattegrond() {
+  for (let y = 0; y < GH; y++) { vmuur[vIdx(0, y)] = 1; vmuur[vIdx(GW, y)] = 1; }
+  for (let x = 0; x < GW; x++) { hmuur[hIdx(x, 0)] = 1; hmuur[hIdx(x, GH)] = 1; }
+  verdeel(0, 0, GW, GH, 0);
+}
+
+function verdeel(x0, y0, x1, y1, diep) {
+  const b = x1 - x0, h = y1 - y0;
+  if (diep > 5 || (b < 7 && h < 7)) return;
+  if (b >= h) {
+    if (b < 7) return;
+    const sx = x0 + 3 + Math.floor(Math.random() * (b - 6));
+    for (let y = y0; y < y1; y++) vmuur[vIdx(sx, y)] = 1;
+    zetDeuren(h, (k) => { vmuur[vIdx(sx, y0 + k)] = 0; }, h);
+    verdeel(x0, y0, sx, y1, diep + 1);
+    verdeel(sx, y0, x1, y1, diep + 1);
+  } else {
+    if (h < 7) return;
+    const sy = y0 + 3 + Math.floor(Math.random() * (h - 6));
+    for (let x = x0; x < x1; x++) hmuur[hIdx(x, sy)] = 1;
+    zetDeuren(b, (k) => { hmuur[hIdx(x0 + k, sy)] = 0; }, b);
+    verdeel(x0, y0, x1, sy, diep + 1);
+    verdeel(x0, sy, x1, y1, diep + 1);
+  }
+}
+
+/* Eén of twee deuren per muur, elk twee cellen breed. Smaller en de deeltjes
+   komen er nauwelijks doorheen; dan wordt het een dam in plaats van een
+   deur, en juist die doorgang is wat je onder groen wilt zien. */
+function zetDeuren(lengte, open) {
+  const aantal = lengte > 12 ? 2 : 1;
+  for (let i = 0; i < aantal; i++) {
+    const k = Math.floor(Math.random() * (lengte - 1));
+    open(k);
+    open(k + 1);
+  }
+}
+bouwPlattegrond();
+
+/* --------------------------------- de stroming ----------------------------- */
+
+/* Een richtingsveld op een grof rooster: per knoop een hoek uit zachte ruis.
+   Alles wat drijft leest zijn duwtje hier af, en de stroomlijnen onder blauw
+   zijn niets anders dan dit veld, uitgewandeld. Ze trekken zich niets aan
+   van de muren — het is een kracht, geen pad. Dat verschil is precies wat
+   er te zien valt als je van blauw naar groen gaat. */
+
+const VCEL = 170;
+const VW = Math.ceil(WERELD.w / VCEL) + 2;
+const VH = Math.ceil(WERELD.h / VCEL) + 2;
+const veldHoek = new Float32Array(VW * VH);
+
+(function bouwVeld() {
+  const ruw = new Float32Array(VW * VH);
+  for (let i = 0; i < ruw.length; i++) ruw[i] = Math.random() * Math.PI * 2;
+  // een paar keer uitsmeren; scherpe hoeken in een stroming bestaan niet
+  for (let ronde = 0; ronde < 4; ronde++) {
+    for (let y = 0; y < VH; y++) {
+      for (let x = 0; x < VW; x++) {
+        let sx = 0, sy = 0;
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            const nx = Math.min(VW - 1, Math.max(0, x + dx));
+            const ny = Math.min(VH - 1, Math.max(0, y + dy));
+            const a = ruw[ny * VW + nx];
+            sx += Math.cos(a);
+            sy += Math.sin(a);
+          }
+        }
+        veldHoek[y * VW + x] = Math.atan2(sy, sx);
+      }
+    }
+    ruw.set(veldHoek);
+  }
+})();
+
+/* De hoek op een willekeurig punt, zacht tussen de knopen door. Hoeken mag je
+   niet zomaar middelen (bij de overgang van 359° naar 1° krijg je dan 180°),
+   dus we middelen de richtingen zelf. */
+function stroming(x, y, uit) {
+  const fx = x / VCEL + 0.5, fy = y / VCEL + 0.5;
+  let ix = fx | 0, iy = fy | 0;
+  ix = Math.min(VW - 2, Math.max(0, ix));
+  iy = Math.min(VH - 2, Math.max(0, iy));
+  let tx = fx - ix, ty = fy - iy;
+  tx = tx * tx * (3 - 2 * tx);
+  ty = ty * ty * (3 - 2 * ty);
+  const o = iy * VW + ix;
+  const a = veldHoek[o], b = veldHoek[o + 1];
+  const c = veldHoek[o + VW], d = veldHoek[o + VW + 1];
+  const cx = (Math.cos(a) * (1 - tx) + Math.cos(b) * tx) * (1 - ty)
+           + (Math.cos(c) * (1 - tx) + Math.cos(d) * tx) * ty;
+  const cy = (Math.sin(a) * (1 - tx) + Math.sin(b) * tx) * (1 - ty)
+           + (Math.sin(c) * (1 - tx) + Math.sin(d) * tx) * ty;
+  const l = Math.hypot(cx, cy) || 1;
+  uit[0] = cx / l;
+  uit[1] = cy / l;
+}
+
+/* De bronnen waar het vandaan komt en de putten waar het in verdwijnt. */
+const BRONNEN = [];
+const PUTTEN = [];
+for (let i = 0; i < 4; i++) {
+  BRONNEN.push({ x: 200 + Math.random() * (WERELD.w - 400), y: 200 + Math.random() * (WERELD.h - 400) });
+  PUTTEN.push({ x: 200 + Math.random() * (WERELD.w - 400), y: 200 + Math.random() * (WERELD.h - 400) });
+}
+
+/* De stroomlijnen: één keer uitgewandeld en daarna alleen nog getekend. Een
+   stroomlijn per frame opnieuw uitrekenen zou zonde zijn — het veld beweegt
+   niet. */
+const LIJNEN = [];
+(function trekLijnen() {
+  const uit = [0, 0];
+  for (let i = 0; i < 420; i++) {
+    let x = Math.random() * WERELD.w;
+    let y = Math.random() * WERELD.h;
+    const punten = [x, y];
+    for (let s = 0; s < 64; s++) {
+      stroming(x, y, uit);
+      x += uit[0] * 17;
+      y += uit[1] * 17;
+      if (x < 0 || y < 0 || x > WERELD.w || y > WERELD.h) break;
+      punten.push(x, y);
+    }
+    if (punten.length > 12) LIJNEN.push(Float32Array.from(punten));
+  }
+})();
+
+/* ---------------------------------- de deeltjes ---------------------------- */
+
+/* Vier vorige plekken per deeltje, zodat het een streep trekt in plaats van
+   een stip te zijn. Een stip vertelt je waar iets is; een streep vertelt je
+   waar het heen gaat, en dat is hier het hele punt. */
+const STAART = 5;
+const AANTAL = 5000;
+
+const dx = new Float32Array(AANTAL);
+const dy = new Float32Array(AANTAL);
+const dvx = new Float32Array(AANTAL);
+const dvy = new Float32Array(AANTAL);
+const spoor = new Float32Array(AANTAL * STAART * 2);
+let spoorKop = 0;
+
+function zetNeer(i, bijBron) {
+  let x, y;
+  if (bijBron && Math.random() < 0.45) {
+    const b = BRONNEN[(Math.random() * BRONNEN.length) | 0];
+    x = b.x + (Math.random() - 0.5) * 160;
+    y = b.y + (Math.random() - 0.5) * 160;
+  } else {
+    x = Math.random() * WERELD.w;
+    y = Math.random() * WERELD.h;
+  }
+  dx[i] = Math.min(WERELD.w - 2, Math.max(2, x));
+  dy[i] = Math.min(WERELD.h - 2, Math.max(2, y));
+  dvx[i] = 0;
+  dvy[i] = 0;
+  for (let s = 0; s < STAART; s++) {
+    spoor[(i * STAART + s) * 2] = dx[i];
+    spoor[(i * STAART + s) * 2 + 1] = dy[i];
+  }
+}
+for (let i = 0; i < AANTAL; i++) zetNeer(i, false);
+
+const richting = [0, 0];
+
+function stroomBij(dt) {
+  spoorKop = (spoorKop + 1) % STAART;
+  const dempen = Math.exp(-1.6 * dt);
+
+  for (let i = 0; i < AANTAL; i++) {
+    const x = dx[i], y = dy[i];
+
+    stroming(x, y, richting);
+    dvx[i] = dvx[i] * dempen + richting[0] * 150 * dt;
+    dvy[i] = dvy[i] * dempen + richting[1] * 150 * dt;
+
+    /* putten zuigen, en wie erin valt begint weer bij een bron */
+    for (let p = 0; p < PUTTEN.length; p++) {
+      const ax = PUTTEN[p].x - x, ay = PUTTEN[p].y - y;
+      const d = Math.hypot(ax, ay);
+      if (d < 60) { zetNeer(i, true); break; }
+      if (d < 420) {
+        const kracht = (1 - d / 420) * 90 * dt;
+        dvx[i] += (ax / d) * kracht;
+        dvy[i] += (ay / d) * kracht;
+      }
+    }
+
+    let nx = dx[i] + dvx[i] * dt;
+    let ny = dy[i] + dvy[i] * dt;
+
+    /* botsen: per as kijken of de rand die we oversteken dichtzit. Eerst x,
+       dan y — daardoor glijdt een deeltje langs een muur in plaats van er
+       tegenaan te blijven plakken, en dat is precies wat je onder rood ziet
+       gebeuren zonder te weten waarom. */
+    const cy = (dy[i] / CEL) | 0;
+    const cx0 = (dx[i] / CEL) | 0;
+    const cx1 = (nx / CEL) | 0;
+    if (cx1 !== cx0 && cy >= 0 && cy < GH) {
+      const rand = cx1 > cx0 ? cx1 : cx0;
+      if (rand >= 0 && rand <= GW && vmuur[vIdx(rand, cy)]) {
+        nx = cx1 > cx0 ? rand * CEL - 0.5 : rand * CEL + 0.5;
+        dvx[i] = 0;
+      }
+    }
+    const ncx = (nx / CEL) | 0;
+    const cy0 = (dy[i] / CEL) | 0;
+    const cy1 = (ny / CEL) | 0;
+    if (cy1 !== cy0 && ncx >= 0 && ncx < GW) {
+      const rand = cy1 > cy0 ? cy1 : cy0;
+      if (rand >= 0 && rand <= GH && hmuur[hIdx(ncx, rand)]) {
+        ny = cy1 > cy0 ? rand * CEL - 0.5 : rand * CEL + 0.5;
+        dvy[i] = 0;
+      }
+    }
+
+    if (nx < 1 || ny < 1 || nx > WERELD.w - 1 || ny > WERELD.h - 1) {
+      zetNeer(i, true);
+      continue;
+    }
+
+    dx[i] = nx;
+    dy[i] = ny;
+    spoor[(i * STAART + spoorKop) * 2] = nx;
+    spoor[(i * STAART + spoorKop) * 2 + 1] = ny;
+  }
+}
+
+/* ---------------------------------- tekenen -------------------------------- */
+
+function tekenWereld() {
+  dctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  dctx.fillStyle = '#fff';
+  dctx.fillRect(0, 0, innerWidth, innerHeight);
+  dctx.setTransform(dpr * zoom, 0, 0, dpr * zoom,
+    dpr * (innerWidth / 2 - cx * zoom), dpr * (innerHeight / 2 - cy * zoom));
+  dctx.lineCap = 'round';
+  dctx.lineJoin = 'round';
+
+  const marge = 200;
+  const hb = innerWidth / (2 * zoom) + marge;
+  const hh = innerHeight / (2 * zoom) + marge;
+  const links = cx - hb, rechts = cx + hb;
+  const boven = cy - hh, onder = cy + hh;
+
+  /* blauw → de stroming. Eerst, want het ligt het diepst: het is de reden
+     onder de reden. Halfdoorzichtig geel blijft onder rood en groen even
+     onzichtbaar als vol geel, dus de lijnen mogen uitdoven. */
+  dctx.strokeStyle = GEEL;
+  dctx.lineWidth = 2.6;
+  for (const [deel, alfa] of [[0, 0.72], [1, 0.3]]) {
+    dctx.globalAlpha = alfa;
+    dctx.beginPath();
+    for (const L of LIJNEN) {
+      const n = L.length / 2;
+      const van = deel === 0 ? 0 : (n >> 1);
+      const tot = deel === 0 ? (n >> 1) + 1 : n;
+      if (L[0] < links - 1800 || L[0] > rechts + 1800 ||
+          L[1] < boven - 1800 || L[1] > onder + 1800) continue;
+      dctx.moveTo(L[van * 2], L[van * 2 + 1]);
+      for (let s = van + 1; s < tot; s++) dctx.lineTo(L[s * 2], L[s * 2 + 1]);
+    }
+    dctx.stroke();
+  }
+
+  /* de bronnen en de putten: waar het begint en waar het ophoudt */
+  dctx.lineWidth = 3.5;
+  dctx.globalAlpha = 0.85;
+  dctx.beginPath();
+  for (const b of BRONNEN) for (let r = 22; r <= 66; r += 22) {
+    dctx.moveTo(b.x + r, b.y);
+    dctx.arc(b.x, b.y, r, 0, Math.PI * 2);
+  }
+  dctx.stroke();
+  dctx.beginPath();
+  for (const p of PUTTEN) {
+    dctx.moveTo(p.x + 70, p.y);
+    dctx.arc(p.x, p.y, 70, 0, Math.PI * 2);
+    dctx.moveTo(p.x - 48, p.y - 48);
+    dctx.lineTo(p.x + 48, p.y + 48);
+    dctx.moveTo(p.x + 48, p.y - 48);
+    dctx.lineTo(p.x - 48, p.y + 48);
+  }
+  dctx.stroke();
+  dctx.globalAlpha = 1;
+
+  /* groen → de muren */
+  dctx.strokeStyle = MAGENTA;
+  dctx.lineWidth = 6;
+  dctx.beginPath();
+  const x0 = Math.max(0, ((links / CEL) | 0) - 1), x1 = Math.min(GW, ((rechts / CEL) | 0) + 2);
+  const y0 = Math.max(0, ((boven / CEL) | 0) - 1), y1 = Math.min(GH, ((onder / CEL) | 0) + 2);
+  for (let y = y0; y < y1; y++) {
+    for (let x = x0; x <= x1; x++) {
+      if (x <= GW && vmuur[vIdx(x, y)]) {
+        dctx.moveTo(x * CEL, y * CEL);
+        dctx.lineTo(x * CEL, (y + 1) * CEL);
+      }
+    }
+  }
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0; x < x1; x++) {
+      if (y <= GH && hmuur[hIdx(x, y)]) {
+        dctx.moveTo(x * CEL, y * CEL);
+        dctx.lineTo((x + 1) * CEL, y * CEL);
+      }
+    }
+  }
+  dctx.stroke();
+
+  /* rood → wat er gebeurt. De staart in één pad, en de koppen als aparte
+     dikkere stippen; anders is een deeltje een streepje zonder voorkant en
+     zie je niet welke kant het op gaat. */
+  dctx.strokeStyle = CYAAN;
+  dctx.lineWidth = 2.4;
+  dctx.globalAlpha = 0.75;
+  dctx.beginPath();
+  for (let i = 0; i < AANTAL; i++) {
+    if (dx[i] < links || dx[i] > rechts || dy[i] < boven || dy[i] > onder) continue;
+    let eerst = true;
+    for (let s = 1; s <= STAART; s++) {
+      const k = (i * STAART + (spoorKop + s) % STAART) * 2;
+      if (eerst) { dctx.moveTo(spoor[k], spoor[k + 1]); eerst = false; }
+      else dctx.lineTo(spoor[k], spoor[k + 1]);
+    }
+  }
+  dctx.stroke();
+
+  dctx.globalAlpha = 1;
+  dctx.fillStyle = CYAAN;
+  dctx.beginPath();
+  for (let i = 0; i < AANTAL; i++) {
+    if (dx[i] < links || dx[i] > rechts || dy[i] < boven || dy[i] > onder) continue;
+    dctx.moveTo(dx[i] + 3.4, dy[i]);
+    dctx.arc(dx[i], dy[i], 3.4, 0, Math.PI * 2);
+  }
+  dctx.fill();
+}
+
+/* ------------------------------------ lus ---------------------------------- */
+
+let vorigeMs = 0;
+
+requestAnimationFrame(function stap(ms) {
+  const dt = Math.min((ms - vorigeMs) / 1000, 0.05) || 0;
+  vorigeMs = ms;
+
+  /* uitrol: na een veeg rolt de wereld nog even door */
+  if (vingers.size === 0 && (vaartX || vaartY)) {
+    cx -= vaartX * dt / zoom;
+    cy -= vaartY * dt / zoom;
+    toonWereld();
+    const rem = Math.exp(-4 * dt);
+    vaartX *= rem;
+    vaartY *= rem;
+    if (Math.hypot(vaartX, vaartY) < 6) { vaartX = 0; vaartY = 0; }
+  }
+
+  if (binnen) stroomBij(dt);
+  tekenWereld();
+  werkGeluidBij();
+  requestAnimationFrame(stap);
+});
+
+/* ------------------------------- de camera -------------------------------- */
+
+let cx = WERELD.w / 2;
+let cy = WERELD.h / 2;
+let zoom = 1;
+const ZOOM_MIN = 0.22;
+const ZOOM_MAX = 3.5;
+
+function toonWereld() {
+  cx = Math.max(0, Math.min(WERELD.w, cx));
+  cy = Math.max(0, Math.min(WERELD.h, cy));
+}
+
+/* Zoomen om een schermpunt heen: wat onder je cursor of tussen je vingers
+   ligt, blijft daar liggen. */
+function zoomNaar(factor, mx, my) {
+  const wx = cx + (mx - innerWidth / 2) / zoom;
+  const wy = cy + (my - innerHeight / 2) / zoom;
+  zoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, zoom * factor));
+  cx = wx - (mx - innerWidth / 2) / zoom;
+  cy = wy - (my - innerHeight / 2) / zoom;
+  toonWereld();
+}
+
+toonWereld();
+window.addEventListener('resize', () => { pasDoekAan(); toonWereld(); schijn(); });
+
+/* ------------------------------ de besturing ------------------------------
+   Desktop: muis beweegt de lamp, slepen of scrollen schuift de wereld,
+   ctrl+scroll of +/− zoomt, pijltjes schuiven ook.
+   Mobiel: tik = lamp een stand verder op die plek, vegen = schuiven met
+   uitrol, vasthouden = de lamp beet, twee vingers = knijpen en schuiven. */
+
+const vingers = new Map();
+let sleep = 0;
+let modus = null;                  // null | 'lamp' | 'schuif' | 'knijp'
+let greep = 0;
+let vaartX = 0, vaartY = 0;
+
+const GREEP_MS = 300;
+const TIK_PX = 10;
+
+window.addEventListener('pointerdown', (e) => {
+  if (!binnen || drempel.contains(e.target)) return;
+  if (e.pointerType === 'mouse' && e.button !== 0) return;
+  vaartX = 0;
+  vaartY = 0;
+  const v = { x: e.clientX, y: e.clientY, t: e.timeStamp };
+  vingers.set(e.pointerId, v);
+  if (vingers.size === 1) {
+    sleep = 0;
+    modus = null;
+    if (e.pointerType !== 'mouse') {
+      greep = setTimeout(() => {
+        if (modus !== null) return;
+        modus = 'lamp';
+        px = v.x;
+        py = v.y;
+        if (stand >= 0) schijn();
+      }, GREEP_MS);
+    }
+  } else {
+    clearTimeout(greep);
+    modus = 'knijp';
+  }
+});
+
+window.addEventListener('pointermove', (e) => {
+  if (e.pointerType === 'mouse') {
+    px = e.clientX;
+    py = e.clientY;
+    if (stand >= 0) schijn();
+  }
+  const v = vingers.get(e.pointerId);
+  if (!v || !binnen) return;
+
+  if (modus === 'knijp') {
+    if (vingers.size !== 2) return;
+    const [a, b] = [...vingers.values()];
+    const oudeAfstand = Math.hypot(a.x - b.x, a.y - b.y);
+    const oudeMx = (a.x + b.x) / 2;
+    const oudeMy = (a.y + b.y) / 2;
+    v.x = e.clientX;
+    v.y = e.clientY;
+    const nieuweAfstand = Math.hypot(a.x - b.x, a.y - b.y);
+    const mx = (a.x + b.x) / 2;
+    const my = (a.y + b.y) / 2;
+    cx -= (mx - oudeMx) / zoom;
+    cy -= (my - oudeMy) / zoom;
+    if (oudeAfstand > 0) zoomNaar(nieuweAfstand / oudeAfstand, mx, my);
+  } else if (modus === 'lamp') {
+    v.x = e.clientX;
+    v.y = e.clientY;
+    px = e.clientX;
+    py = e.clientY;
+    if (stand >= 0) schijn();
+  } else {
+    const bx = e.clientX - v.x;
+    const by = e.clientY - v.y;
+    const dt = (e.timeStamp - v.t) / 1000;
+    v.x = e.clientX;
+    v.y = e.clientY;
+    v.t = e.timeStamp;
+    sleep += Math.abs(bx) + Math.abs(by);
+    if (modus === null) {
+      if (sleep <= TIK_PX) return;
+      clearTimeout(greep);
+      modus = 'schuif';
+    }
+    cx -= bx / zoom;
+    cy -= by / zoom;
+    toonWereld();
+    if (e.pointerType !== 'mouse' && dt > 0) {
+      vaartX = 0.75 * vaartX + 0.25 * (bx / dt);
+      vaartY = 0.75 * vaartY + 0.25 * (by / dt);
+    }
+  }
+});
+
+window.addEventListener('pointerup', (e) => {
+  const v = vingers.get(e.pointerId);
+  vingers.delete(e.pointerId);
+  if (!v || !binnen) return;
+  if (vingers.size === 0) {
+    clearTimeout(greep);
+    if (modus === null && sleep <= TIK_PX) {
+      px = e.clientX;
+      py = e.clientY;
+      stand = stand >= STANDEN.length - 1 ? -1 : stand + 1;
+      schijn();
+    }
+    if (modus !== 'schuif' || e.timeStamp - v.t > 80) { vaartX = 0; vaartY = 0; }
+    modus = null;
+  } else if (modus === 'knijp' && vingers.size === 1) {
+    const rest = vingers.values().next().value;
+    rest.t = e.timeStamp;
+    modus = 'schuif';
+  }
+});
+
+window.addEventListener('pointercancel', (e) => {
+  vingers.delete(e.pointerId);
+  if (vingers.size === 0) { clearTimeout(greep); modus = null; }
+});
+
+window.addEventListener('wheel', (e) => {
+  if (!binnen) return;
+  e.preventDefault();
+  if (e.ctrlKey) {
+    zoomNaar(Math.exp(-e.deltaY * 0.01), e.clientX, e.clientY);
+  } else {
+    cx += e.deltaX / zoom;
+    cy += e.deltaY / zoom;
+    toonWereld();
+  }
+}, { passive: false });
+
+window.addEventListener('keydown', (e) => {
+  if (!binnen) return;
+  const s = 90 / zoom;
+  if (e.key === 'ArrowLeft') cx -= s;
+  else if (e.key === 'ArrowRight') cx += s;
+  else if (e.key === 'ArrowUp') cy -= s;
+  else if (e.key === 'ArrowDown') cy += s;
+  else if (e.key === '+' || e.key === '=') { zoomNaar(1.18, innerWidth / 2, innerHeight / 2); return; }
+  else if (e.key === '-') { zoomNaar(1 / 1.18, innerWidth / 2, innerHeight / 2); return; }
+  else return;
+  e.preventDefault();
+  toonWereld();
+});
+
+/* De straal van de lichtvlek. Op een telefoon is de korte schermkant zo smal
+   dat een deel ervan bijna niets is, maar de lange kant nemen toont juist te
+   veel — het gemiddelde zit er netjes tussenin. */
+function lampStraal() {
+  const kort = Math.min(innerWidth, innerHeight);
+  return kort < 600 ? (innerWidth + innerHeight) * 0.08 : kort * 0.16;
+}
+
+/* Twee lagen licht: een kleine hete kern en een ruime, zwakke gloed eromheen.
+   De vele tussenstappen benaderen het kwadratische verval van echt licht. */
+function schijn() {
+  if (stand < 0) {
+    lamp.classList.remove('aan');
+    return;
+  }
+  const s = STANDEN[stand];
+  const r = lampStraal();
+  const plek = `at ${px}px ${py}px`;
+  lamp.style.background =
+    `radial-gradient(circle ${r}px ${plek},` +
+    ` rgba(${s.kern}, 0.9) 0%,` +
+    ` rgba(${s.kern}, 0.62) 22%,` +
+    ` rgba(${s.rand}, 0.34) 44%,` +
+    ` rgba(${s.rand}, 0.14) 66%,` +
+    ` rgba(${s.rand}, 0.04) 84%,` +
+    ` rgba(0, 0, 0, 0) 100%),` +
+    `radial-gradient(circle ${r * 2.6}px ${plek},` +
+    ` rgba(${s.rand}, 0.1) 0%,` +
+    ` rgba(${s.rand}, 0.05) 45%,` +
+    ` rgba(${s.rand}, 0.015) 72%,` +
+    ` rgba(0, 0, 0, 0) 100%)`;
+  lamp.classList.add('aan');
+}
+
+/* -------------------------------- het geluid ------------------------------- */
+
+let ctx = null;
+let ruisGain = null;
+let geluidKlok = 0;
+
+function startGeluid() {
+  if (navigator.audioSession) navigator.audioSession.type = 'playback';
+
+  ctx = new (window.AudioContext || window.webkitAudioContext)();
+  if (ctx.state === 'suspended') ctx.resume();
+
+  const wek = () => { if (ctx.state !== 'running') ctx.resume().catch(() => {}); };
+  ctx.onstatechange = wek;
+  document.addEventListener('visibilitychange', wek);
+  window.addEventListener('focus', wek);
+  window.addEventListener('pointerdown', wek);
+
+  const eind = ctx.createDynamicsCompressor();
+  eind.threshold.value = -18;
+  eind.ratio.value = 8;
+  eind.connect(ctx.destination);
+
+  const master = ctx.createGain();
+  master.gain.setValueAtTime(0.0001, ctx.currentTime);
+  master.gain.setTargetAtTime(0.5, ctx.currentTime + 0.5, 4.5);
+  master.connect(eind);
+
+  const ruimte = maakRuimte(master);
+  drone(master);
+  adem(master);
+  planFlard(ruimte);
+  ruisen(master);
+}
+
+/* Laag 1 — de drone. Twee paren sinussen die elkaar nét niet raken (trage
+   zwevingen), plus een kwint die een fractie te hoog ligt. */
+function drone(dest) {
+  const g = ctx.createGain();
+  g.gain.value = 1;
+  g.connect(dest);
+
+  const drift = ctx.createOscillator();
+  drift.frequency.value = 0.017;
+  const diep = ctx.createGain();
+  diep.gain.value = 9;
+  drift.connect(diep);
+  drift.start();
+
+  [[49, 0.22], [49.38, 0.22], [98, 0.1], [98.71, 0.1], [148.6, 0.045]]
+    .forEach(([freq, vol]) => {
+      const o = ctx.createOscillator();
+      o.type = 'sine';
+      o.frequency.value = freq;
+      diep.connect(o.detune);
+      const og = ctx.createGain();
+      og.gain.value = vol;
+      o.connect(og).connect(g);
+      o.start();
+    });
+}
+
+/* Laag 2 — adem. Gefilterde ruis, heel zacht, als een ruimte die te groot is
+   voor wie erin staat. */
+function adem(dest) {
+  const buf = ruisBuffer(4);
+  const bron = ctx.createBufferSource();
+  bron.buffer = buf;
+  bron.loop = true;
+
+  const band = ctx.createBiquadFilter();
+  band.type = 'bandpass';
+  band.frequency.value = 700;
+  band.Q.value = 7;
+
+  const zwerf = ctx.createOscillator();
+  zwerf.frequency.value = 0.011;
+  const diep = ctx.createGain();
+  diep.gain.value = 380;
+  zwerf.connect(diep).connect(band.frequency);
+  zwerf.start();
+
+  const g = ctx.createGain();
+  g.gain.value = 0.03;
+  bron.connect(band).connect(g).connect(dest);
+  bron.start();
+}
+
+/* Laag 3 — het ruisen van de stroom zelf. Je hoort of er veel langs je komt,
+   ook onder groen en blauw, waar je de deeltjes niet ziet. Dat is de derde
+   aanwijzing: er beweegt hier iets, ook als het net niet jouw kleur is. */
+function ruisen(dest) {
+  const bron = ctx.createBufferSource();
+  bron.buffer = ruisBuffer(3);
+  bron.loop = true;
+
+  const laag = ctx.createBiquadFilter();
+  laag.type = 'lowpass';
+  laag.frequency.value = 900;
+  laag.Q.value = 0.7;
+
+  ruisGain = ctx.createGain();
+  ruisGain.gain.value = 0;
+  bron.connect(laag).connect(ruisGain).connect(dest);
+  bron.start();
+}
+
+function ruisBuffer(duur) {
+  const buf = ctx.createBuffer(1, ctx.sampleRate * duur, ctx.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  return buf;
+}
+
+/* Laag 4 — flarden. Op onregelmatige momenten zwelt ergens een toon aan en
+   houdt dan abrupt op; de galm maakt het af. */
+function planFlard(ruimte) {
+  const wacht = 8 + Math.random() * 16;
+  setTimeout(() => {
+    if (ctx) flard(ruimte);
+    planFlard(ruimte);
+  }, wacht * 1000);
+}
+
+function flard(ruimte) {
+  const t = ctx.currentTime;
+  const zwel = 2.5 + Math.random() * 4;
+  const freq = 240 * Math.pow(2, Math.random() * 2.3);
+
+  const o = ctx.createOscillator();
+  o.type = 'sine';
+  o.frequency.setValueAtTime(freq, t);
+  o.frequency.linearRampToValueAtTime(freq * (0.985 + Math.random() * 0.03), t + zwel);
+
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.055, t + zwel);
+  g.gain.setValueAtTime(0.0001, t + zwel);
+
+  const pan = ctx.createStereoPanner();
+  pan.pan.value = Math.random() * 1.6 - 0.8;
+
+  o.connect(g).connect(pan).connect(ruimte);
+  o.start(t);
+  o.stop(t + zwel + 0.1);
+}
+
+/* Hoe druk is het waar je staat? Alleen af en toe kijken; per frame alle
+   deeltjes natellen is zonde, en zo snel verandert het niet. */
+function werkGeluidBij() {
+  if (!ctx || !ruisGain) return;
+  geluidKlok++;
+  if (geluidKlok % 12) return;
+
+  const lx = cx + (px - innerWidth / 2) / zoom;
+  const ly = cy + (py - innerHeight / 2) / zoom;
+  const straal = lampStraal() * 2 / zoom;
+  let dichtbij = 0;
+  for (let i = 0; i < AANTAL; i += 3) {
+    if (Math.abs(dx[i] - lx) < straal && Math.abs(dy[i] - ly) < straal) dichtbij++;
+  }
+  ruisGain.gain.setTargetAtTime(Math.min(0.1, dichtbij * 0.004), ctx.currentTime, 0.35);
+}
+
+/* De ruimte: twee delays die elkaar voeden, met een donker filter in de lus
+   zodat elke herhaling doffer wordt. */
+function maakRuimte(dest) {
+  const inlaat = ctx.createGain();
+  inlaat.gain.value = 1;
+  const d1 = ctx.createDelay(2); d1.delayTime.value = 0.41;
+  const d2 = ctx.createDelay(2); d2.delayTime.value = 0.63;
+  const t1 = ctx.createGain(); t1.gain.value = 0.5;
+  const t2 = ctx.createGain(); t2.gain.value = 0.5;
+  const dof = ctx.createBiquadFilter();
+  dof.type = 'lowpass';
+  dof.frequency.value = 1600;
+  inlaat.connect(dest);
+  inlaat.connect(dof);
+  dof.connect(d1); dof.connect(d2);
+  d1.connect(t1).connect(d2);
+  d2.connect(t2).connect(d1);
+  d1.connect(dest); d2.connect(dest);
+  return inlaat;
+}
+</script>
+</body>
+</html>

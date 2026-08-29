@@ -1,0 +1,800 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="robots" content="noindex, nofollow">
+  <title>galm</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Een pikdonkere grot die je alleen met geluid kunt zien. Tik om een galm de duisternis in te sturen; alles wat de golf raakt, licht even op en klinkt. Elke plek klinkt anders.">
+  <meta name="author" content="Rick van der Wolk">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      background: #050508;
+      overflow: hidden;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: none;
+      cursor: crosshair;
+    }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+<canvas id="galm"></canvas>
+<script>
+'use strict';
+
+/* ---------------------------------------------------------------------------
+   galm — een grot die je alleen kunt zien door hem aan te klinken.
+
+   Tik (of spatie): je stuurt een golf de duisternis in. Alles wat de golf
+   raakt licht heel even op en klinkt — kristallen hoog, stenen dof, water
+   nat. Omdat de golf tijd nodig heeft, is elke ping een melodietje van
+   afstanden: dezelfde grot klinkt vanaf elke plek anders.
+   Ingedrukt houden: die kant op zweven.
+
+   Ergens in het donker: iets dat terugroept als jij roept. Een plek waar
+   geluid sterft. En iets heel groots dat, als je golf het bereikt, de
+   hele grot één keer laat zingen.
+--------------------------------------------------------------------------- */
+
+const canvas = document.getElementById('galm');
+const ctx = canvas.getContext('2d');
+const TAU = Math.PI * 2;
+
+const WERELD = { w: 4000, h: 2800 };
+
+let W = 0, H = 0, dpr = 1, S = 1;
+let vignet = null, korrel = null;
+
+function hermeet() {
+  dpr = Math.min(2, window.devicePixelRatio || 1);
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+  S = Math.max(W / 1500, H / 1000);
+  maakVignet();
+}
+window.addEventListener('resize', hermeet);
+
+function maakVignet() {
+  vignet = document.createElement('canvas');
+  vignet.width = W; vignet.height = H;
+  const v = vignet.getContext('2d');
+  const g = v.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.3, W / 2, H / 2, Math.max(W, H) * 0.7);
+  g.addColorStop(0, 'rgba(0,0,0,0)');
+  g.addColorStop(1, 'rgba(2,2,5,0.65)');
+  v.fillStyle = g; v.fillRect(0, 0, W, H);
+}
+
+function maakKorrel() {
+  korrel = document.createElement('canvas');
+  korrel.width = 160; korrel.height = 160;
+  const k = korrel.getContext('2d');
+  const beeld = k.createImageData(160, 160);
+  for (let i = 0; i < beeld.data.length; i += 4) {
+    const g = 120 + Math.random() * 60;
+    beeld.data[i] = beeld.data[i + 1] = beeld.data[i + 2] = g;
+    beeld.data[i + 3] = 11;
+  }
+  k.putImageData(beeld, 0, 0);
+}
+maakKorrel();
+hermeet();
+
+function mulberry32(zaad) {
+  return function () {
+    zaad |= 0; zaad = zaad + 0x6D2B79F5 | 0;
+    let t = Math.imul(zaad ^ zaad >>> 15, 1 | zaad);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+const rnd = mulberry32(7);
+
+function klem(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+function afstand(ax, ay, bx, by) { return Math.hypot(bx - ax, by - ay); }
+
+/* ----------------------------------- grot -------------------------------- */
+
+/* De grot bestaat uit puntjes die alleen bestaan zolang er geluid langskomt:
+   een rand met golvende inhammen, en een paar pilaren middenin. */
+const pilaren = [
+  { x: 1100, y: 700, r: 120 }, { x: 1900, y: 1800, r: 140 }, { x: 2700, y: 900, r: 110 },
+  { x: 1500, y: 2300, r: 90 }, { x: 3100, y: 2000, r: 130 }, { x: 800, y: 2100, r: 100 },
+];
+const wandpunten = [];
+{
+  /* Rand: loop het kader rond en duw elk punt met wat golfjes naar binnen. */
+  const marge = 150;
+  const faseA = rnd() * TAU, faseB = rnd() * TAU, faseC = rnd() * TAU;
+  const omtrekStap = 26;
+  const bx = WERELD.w - marge * 2, by = WERELD.h - marge * 2;
+  const omtrek = 2 * (bx + by);
+  for (let p = 0; p < omtrek; p += omtrekStap) {
+    let x, y, nx, ny;   // positie op het kader + richting naar binnen
+    if (p < bx) { x = marge + p; y = marge; nx = 0; ny = 1; }
+    else if (p < bx + by) { x = WERELD.w - marge; y = marge + (p - bx); nx = -1; ny = 0; }
+    else if (p < bx * 2 + by) { x = WERELD.w - marge - (p - bx - by); y = WERELD.h - marge; nx = 0; ny = -1; }
+    else { x = marge; y = WERELD.h - marge - (p - bx * 2 - by); nx = 1; ny = 0; }
+    const u = p / omtrek * TAU;
+    const diepte = 40 + 34 * Math.sin(u * 3 + faseA) + 26 * Math.sin(u * 7 + faseB) + 16 * Math.sin(u * 13 + faseC);
+    wandpunten.push({ x: x + nx * diepte, y: y + ny * diepte, gloed: 0, goud: false });
+  }
+  for (const pi of pilaren) {
+    for (let i = 0; i < 36; i++) {
+      const h = i / 36 * TAU;
+      const rr = pi.r * (0.85 + 0.3 * Math.sin(h * 3 + pi.x));
+      wandpunten.push({ x: pi.x + Math.cos(h) * rr, y: pi.y + Math.sin(h) * rr, gloed: 0, goud: false });
+    }
+  }
+}
+
+/* De klinkende dingen: kristallen (hoog), stenen (dof), plassen (nat). */
+const stilte = { x: 2450, y: 2150, r: 360, bezocht: false, ontdekt: false };
+const klok = { x: 3560, y: 1400, gloed: 0, rustTot: 0, slaatOp: -1, ontdekt: false };
+const dingen = [];
+{
+  const soorten = [['kristal', 14], ['steen', 12], ['plas', 7]];
+  for (const [soort, n] of soorten) {
+    let geplaatst = 0, poging = 0;
+    while (geplaatst < n && poging++ < 400) {
+      const x = 320 + rnd() * (WERELD.w - 640);
+      const y = 320 + rnd() * (WERELD.h - 640);
+      if (afstand(x, y, stilte.x, stilte.y) < stilte.r + 150) continue;
+      if (afstand(x, y, klok.x, klok.y) < 340) continue;
+      if (pilaren.some((p) => afstand(x, y, p.x, p.y) < p.r + 90)) continue;
+      dingen.push({
+        soort, x, y, grootte: 0.6 + rnd() * 0.8,
+        hoek: rnd() * TAU, gloed: 0, rustTot: 0,
+      });
+      geplaatst++;
+    }
+  }
+}
+
+/* De roeper: je hoort hem antwoorden lang voordat je hem ooit ziet. */
+const roeper = {
+  x: 2100, y: 900, doelX: 2100, doelY: 900,
+  antwoordOp: -1, rustTot: 0, flits: 0, dichtbijTijd: 0, ontdekt: false,
+};
+
+/* --------------------------------- speler -------------------------------- */
+
+const speler = { x: 620, y: 1400, vx: 0, vy: 0, snelheid: 0 };
+const staart = [];
+const wijzer = { x: 0, y: 0, vast: false, sinds: 0, startX: 0, startY: 0 };
+const toetsen = {};
+let cam = null;
+
+/* --------------------------------- golven -------------------------------- */
+
+/* Een golf is een kring die groeit met "geluidssnelheid". Wat hij kruist,
+   licht op en klinkt — precies op het moment van kruisen. */
+const golven = [];
+const KLEUREN = {
+  speler: 'rgba(190,210,255,', roeper: 'rgba(180,255,200,', klok: 'rgba(255,210,140,',
+};
+let laatstePing = -9;
+
+function zendGolf(x, y, bron) {
+  golven.push({
+    x, y, bron, r: 6, vorigeR: 6,
+    vaart: bron === 'klok' ? 190 : 340,
+    maxR: bron === 'klok' ? 4400 : 2800,
+  });
+  if (golven.length > 6) golven.shift();
+}
+
+function golfKracht(g) {
+  return Math.exp(-g.r / (g.bron === 'klok' ? 2600 : 1500)) * (g.bron === 'klok' ? 0.85 : 1);
+}
+
+function inStilte(x, y) { return afstand(x, y, stilte.x, stilte.y) < stilte.r; }
+
+function ping() {
+  const t = performance.now() / 1000;
+  if (t - laatstePing < 0.32) return;
+  laatstePing = t;
+  zendGolf(speler.x, speler.y, 'speler');
+  if (!inStilte(speler.x, speler.y)) tok(speler.x, 0.9, 620);
+}
+
+/* ---------------------------------- geluid ------------------------------- */
+
+/* Grote grotgalm, verder bijna niets: wat lucht, af en toe een druppel.
+   De rest van het geluid maak jij zelf, door te roepen. */
+let actx = null, hoofd = null, galm = null, luchtVol = null;
+let druppelVolgende = 0, zangVolgende = 0, rommelVolgende = 20;
+
+function ruisBuffer(seconden, bruin) {
+  const n = Math.floor(actx.sampleRate * seconden);
+  const buf = actx.createBuffer(1, n, actx.sampleRate);
+  const d = buf.getChannelData(0);
+  let vorig = 0;
+  for (let i = 0; i < n; i++) {
+    const wit = Math.random() * 2 - 1;
+    if (bruin) { vorig = (vorig + wit * 0.02) * 0.998; d[i] = vorig * 3.5; }
+    else d[i] = wit;
+  }
+  return buf;
+}
+
+function startGeluid() {
+  if (actx) { actx.resume(); return; }
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return;
+  actx = new AC();
+  actx.resume();
+
+  hoofd = actx.createGain();
+  hoofd.gain.value = 0;
+  hoofd.gain.linearRampToValueAtTime(0.85, actx.currentTime + 4);
+  hoofd.connect(actx.destination);
+
+  /* De galm is hier de hoofdpersoon: lang en donker, zoals in een grot. */
+  galm = actx.createGain();
+  const v1 = actx.createDelay(1); v1.delayTime.value = 0.43;
+  const v2 = actx.createDelay(1); v2.delayTime.value = 0.61;
+  const terug = actx.createGain(); terug.gain.value = 0.42;
+  const dof = actx.createBiquadFilter(); dof.type = 'lowpass'; dof.frequency.value = 1100;
+  const nat = actx.createGain(); nat.gain.value = 0.4;
+  galm.connect(v1); v1.connect(dof); dof.connect(terug); terug.connect(v2);
+  v2.connect(v1); dof.connect(nat); nat.connect(hoofd);
+
+  /* Lucht: nauwelijks meer dan het idee van tocht. */
+  const lucht = actx.createBufferSource();
+  lucht.buffer = ruisBuffer(3, true); lucht.loop = true;
+  const luchtFilter = actx.createBiquadFilter();
+  luchtFilter.type = 'lowpass'; luchtFilter.frequency.value = 130;
+  luchtVol = actx.createGain(); luchtVol.gain.value = 0.045;
+  lucht.connect(luchtFilter); luchtFilter.connect(luchtVol); luchtVol.connect(hoofd);
+  lucht.start();
+}
+
+/* Eén uitgang met stereopositie + galm-aandeel; alles loopt hierdoor. */
+function uitgang(x, natheid) {
+  const pan = actx.createStereoPanner ? actx.createStereoPanner() : actx.createGain();
+  if (pan.pan) pan.pan.value = klem((x - speler.x) / 900, -0.9, 0.9);
+  pan.connect(hoofd);
+  const s = actx.createGain(); s.gain.value = natheid;
+  pan.connect(s); s.connect(galm);
+  return pan;
+}
+
+/* Hoe hard iets voor jóú klinkt hangt af van waar je staat. */
+function oorVol(x, y, bereik) { return klem(1 / (1 + afstand(speler.x, speler.y, x, y) / bereik), 0, 1); }
+
+function tok(x, vol, hoogte) {
+  if (!actx || vol < 0.01) return;
+  const t0 = actx.currentTime;
+  const o = actx.createOscillator(); o.type = 'sine';
+  o.frequency.setValueAtTime(hoogte, t0);
+  o.frequency.exponentialRampToValueAtTime(hoogte * 0.45, t0 + 0.1);
+  const g = actx.createGain();
+  g.gain.setValueAtTime(0.06 * vol, t0);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.13);
+  o.connect(g); g.connect(uitgang(x, 0.7));
+  o.start(t0); o.stop(t0 + 0.2);
+}
+
+const KRISTALTONEN = [1318.5, 1568, 1760, 2093, 2349.3];
+function klinkDing(ding, vol) {
+  if (!actx || vol < 0.008) return;
+  const t0 = actx.currentTime;
+  const naar = uitgang(ding.x, 0.6);
+  if (ding.soort === 'kristal') {
+    const f = KRISTALTONEN[Math.floor(ding.hoek / TAU * KRISTALTONEN.length) % KRISTALTONEN.length];
+    for (const [deel, v, tau] of [[1, 0.045, 1.6], [2.01, 0.014, 0.7]]) {
+      const o = actx.createOscillator(); o.type = 'sine'; o.frequency.value = f * deel;
+      const g = actx.createGain();
+      g.gain.setValueAtTime(v * vol, t0);
+      g.gain.setTargetAtTime(0, t0 + 0.01, tau);
+      o.connect(g); g.connect(naar);
+      o.start(t0); o.stop(t0 + 5);
+    }
+  } else if (ding.soort === 'steen') {
+    const o = actx.createOscillator(); o.type = 'sine';
+    o.frequency.setValueAtTime(95 + ding.grootte * 30, t0);
+    o.frequency.exponentialRampToValueAtTime(52, t0 + 0.13);
+    const g = actx.createGain();
+    g.gain.setValueAtTime(0.11 * vol, t0);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.2);
+    o.connect(g); g.connect(naar);
+    o.start(t0); o.stop(t0 + 0.3);
+  } else {
+    /* plas: een natte pluk met een wiebeltje erin */
+    const o = actx.createOscillator(); o.type = 'triangle';
+    o.frequency.value = 660 * (0.85 + ding.grootte * 0.4);
+    const trill = actx.createOscillator(); trill.frequency.value = 6.5;
+    const diepte = actx.createGain(); diepte.gain.value = 22;
+    trill.connect(diepte); diepte.connect(o.frequency);
+    const dof = actx.createBiquadFilter(); dof.type = 'lowpass'; dof.frequency.value = 1300;
+    const g = actx.createGain();
+    g.gain.setValueAtTime(0.05 * vol, t0);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.55);
+    o.connect(dof); dof.connect(g); g.connect(naar);
+    o.start(t0); o.stop(t0 + 0.7); trill.start(t0); trill.stop(t0 + 0.7);
+  }
+}
+
+/* De klok: één diepe slag die je overal voelt. */
+function klokslag() {
+  if (!actx) return;
+  const t0 = actx.currentTime;
+  const vol = oorVol(klok.x, klok.y, 1600);
+  const naar = uitgang(klok.x, 0.9);
+  for (const [deel, v, tau] of [[1, 0.1, 5], [1.5, 0.05, 3.5], [2.67, 0.028, 2], [4.1, 0.012, 1.1]]) {
+    const o = actx.createOscillator(); o.type = 'sine'; o.frequency.value = 82 * deel;
+    const g = actx.createGain();
+    g.gain.setValueAtTime(0, t0);
+    g.gain.linearRampToValueAtTime(v * vol, t0 + 0.04);
+    g.gain.setTargetAtTime(0, t0 + 0.08, tau);
+    o.connect(g); g.connect(naar);
+    o.start(t0); o.stop(t0 + 16);
+  }
+}
+
+/* De roeper fladdert weg: vijf snelle tokjes omhoog. */
+function fladder() {
+  if (!actx) return;
+  for (let i = 0; i < 5; i++) {
+    setTimeout(() => tok(roeper.x, 0.5, 700 + i * 160), i * 70);
+  }
+}
+
+function druppel() {
+  if (!actx) return;
+  const t0 = actx.currentTime;
+  const f = 2200 * (0.7 + Math.random() * 0.6);
+  const o = actx.createOscillator(); o.type = 'sine';
+  o.frequency.setValueAtTime(f, t0);
+  o.frequency.exponentialRampToValueAtTime(f * 0.55, t0 + 0.05);
+  const g = actx.createGain();
+  g.gain.setValueAtTime(0.02 + Math.random() * 0.015, t0);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.06);
+  const x = speler.x + (Math.random() - 0.5) * 1600;
+  o.connect(g); g.connect(uitgang(x, 0.9));
+  o.start(t0); o.stop(t0 + 0.1);
+}
+
+/* Als alles ontdekt is, begint de grot heel af en toe zelf te zingen. */
+const ZANGTONEN = [98, 123.5, 146.8, 196, 220];
+function zangnoot() {
+  if (!actx) return;
+  const t0 = actx.currentTime;
+  const f = ZANGTONEN[Math.floor(Math.random() * ZANGTONEN.length)];
+  const o = actx.createOscillator(); o.type = 'sine'; o.frequency.value = f;
+  const g = actx.createGain();
+  g.gain.setValueAtTime(0, t0);
+  g.gain.linearRampToValueAtTime(0.022, t0 + 1.2);
+  g.gain.setTargetAtTime(0, t0 + 1.4, 3);
+  const x = speler.x + (Math.random() - 0.5) * 1800;
+  o.connect(g); g.connect(uitgang(x, 0.95));
+  o.start(t0); o.stop(t0 + 14);
+}
+
+/* Ontdekkingsbelletje; de drie samen vormen een A-akkoord. */
+function bel(f) {
+  if (!actx) return;
+  const t0 = actx.currentTime + 0.03;
+  for (const [deel, v, tau] of [[1, 0.05, 2.4], [2.01, 0.017, 1.2], [2.99, 0.007, 0.6]]) {
+    const o = actx.createOscillator(); o.type = 'sine'; o.frequency.value = f * deel;
+    const g = actx.createGain();
+    g.gain.setValueAtTime(0, t0);
+    g.gain.linearRampToValueAtTime(v, t0 + 0.015);
+    g.gain.setTargetAtTime(0, t0 + 0.03, tau);
+    o.connect(g); g.connect(uitgang(speler.x, 0.5));
+    o.start(t0); o.stop(t0 + 7);
+  }
+}
+
+function allesOntdekt() { return roeper.ontdekt && stilte.ontdekt && klok.ontdekt; }
+
+/* ---------------------------------- invoer ------------------------------- */
+
+canvas.addEventListener('pointerdown', (e) => {
+  startGeluid();
+  wijzer.vast = true;
+  wijzer.x = e.clientX; wijzer.y = e.clientY;
+  wijzer.startX = e.clientX; wijzer.startY = e.clientY;
+  wijzer.sinds = performance.now();
+});
+canvas.addEventListener('pointermove', (e) => { wijzer.x = e.clientX; wijzer.y = e.clientY; });
+window.addEventListener('pointerup', (e) => {
+  if (wijzer.vast) {
+    const duur = performance.now() - wijzer.sinds;
+    const verplaatst = afstand(e.clientX, e.clientY, wijzer.startX, wijzer.startY);
+    if (duur < 230 && verplaatst < 14) ping();   // tikje = roepen, vasthouden = zweven
+  }
+  wijzer.vast = false;
+});
+window.addEventListener('pointercancel', () => { wijzer.vast = false; });
+window.addEventListener('keydown', (e) => {
+  if (e.key === ' ') { startGeluid(); ping(); e.preventDefault(); return; }
+  if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'a', 'd', 'w', 's'].includes(e.key)) {
+    toetsen[e.key] = true; startGeluid();
+  }
+});
+window.addEventListener('keyup', (e) => { delete toetsen[e.key]; });
+document.addEventListener('visibilitychange', () => {
+  if (!actx) return;
+  if (document.hidden) actx.suspend(); else actx.resume();
+});
+
+/* --------------------------------- bijwerken ----------------------------- */
+
+function bijwerken(dt, t) {
+  /* Zweven. */
+  let ax = 0, ay = 0;
+  if (wijzer.vast) {
+    const wx = wijzer.x / S + cam.x, wy = wijzer.y / S + cam.y;
+    const d = afstand(speler.x, speler.y, wx, wy);
+    if (d > 8) { ax = (wx - speler.x) / d; ay = (wy - speler.y) / d; }
+  }
+  if (toetsen.ArrowLeft || toetsen.a) ax -= 1;
+  if (toetsen.ArrowRight || toetsen.d) ax += 1;
+  if (toetsen.ArrowUp || toetsen.w) ay -= 1;
+  if (toetsen.ArrowDown || toetsen.s) ay += 1;
+  const al = Math.hypot(ax, ay);
+  if (al > 0) { speler.vx += ax / al * 380 * dt; speler.vy += ay / al * 380 * dt; }
+  const wrijving = Math.exp(-dt * 1.4);
+  speler.vx *= wrijving; speler.vy *= wrijving;
+  speler.snelheid = Math.hypot(speler.vx, speler.vy);
+  if (speler.snelheid > 260) {
+    speler.vx *= 260 / speler.snelheid; speler.vy *= 260 / speler.snelheid;
+    speler.snelheid = 260;
+  }
+  speler.x += speler.vx * dt; speler.y += speler.vy * dt;
+
+  /* Zachte grenzen: de wand zelf, en de pilaren. */
+  if (speler.x < 240) speler.vx += (240 - speler.x) * dt * 8;
+  if (speler.x > WERELD.w - 240) speler.vx -= (speler.x - (WERELD.w - 240)) * dt * 8;
+  if (speler.y < 240) speler.vy += (240 - speler.y) * dt * 8;
+  if (speler.y > WERELD.h - 240) speler.vy -= (speler.y - (WERELD.h - 240)) * dt * 8;
+  for (const p of pilaren) {
+    const d = afstand(speler.x, speler.y, p.x, p.y);
+    if (d < p.r + 50 && d > 0.1) {
+      const duw = (p.r + 50 - d) * dt * 10;
+      speler.vx += (speler.x - p.x) / d * duw;
+      speler.vy += (speler.y - p.y) / d * duw;
+    }
+  }
+
+  staart.push({ x: speler.x, y: speler.y });
+  if (staart.length > 20) staart.shift();
+
+  const vw = W / S, vh = H / S;
+  cam.x += (klem(speler.x - vw / 2, 0, WERELD.w - vw) - cam.x) * Math.min(1, dt * 3);
+  cam.y += (klem(speler.y - vh / 2, 0, WERELD.h - vh) - cam.y) * Math.min(1, dt * 3);
+
+  bijwerkenGolven(dt, t);
+  bijwerkenRoeper(dt, t);
+  bijwerkenStilte(dt, t);
+
+  /* Nagloed dooft overal langzaam uit. */
+  for (const p of wandpunten) p.gloed *= Math.exp(-dt * 2);
+  for (const d of dingen) d.gloed *= Math.exp(-dt * 1.3);
+  klok.gloed *= Math.exp(-dt * 0.35);
+  roeper.flits *= Math.exp(-dt * 2.5);
+
+  /* Druppels, en — als alles gevonden is — het zingen van de grot zelf. */
+  if (actx) {
+    if (t > druppelVolgende) { druppel(); druppelVolgende = t + 2 + Math.random() * 5; }
+    if (allesOntdekt() && t > zangVolgende) { zangnoot(); zangVolgende = t + 6 + Math.random() * 8; }
+  }
+}
+
+function bijwerkenGolven(dt, t) {
+  for (let i = golven.length - 1; i >= 0; i--) {
+    const g = golven[i];
+    g.vorigeR = g.r;
+    g.r += g.vaart * dt;
+    const kracht = golfKracht(g);
+    if (g.r > g.maxR || kracht < 0.03) { golven.splice(i, 1); continue; }
+
+    /* Wandpunten in de band van de golf lichten op. */
+    for (const p of wandpunten) {
+      const d = afstand(g.x, g.y, p.x, p.y);
+      if (Math.abs(d - g.r) < 28 && !inStilte(p.x, p.y)) {
+        if (kracht * 0.9 > p.gloed) { p.gloed = kracht * 0.9; p.goud = g.bron === 'klok'; }
+      }
+    }
+    /* Dingen klinken precies op het moment dat de golf ze kruist. */
+    for (const ding of dingen) {
+      const d = afstand(g.x, g.y, ding.x, ding.y);
+      if (g.vorigeR < d && d <= g.r && t > ding.rustTot && !inStilte(ding.x, ding.y)) {
+        ding.rustTot = t + 0.25;
+        ding.gloed = Math.max(ding.gloed, Math.min(1, kracht * 1.2));
+        klinkDing(ding, kracht * (0.6 + 0.4 * ding.grootte) * oorVol(ding.x, ding.y, 700));
+      }
+    }
+    /* De roeper hoort je golf en besluit te antwoorden. */
+    if (g.bron === 'speler') {
+      const d = afstand(g.x, g.y, roeper.x, roeper.y);
+      if (g.vorigeR < d && d <= g.r && t > roeper.rustTot && roeper.antwoordOp < 0) {
+        roeper.antwoordOp = t + 0.9 + Math.random() * 0.5;
+      }
+      const dk = afstand(g.x, g.y, klok.x, klok.y);
+      if (g.vorigeR < dk && dk <= g.r && t > klok.rustTot && klok.slaatOp < 0) {
+        klok.slaatOp = t + 0.6;
+      }
+    }
+  }
+
+  if (roeper.antwoordOp > 0 && t > roeper.antwoordOp) {
+    roeper.antwoordOp = -1; roeper.rustTot = t + 3;
+    roeper.flits = 1;
+    zendGolf(roeper.x, roeper.y, 'roeper');
+    tok(roeper.x, oorVol(roeper.x, roeper.y, 900), 840);
+  }
+  if (klok.slaatOp > 0 && t > klok.slaatOp) {
+    klok.slaatOp = -1; klok.rustTot = t + 25;
+    klok.gloed = 1;
+    zendGolf(klok.x, klok.y, 'klok');
+    klokslag();
+    if (!klok.ontdekt) { klok.ontdekt = true; bel(329.6); }
+  }
+}
+
+function bijwerkenRoeper(dt, t) {
+  /* Hij scharrelt wat rond in het noorden van de grot... */
+  if (afstand(roeper.x, roeper.y, roeper.doelX, roeper.doelY) < 30) {
+    roeper.doelX = 1300 + Math.random() * 1600;
+    roeper.doelY = 500 + Math.random() * 800;
+  }
+  const d = afstand(speler.x, speler.y, roeper.x, roeper.y);
+  let vaart = 26;
+  let dx = roeper.doelX - roeper.x, dy = roeper.doelY - roeper.y;
+  /* ...en schuifelt bij je vandaan als je te snel nadert. */
+  if (d < 450 && speler.snelheid > 90) {
+    dx = roeper.x - speler.x; dy = roeper.y - speler.y; vaart = 70;
+  }
+  const dl = Math.hypot(dx, dy) || 1;
+  roeper.x += dx / dl * vaart * dt + Math.sin(t * 1.9) * 12 * dt;
+  roeper.y += dy / dl * vaart * dt + Math.cos(t * 1.4) * 12 * dt;
+  roeper.x = klem(roeper.x, 400, WERELD.w - 400);
+  roeper.y = klem(roeper.y, 400, WERELD.h - 400);
+
+  /* Wie langzaam en geduldig dichtbij komt, ziet hem heel even echt —
+     dan schiet hij er fladderend vandoor. */
+  if (d < 200 && speler.snelheid < 90) {
+    roeper.dichtbijTijd += dt;
+    if (roeper.dichtbijTijd > 2) {
+      roeper.dichtbijTijd = -3;
+      fladder();
+      roeper.doelX = roeper.x + (roeper.x - speler.x) * 6;
+      roeper.doelY = roeper.y + (roeper.y - speler.y) * 6;
+      roeper.x += (roeper.x - speler.x) * 0.8;
+      roeper.y += (roeper.y - speler.y) * 0.8;
+      if (!roeper.ontdekt) { roeper.ontdekt = true; bel(220); }
+    }
+  } else if (roeper.dichtbijTijd > 0) {
+    roeper.dichtbijTijd = Math.max(0, roeper.dichtbijTijd - dt);
+  } else {
+    roeper.dichtbijTijd = Math.min(0, roeper.dichtbijTijd + dt);
+  }
+}
+
+function bijwerkenStilte(dt, t) {
+  /* Middenin de stille plek valt álles weg — ook je eigen roep. */
+  const diep = klem(1 - afstand(speler.x, speler.y, stilte.x, stilte.y) / stilte.r, 0, 1);
+  if (actx && hoofd) {
+    hoofd.gain.setTargetAtTime(0.85 * (1 - 0.92 * diep), actx.currentTime, 0.35);
+  }
+  if (diep > 0.55) stilte.bezocht = true;
+  if (stilte.bezocht && !stilte.ontdekt && diep < 0.05) {
+    /* Pas als het geluid terugkomt, begrijp je wat daar was. */
+    stilte.ontdekt = true;
+    bel(277.2);
+  }
+}
+
+/* ---------------------------------- tekenen ------------------------------ */
+
+function inBeeld(x, y, ruim) {
+  return x > cam.x - ruim && x < cam.x + W / S + ruim && y > cam.y - ruim && y < cam.y + H / S + ruim;
+}
+
+function tekenStilte() {
+  /* Nét donkerder dan het donker: je ziet hem alleen als iets erachter gloeit. */
+  if (!inBeeld(stilte.x, stilte.y, stilte.r + 60)) return;
+  const g = ctx.createRadialGradient(stilte.x, stilte.y, stilte.r * 0.3, stilte.x, stilte.y, stilte.r);
+  g.addColorStop(0, 'rgba(0,0,0,0.55)');
+  g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(stilte.x, stilte.y, stilte.r, 0, TAU); ctx.fill();
+}
+
+function tekenWand() {
+  ctx.globalCompositeOperation = 'lighter';
+  for (const p of wandpunten) {
+    if (p.gloed < 0.02 || !inBeeld(p.x, p.y, 20)) continue;
+    ctx.fillStyle = p.goud
+      ? `rgba(255,215,150,${p.gloed * 0.6})`
+      : `rgba(180,200,235,${p.gloed * 0.55})`;
+    ctx.beginPath(); ctx.arc(p.x, p.y, 1.8, 0, TAU); ctx.fill();
+  }
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+function tekenDingen(t) {
+  ctx.globalCompositeOperation = 'lighter';
+  for (const d of dingen) {
+    if (!inBeeld(d.x, d.y, 80)) continue;
+    /* Vlak naast je zie je een vaag vermoeden; verder weg alleen wat klinkt. */
+    const vermoed = klem((170 - afstand(speler.x, speler.y, d.x, d.y)) / 170, 0, 1) * 0.06;
+    const a = Math.min(1, d.gloed + vermoed);
+    if (a < 0.02) continue;
+    if (d.soort === 'kristal') {
+      ctx.strokeStyle = `rgba(175,215,255,${a * 0.9})`;
+      ctx.lineWidth = 1.6;
+      ctx.save(); ctx.translate(d.x, d.y); ctx.rotate(d.hoek);
+      const h = 14 * d.grootte + 8;
+      ctx.beginPath();
+      ctx.moveTo(0, -h); ctx.lineTo(h * 0.45, 0); ctx.lineTo(0, h * 0.7);
+      ctx.lineTo(-h * 0.45, 0); ctx.closePath(); ctx.stroke();
+      ctx.restore();
+      if (d.gloed > 0.05) {
+        const g = ctx.createRadialGradient(d.x, d.y, 2, d.x, d.y, 46);
+        g.addColorStop(0, `rgba(175,215,255,${d.gloed * 0.25})`);
+        g.addColorStop(1, 'rgba(175,215,255,0)');
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(d.x, d.y, 46, 0, TAU); ctx.fill();
+      }
+    } else if (d.soort === 'steen') {
+      ctx.strokeStyle = `rgba(225,185,140,${a * 0.8})`;
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.ellipse(d.x, d.y, 20 * d.grootte + 8, 14 * d.grootte + 6, d.hoek, 0, TAU);
+      ctx.stroke();
+    } else {
+      const golfje = Math.sin(t * 2.1 + d.hoek * 5) * 2;
+      ctx.strokeStyle = `rgba(150,225,220,${a * 0.8})`;
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.ellipse(d.x, d.y, 26 * d.grootte + 10 + golfje, 10 * d.grootte + 4, 0, 0, TAU);
+      ctx.stroke();
+    }
+  }
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+function tekenKlok() {
+  if (!inBeeld(klok.x, klok.y, 260)) return;
+  const vermoed = klem((240 - afstand(speler.x, speler.y, klok.x, klok.y)) / 240, 0, 1) * 0.08;
+  const a = Math.min(1, klok.gloed + vermoed);
+  if (a < 0.02) return;
+  ctx.globalCompositeOperation = 'lighter';
+  if (klok.gloed > 0.03) {
+    const g = ctx.createRadialGradient(klok.x, klok.y, 20, klok.x, klok.y, 320);
+    g.addColorStop(0, `rgba(255,210,140,${klok.gloed * 0.22})`);
+    g.addColorStop(1, 'rgba(255,210,140,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(klok.x, klok.y, 320, 0, TAU); ctx.fill();
+  }
+  /* Een half begraven klok: alleen de schouder steekt uit het donker. */
+  ctx.strokeStyle = `rgba(255,215,155,${a * 0.75})`;
+  ctx.lineWidth = 2.5;
+  ctx.beginPath(); ctx.arc(klok.x, klok.y + 60, 130, Math.PI * 1.05, Math.PI * 1.95); ctx.stroke();
+  ctx.beginPath(); ctx.arc(klok.x, klok.y + 60, 96, Math.PI * 1.1, Math.PI * 1.9); ctx.stroke();
+  ctx.beginPath(); ctx.arc(klok.x, klok.y - 66, 12, 0, TAU); ctx.stroke();
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+function tekenGolven() {
+  ctx.globalCompositeOperation = 'lighter';
+  for (const g of golven) {
+    const kracht = golfKracht(g);
+    const kleur = KLEUREN[g.bron];
+    /* In stukjes, zodat de stilte er letterlijk een hap uit neemt. */
+    for (const [breedte, alfa] of [[14, 0.05], [2, 0.22]]) {
+      ctx.lineWidth = breedte;
+      ctx.strokeStyle = kleur + (kracht * alfa) + ')';
+      ctx.beginPath();
+      let bezig = false;
+      const stappen = 72;
+      for (let i = 0; i <= stappen; i++) {
+        const h = i / stappen * TAU;
+        const x = g.x + Math.cos(h) * g.r;
+        const y = g.y + Math.sin(h) * g.r;
+        if (inStilte(x, y)) { bezig = false; continue; }
+        if (!bezig) { ctx.moveTo(x, y); bezig = true; }
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+  }
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+function tekenRoeper(t) {
+  const d = afstand(speler.x, speler.y, roeper.x, roeper.y);
+  const a = Math.min(1, klem((260 - d) / 170, 0, 1) + roeper.flits * 0.7);
+  if (a < 0.02 || !inBeeld(roeper.x, roeper.y, 60)) return;
+  ctx.globalCompositeOperation = 'lighter';
+  const g = ctx.createRadialGradient(roeper.x, roeper.y, 1, roeper.x, roeper.y, 34);
+  g.addColorStop(0, `rgba(180,255,200,${0.35 * a})`);
+  g.addColorStop(1, 'rgba(180,255,200,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(roeper.x, roeper.y, 34, 0, TAU); ctx.fill();
+  /* Een klein wezentje van drie lichtjes, altijd net aan het wegdraaien. */
+  for (let i = 0; i < 3; i++) {
+    const hoek = t * 2.1 + i * 2.1;
+    ctx.fillStyle = `rgba(200,255,215,${(0.7 - i * 0.18) * a})`;
+    ctx.beginPath();
+    ctx.arc(roeper.x + Math.cos(hoek) * (4 + i * 5), roeper.y + Math.sin(hoek) * (4 + i * 5), 3 - i * 0.6, 0, TAU);
+    ctx.fill();
+  }
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+function tekenSpeler(t) {
+  ctx.globalCompositeOperation = 'lighter';
+  for (let i = 0; i < staart.length; i++) {
+    const p = staart[i];
+    ctx.fillStyle = `rgba(200,220,255,${(i / staart.length) * 0.14})`;
+    ctx.beginPath(); ctx.arc(p.x, p.y, 1.2 + i * 0.12, 0, TAU); ctx.fill();
+  }
+  /* Klein lichtje — de grot moet donker blijven. */
+  const g = ctx.createRadialGradient(speler.x, speler.y, 2, speler.x, speler.y, 60);
+  g.addColorStop(0, 'rgba(210,225,255,0.22)');
+  g.addColorStop(1, 'rgba(210,225,255,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(speler.x, speler.y, 60, 0, TAU); ctx.fill();
+  ctx.fillStyle = 'rgba(240,246,255,0.95)';
+  ctx.beginPath(); ctx.arc(speler.x, speler.y, 6, 0, TAU); ctx.fill();
+  /* Een flitsje op het moment van roepen. */
+  const sinds = t - laatstePing;
+  if (sinds < 0.3) {
+    ctx.strokeStyle = `rgba(210,225,255,${(1 - sinds / 0.3) * 0.5})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(speler.x, speler.y, 10 + sinds * 90, 0, TAU); ctx.stroke();
+  }
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+/* ----------------------------------- lus --------------------------------- */
+
+let vorige = performance.now();
+
+function beeld(nu) {
+  const dt = Math.min(0.05, (nu - vorige) / 1000);
+  vorige = nu;
+  const t = nu / 1000;
+
+  if (!cam) {
+    cam = {
+      x: klem(speler.x - (W / S) / 2, 0, WERELD.w - W / S),
+      y: klem(speler.y - (H / S) / 2, 0, WERELD.h - H / S),
+    };
+  }
+
+  bijwerken(dt, t);
+
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = '#050508'; ctx.fillRect(0, 0, W, H);
+
+  ctx.setTransform(dpr * S, 0, 0, dpr * S, -cam.x * S * dpr, -cam.y * S * dpr);
+  tekenStilte();
+  tekenWand();
+  tekenDingen(t);
+  tekenKlok();
+  tekenGolven();
+  tekenRoeper(t);
+  tekenSpeler(t);
+
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.drawImage(vignet, 0, 0);
+  ctx.globalAlpha = 0.5;
+  ctx.drawImage(korrel, Math.floor(Math.random() * 80) - 80, Math.floor(Math.random() * 80) - 80, W + 160, H + 160);
+  ctx.globalAlpha = 1;
+
+  requestAnimationFrame(beeld);
+}
+requestAnimationFrame(beeld);
+</script>
+</body>
+</html>

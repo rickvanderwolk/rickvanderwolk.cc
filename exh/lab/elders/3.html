@@ -1,0 +1,686 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="robots" content="noindex, nofollow">
+  <title>elders · de plaat</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#000000">
+  <meta name="color-scheme" content="dark">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="description" content="Eén gravure, in drie inkten over elkaar heen gedrukt, in het donker. Drie lampen die je kunt verschuiven. Waar twee bundels elkaar overlappen verschijnt er iets dat in geen van de drie inkten staat.">
+  <meta name="author" content="Rick van der Wolk">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; background: #000; }
+    body {
+      background: #000;
+      overflow: hidden;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: none;
+      font-family: system-ui, 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    }
+
+    /* Het licht. Alle bundels worden bij elkaar opgeteld ('lighter'), want
+       dat is wat licht doet: rood plus groen ís geel, en alle drie is wit.
+       Met licht kun je niets aftrekken en dus ook niets verbergen. */
+    /* width/height moeten er expliciet staan: een canvas is een vervangen
+       element, dus inset:0 rekt hem niet op maar laat hem op zijn eigen
+       bitmapmaat staan. Zonder deze twee regels klopt de schaal van het
+       licht niet zodra het doek een andere dichtheid heeft dan het scherm. */
+    #lampdoek {
+      position: fixed; inset: 0;
+      width: 100%; height: 100%;
+      pointer-events: none;
+    }
+
+    /* De plaat. Wit papier met drie inkten erop, vermenigvuldigd met het
+       licht eronder — een oppervlak kaatst alleen kleuren terug die het
+       licht bevat. Wordt één keer gedrukt en daarna nooit meer aangeraakt:
+       alleen het licht beweegt. */
+    #muur {
+      position: fixed; inset: 0;
+      mix-blend-mode: multiply;
+      pointer-events: none;
+      overflow: hidden;
+    }
+    #plaat { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+    /* iOS 26 kleurt zijn status- en werkbalk naar de background-color van
+       fixed elementen aan de randen; twee zwarte strookjes houden ze donker. */
+    .balk {
+      position: fixed; left: 0; right: 0;
+      height: 12px;
+      background-color: #000;
+      pointer-events: none;
+      z-index: 10;
+    }
+    #balkboven { top: -8px; }
+    #balkonder { bottom: -8px; }
+
+    #drempel {
+      position: fixed; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      padding: 24px;
+      opacity: 1;
+      transition: opacity 1.8s ease;
+      z-index: 20;
+    }
+    #drempel.weg { opacity: 0; pointer-events: none; }
+    #kader {
+      max-width: 26em;
+      border: 1px solid #2a2a2a;
+      background: #050505;
+      padding: 40px 44px 36px;
+    }
+    #kader p {
+      color: #8f8f8f;
+      font-size: 15px;
+      line-height: 1.9;
+      letter-spacing: 0.02em;
+      margin-bottom: 22px;
+    }
+    #kader p.laatste { color: #d8d8d8; margin-bottom: 34px; }
+    #ok {
+      display: block; margin: 0 auto;
+      background: none;
+      border: 1px solid #3a3a3a;
+      color: #9a9a9a;
+      font: inherit; font-size: 14px;
+      letter-spacing: 0.12em;
+      padding: 9px 34px;
+      cursor: pointer;
+      transition: border-color 0.4s ease, color 0.4s ease;
+    }
+    #ok:hover, #ok:focus-visible { border-color: #777; color: #ddd; outline: none; }
+  </style>
+</head>
+<body>
+
+<div class="balk" id="balkboven"></div>
+<div class="balk" id="balkonder"></div>
+<canvas id="lampdoek"></canvas>
+<div id="muur">
+  <canvas id="plaat"></canvas>
+</div>
+
+<div id="drempel">
+  <div id="kader">
+    <p>Op de plaat staat één gravure, in drie inkten over elkaar heen
+    gedrukt. Elke inkt bestaat alleen onder zijn eigen kleur licht, en er is
+    geen wit licht.</p>
+    <p>Er liggen drie lampen in het donker. Je kunt ze verschuiven — met twee
+    vingers ook twee tegelijk.</p>
+    <p class="laatste">Er staat iets op de plaat dat in geen van de drie
+    inkten staat.</p>
+    <button id="ok" type="button">ok</button>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+/* ---------------------------------------------------------------------------
+   elders · de plaat
+
+   Geen kamer om in rond te lopen deze keer, maar één blad. Er staat een
+   gravure op: honderdduizend fijne lijnen die samen ergens omheen draaien,
+   zoals een vingerafdruk of een houtnerf of een hoogtekaart. Hij is in drie
+   inkten gedrukt, precies over elkaar heen, en elke inkt bestaat alleen
+   onder zijn eigen kleur licht. Onder één lamp zie je dus één laag: mooi,
+   maar niet meer dan mooi.
+
+   Waar twee bundels elkaar overlappen wordt het licht opgeteld en zie je
+   twee inkten tegelijk. En twee bijna gelijke lijnenvelden over elkaar heen
+   doen wat twee bijna gelijke tonen doen: ze gaan zweven. Op de ene plek
+   vallen de lijnen samen, op de andere vallen ze precies tussen elkaar in,
+   en dat verschil tekent grote zachte banden over het blad — banden die in
+   geen van beide lagen staan en die niemand geplaatst heeft.
+
+   Daar staat een zin in.
+
+   De truc is dat je hem er niet in kunt tekenen. Je kunt alleen de fase van
+   de twee lagen tegen elkaar in laten lopen op de plekken waar de letters
+   zitten; wat je ziet is het verschil van twee dingen, niet een van beide.
+   Onder één kleur is er niets te lezen en valt er ook niets te vinden. De
+   zin bestaat pas tussen twee lampen in.
+
+   Het geluid doet hetzelfde: elke lamp heeft een toon, en hoe verder ze uit
+   elkaar liggen hoe verder hun toonhoogtes uiteen staan. Twee tonen die
+   elkaar bijna raken zweven — hoorbare moiré. Schuif je twee lampen op
+   elkaar, dan gaat de zweving eruit en staan ze in unisono. Wat je ziet en
+   wat je hoort is exact hetzelfde verschijnsel.
+
+   Alles staat in één schermvullende ImageData. Dat kan omdat de drie inkten
+   niets anders zijn dan de drie kanalen van dat beeld: cyaan slikt rood, dus
+   cyaan ís het rode kanaal; magenta het groene; geel het blauwe. Een
+   CMY-separatie is letterlijk een RGB-plaatje dat je omkeert. Daarom kost
+   een lijn hier niets en kan de gravure zo fijn zijn als je wilt.
+--------------------------------------------------------------------------- */
+
+/* Wat er tussen twee lampen in te lezen valt. Kort houden — het moet groot
+   op het blad passen, want de banden zijn breed. */
+const ZIN = 'ik zie je';
+
+const KLEUREN = [
+  { naam: 'rood',  kern: '255, 34, 12',  rand: '214, 12, 4'  },
+  { naam: 'groen', kern: '34, 245, 40',  rand: '10, 202, 24' },
+  { naam: 'blauw', kern: '34, 40, 255',  rand: '14, 20, 224' },
+];
+
+/* --------------------------------- de drempel ----------------------------- */
+
+const drempel = document.getElementById('drempel');
+const ok = document.getElementById('ok');
+let binnen = false;
+
+function gaBinnen() {
+  if (binnen) return;
+  binnen = true;
+  drempel.classList.add('weg');
+  startGeluid();
+}
+ok.addEventListener('click', gaBinnen);
+window.addEventListener('keydown', (e) => { if (e.key === 'Enter') gaBinnen(); });
+ok.focus();
+
+/* ---------------------------------- de doeken ----------------------------- */
+
+const plaat = document.getElementById('plaat');
+const pctx = plaat.getContext('2d', { willReadFrequently: false });
+const lampdoek = document.getElementById('lampdoek');
+const lctx = lampdoek.getContext('2d');
+
+/* De plaat wordt op ware grootte gedrukt maar niet op retina-dichtheid: bij
+   deze lijnafstand is dubbel zo fijn niet mooier, alleen vier keer zo duur,
+   en een gravure mag best een beetje zacht zijn. */
+let pdpr = 1;
+let pw = 0, ph = 0;
+
+function meetOp() {
+  pdpr = Math.min(devicePixelRatio || 1, 1.5);
+  pw = Math.max(1, Math.round(innerWidth * pdpr));
+  ph = Math.max(1, Math.round(innerHeight * pdpr));
+  plaat.width = pw;
+  plaat.height = ph;
+
+  /* Het lichtdoek bewust op de helft van de schermdichtheid, en op retina
+     dus vier keer zo weinig beeldpunten. Licht is hier niets dan een zacht
+     verloop zonder één scherpe rand; opgerekt door de browser is dat niet
+     van het origineel te onderscheiden, terwijl het per frame de duurste
+     laag was — merkbaar zodra je drie bundels over elkaar heen schoof. */
+  const ldpr = 0.5;
+  lampdoek.width = Math.max(1, Math.round(innerWidth * ldpr));
+  lampdoek.height = Math.max(1, Math.round(innerHeight * ldpr));
+  lctx.setTransform(ldpr, 0, 0, ldpr, 0, 0);
+}
+
+function lampStraal() {
+  const kort = Math.min(innerWidth, innerHeight);
+  return kort < 600 ? (innerWidth + innerHeight) * 0.085 : kort * 0.17;
+}
+
+/* ---------------------------------- de ruis ------------------------------- */
+
+/* Eén keer een greep uit de zak, en daarna is het toeval vastgelegd. Dat
+   moet: op een telefoon verandert het beeldveld zodra de adresbalk inklapt,
+   en de plaat wordt dan opnieuw gedrukt. Met een vaste worp is dat dezelfde
+   plaat op een ander formaat in plaats van een heel nieuwe gravure. */
+let worp = (Math.random() * 4294967296) >>> 0 || 1;
+const ZAAD = worp;
+function toeval() {
+  worp ^= worp << 13; worp >>>= 0;
+  worp ^= worp >>> 17;
+  worp ^= worp << 5;  worp >>>= 0;
+  return worp / 4294967296;
+}
+
+/* Waardenruis op een rooster, zacht geïnterpoleerd. Zonder deze laag zijn de
+   ringen te netjes en ziet het eruit als een technische tekening; met deze
+   laag gaan ze meanderen zoals een echte nerf. */
+function rooster(cel) {
+  const cw = Math.ceil(pw / cel) + 3;
+  const ch = Math.ceil(ph / cel) + 3;
+  const a = new Float32Array(cw * ch);
+  for (let i = 0; i < a.length; i++) a[i] = toeval() * 2 - 1;
+  return { a, cw, ch, cel };
+}
+
+function ruis(r, x, y) {
+  const fx = x / r.cel + 1, fy = y / r.cel + 1;
+  const ix = fx | 0, iy = fy | 0;
+  let tx = fx - ix, ty = fy - iy;
+  tx = tx * tx * (3 - 2 * tx);
+  ty = ty * ty * (3 - 2 * ty);
+  const o = iy * r.cw + ix;
+  const a = r.a[o], b = r.a[o + 1];
+  const c = r.a[o + r.cw], d = r.a[o + r.cw + 1];
+  return (a + (b - a) * tx) * (1 - ty) + (c + (d - c) * tx) * ty;
+}
+
+/* --------------------------------- de zin --------------------------------- */
+
+/* De zin wordt niet getekend maar gebruikt als veld: waar hij staat lopen de
+   drie inkten een halve periode uit de pas, en verder nergens. Vandaar de
+   flinke vervaging — een harde rand zou een naad in de gravure trekken die
+   je onder één kleur al ziet, en dan is het geen geheim meer. */
+function zinVeld() {
+  const c = document.createElement('canvas');
+  c.width = pw;
+  c.height = ph;
+  const g = c.getContext('2d', { willReadFrequently: true });
+  g.fillStyle = '#000';
+  g.fillRect(0, 0, pw, ph);
+
+  const letter = (m) => `700 ${m}px system-ui, "Helvetica Neue", Helvetica, Arial, sans-serif`;
+  g.font = letter(100);
+  const maat = Math.min(100 * pw * 0.84 / g.measureText(ZIN).width, ph * 0.34);
+
+  g.fillStyle = '#fff';
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.font = letter(Math.round(maat));
+  g.fillText(ZIN, pw / 2, ph / 2);
+
+  const beeld = g.getImageData(0, 0, pw, ph).data;
+  let veld = new Float32Array(pw * ph);
+  for (let i = 0, n = pw * ph; i < n; i++) veld[i] = beeld[i * 4] / 255;
+
+  /* Precies genoeg vervaging om de sprong over een paar lijnen uit te
+     smeren, en geen greintje meer: elke millimeter extra vaagheid vreet
+     rechtstreeks van de leesbaarheid van de letters. */
+  const straal = Math.round(AFSTAND * 1.8);
+  veld = vervaag(veld, straal);
+  veld = vervaag(veld, straal);
+  return veld;
+}
+
+/* Twee keer een lopend gemiddelde is dicht genoeg bij een echte vervaging en
+   kost niets: elke rij en kolom wordt één keer doorlopen. */
+function vervaag(bron, r) {
+  const tus = new Float32Array(pw * ph);
+  const uit = new Float32Array(pw * ph);
+  const d = 2 * r + 1;
+  for (let y = 0; y < ph; y++) {
+    const rij = y * pw;
+    let som = bron[rij] * (r + 1);
+    for (let x = 1; x <= r; x++) som += bron[rij + Math.min(x, pw - 1)];
+    for (let x = 0; x < pw; x++) {
+      tus[rij + x] = som / d;
+      som += bron[rij + Math.min(x + r + 1, pw - 1)] - bron[rij + Math.max(x - r, 0)];
+    }
+  }
+  for (let x = 0; x < pw; x++) {
+    let som = tus[x] * (r + 1);
+    for (let y = 1; y <= r; y++) som += tus[Math.min(y, ph - 1) * pw + x];
+    for (let y = 0; y < ph; y++) {
+      uit[y * pw + x] = som / d;
+      som += tus[Math.min(y + r + 1, ph - 1) * pw + x] - tus[Math.max(y - r, 0) * pw + x];
+    }
+  }
+  return uit;
+}
+
+/* -------------------------------- het drukken ----------------------------- */
+
+const AFSTAND = 6;                 // afstand tussen twee lijnen, in beeldpunten
+
+function drukPlaat() {
+  worp = ZAAD;                     // dezelfde worp, dus dezelfde gravure
+  const grof = rooster(Math.max(90, Math.min(pw, ph) * 0.42));
+  const fijn = rooster(Math.max(34, Math.min(pw, ph) * 0.13));
+
+  /* Een handvol dislocaties: punten waar er een lijn tussen geschoven wordt.
+     Dat zijn precies de kerntjes en driesprongen die een vingerafdruk zijn
+     lussen en wervels geven; zonder deze punten blijft het strepen. */
+  const LADINGEN = [];
+  const n = 5 + Math.floor(toeval() * 3);
+  for (let i = 0; i < n; i++) {
+    LADINGEN.push({
+      x: pw * (0.12 + toeval() * 0.76),
+      y: ph * (0.12 + toeval() * 0.76),
+      q: toeval() < 0.5 ? 1 : -1,
+    });
+  }
+
+  const hoek = toeval() * Math.PI * 2;
+  taak = {
+    grof, fijn, LADINGEN,
+    zin: zinVeld(),
+    cosA: Math.cos(hoek) / AFSTAND,
+    sinA: Math.sin(hoek) / AFSTAND,
+    beeld: pctx.createImageData(pw, ph),
+    y: 0,
+  };
+}
+
+/* Drukken kost meer dan een halve seconde, en dat is te lang om de pagina
+   voor stil te zetten — zeker op een telefoon, waar de plaat opnieuw gedrukt
+   wordt zodra de adresbalk inklapt. Dus doen we het in stroken, een paar
+   milliseconden per frame. In het donker ziet niemand dat het blad regel
+   voor regel vol loopt. */
+let taak = null;
+
+function drukVerder(budget) {
+  if (!taak) return;
+  const t0 = performance.now();
+  const { grof, fijn, LADINGEN, zin, cosA, sinA, beeld } = taak;
+  const uit = beeld.data;
+  const TAU = Math.PI * 2;
+  const begon = taak.y;
+
+  while (taak.y < ph) {
+    const y = taak.y;
+    const rij = y * pw;
+    for (let x = 0; x < pw; x++) {
+      /* de gravure zelf: een schuine kam, gebogen door de ruis en
+         opengetrokken rond elke dislocatie */
+      let f = x * cosA + y * sinA
+            + ruis(grof, x, y) * 2.6
+            + ruis(fijn, x, y) * 0.75;
+      for (let i = 0; i < LADINGEN.length; i++) {
+        const L = LADINGEN[i];
+        f += L.q * Math.atan2(y - L.y, x - L.x) / TAU;
+      }
+
+      /* en de zin: een halve periode verschuiving, de ene inkt vooruit, de
+         andere achteruit. Onder één kleur is dat een nauwelijks zichtbare
+         verbuiging. Tussen twee kleuren is het het hele verschil. */
+      const h = zin[rij + x] * 0.5;
+
+      const i4 = (rij + x) * 4;
+      uit[i4]     = 255 - 255 * lijn(f - h);   // cyaan  → slikt rood
+      uit[i4 + 1] = 255 - 255 * lijn(f);       // magenta → slikt groen
+      uit[i4 + 2] = 255 - 255 * lijn(f + h);   // geel   → slikt blauw
+      uit[i4 + 3] = 255;
+    }
+    taak.y++;
+    if ((taak.y & 7) === 0 && performance.now() - t0 > budget) break;
+  }
+
+  pctx.putImageData(beeld, 0, 0, 0, begon, pw, taak.y - begon);
+  if (taak.y >= ph) taak = null;
+}
+
+/* Het profiel van één lijn: een zachte rug in plaats van een harde streep.
+   Zacht is hier niet slordig maar nodig — harde lijnen op deze afstand gaan
+   met het beeldscherm zelf moireren, en dat is een lelijke moiré. */
+function lijn(f) {
+  const v = 0.5 + 0.5 * Math.cos((f - Math.floor(f)) * Math.PI * 2);
+  const w = v * v;
+  return w * w;
+}
+
+/* --------------------------------- de lampen ------------------------------ */
+
+const LAMPEN = [];
+
+function legLampen() {
+  const r = lampStraal();
+  const mx = innerWidth / 2, my = innerHeight / 2;
+  const spreid = Math.min(innerWidth, innerHeight) * 0.3 + r * 0.5;
+  for (let i = 0; i < 3; i++) {
+    const hoek = -Math.PI / 2 + i * (Math.PI * 2 / 3);
+    const l = LAMPEN[i] || (LAMPEN[i] = { kleur: i });
+    l.x = mx + Math.cos(hoek) * spreid;
+    l.y = my + Math.sin(hoek) * spreid * 0.82;
+  }
+}
+
+/* Twee lagen per bundel: een kleine hete kern en een ruime zwakke gloed. De
+   vele tussenstappen benaderen het kwadratische verval van echt licht — dat
+   oogt zachter en voorkomt harde randen en banding.
+
+   Dit is de duurste lus van het hele werk: de buitenste gloed beslaat in zijn
+   eentje bijna de helft van het scherm, maal drie lampen, en waar de bundels
+   over elkaar heen liggen moet er ook nog opgeteld worden. Daarom staat het
+   lichtdoek expres niet op de dichtheid van het scherm (zie meetOp) — een
+   verloop heeft geen scherpe randen, dus vier keer zoveel beeldpunten levert
+   niets op behalve rekenwerk. De plaat eronder staat wél scherp; daar zitten
+   de haarlijnen.
+
+   Vooraf gebakken lichtvlekken als plaatje geprobeerd, en gemeten: dat is
+   twee keer zo traag. Een verloop vullen doet de browser met een geoptimali-
+   seerde streek, een plaatje optellen niet. Dus gewoon verlopen. */
+function bundel(sx, sy, r, kleur) {
+  const k = KLEUREN[kleur];
+  let g = lctx.createRadialGradient(sx, sy, 0, sx, sy, r);
+  g.addColorStop(0, `rgba(${k.kern}, 0.92)`);
+  g.addColorStop(0.22, `rgba(${k.kern}, 0.64)`);
+  g.addColorStop(0.44, `rgba(${k.rand}, 0.35)`);
+  g.addColorStop(0.66, `rgba(${k.rand}, 0.15)`);
+  g.addColorStop(0.84, `rgba(${k.rand}, 0.045)`);
+  g.addColorStop(1, 'rgba(0, 0, 0, 0)');
+  lctx.fillStyle = g;
+  lctx.fillRect(sx - r, sy - r, r * 2, r * 2);
+
+  const R = r * 2.6;
+  g = lctx.createRadialGradient(sx, sy, 0, sx, sy, R);
+  g.addColorStop(0, `rgba(${k.rand}, 0.1)`);
+  g.addColorStop(0.45, `rgba(${k.rand}, 0.05)`);
+  g.addColorStop(0.72, `rgba(${k.rand}, 0.015)`);
+  g.addColorStop(1, 'rgba(0, 0, 0, 0)');
+  lctx.fillStyle = g;
+  lctx.fillRect(sx - R, sy - R, R * 2, R * 2);
+}
+
+function tekenLicht() {
+  lctx.globalCompositeOperation = 'source-over';
+  lctx.fillStyle = '#000';
+  lctx.fillRect(0, 0, innerWidth, innerHeight);
+  lctx.globalCompositeOperation = 'lighter';
+  const r = lampStraal();
+  for (const l of LAMPEN) bundel(l.x, l.y, r, l.kleur);
+  lctx.globalCompositeOperation = 'source-over';
+}
+
+/* ------------------------------- de besturing ----------------------------- */
+
+/* Pak een lamp op en schuif hem. Met twee vingers pak je er twee, en dat is
+   geen extraatje: twee lampen tegelijk kunnen bewegen is de enige manier om
+   te voelen waar de banden vandaan komen. */
+
+const beet = new Map();            // pointerId → index van de lamp
+
+function grijp(x, y) {
+  const r = Math.max(70, lampStraal() * 0.75);
+  let beste = -1, bestD = r;
+  for (let i = 0; i < LAMPEN.length; i++) {
+    if ([...beet.values()].includes(i)) continue;
+    const d = Math.hypot(LAMPEN[i].x - x, LAMPEN[i].y - y);
+    if (d < bestD) { bestD = d; beste = i; }
+  }
+  return beste;
+}
+
+window.addEventListener('pointerdown', (e) => {
+  if (!binnen || drempel.contains(e.target)) return;
+  const i = grijp(e.clientX, e.clientY);
+  if (i < 0) return;
+  beet.set(e.pointerId, i);
+  LAMPEN[i].x = e.clientX;
+  LAMPEN[i].y = e.clientY;
+});
+
+window.addEventListener('pointermove', (e) => {
+  const i = beet.get(e.pointerId);
+  if (i === undefined) return;
+  LAMPEN[i].x = e.clientX;
+  LAMPEN[i].y = e.clientY;
+});
+
+for (const ev of ['pointerup', 'pointercancel']) {
+  window.addEventListener(ev, (e) => beet.delete(e.pointerId));
+}
+
+/* Zonder muis of vinger kan het ook: tab wisselt van lamp, de pijltjes
+   schuiven hem. */
+let gekozen = 0;
+window.addEventListener('keydown', (e) => {
+  if (!binnen) return;
+  const stap = e.shiftKey ? 4 : 18;
+  if (e.key === 'Tab') { gekozen = (gekozen + 1) % 3; e.preventDefault(); return; }
+  if (e.key === 'ArrowLeft') LAMPEN[gekozen].x -= stap;
+  else if (e.key === 'ArrowRight') LAMPEN[gekozen].x += stap;
+  else if (e.key === 'ArrowUp') LAMPEN[gekozen].y -= stap;
+  else if (e.key === 'ArrowDown') LAMPEN[gekozen].y += stap;
+  else return;
+  e.preventDefault();
+});
+
+/* ----------------------------------- start -------------------------------- */
+
+let vorigeMaat = '';
+
+function opnieuw(verschuif) {
+  const maat = innerWidth + '×' + innerHeight;
+  if (maat === vorigeMaat) return;
+  vorigeMaat = maat;
+  meetOp();
+  if (verschuif !== false) legLampen();
+  drukPlaat();
+}
+
+/* Niet meteen drukken: tijdens het inlezen van de pagina weet de browser de
+   hoogte van het beeldveld nog niet zeker (op iOS staat de adresbalk er dan
+   nog overheen), en dan drukken we een plaat die net niet past. */
+requestAnimationFrame(() => opnieuw());
+
+let hermeet = 0;
+window.addEventListener('resize', () => {
+  clearTimeout(hermeet);
+  hermeet = setTimeout(() => opnieuw(false), 220);
+});
+
+requestAnimationFrame(function stap() {
+  drukVerder(5);
+  tekenLicht();
+  werkGeluidBij();
+  requestAnimationFrame(stap);
+});
+
+/* -------------------------------- het geluid ------------------------------ */
+
+/* Elke lamp zingt. Hoe verder hij van zijn dichtstbijzijnde buur ligt, hoe
+   verder zijn toon van de gezamenlijke grondtoon staat — en twee tonen die
+   elkaar bijna raken, zweven. Dat is precies wat de twee lijnenvelden op de
+   plaat doen. Schuif je twee lampen op elkaar, dan lopen hun toonhoogtes
+   samen en valt de zweving stil, op hetzelfde moment dat de banden in beeld
+   komen. Je hoort dus dat je goed staat. */
+
+let ctx = null;
+const STEMMEN = [];
+const CENTEN = [-34, 0, 31];
+const GRONDTOON = 116.5;
+
+function startGeluid() {
+  if (navigator.audioSession) navigator.audioSession.type = 'playback';
+  ctx = new (window.AudioContext || window.webkitAudioContext)();
+  if (ctx.state === 'suspended') ctx.resume();
+
+  const wek = () => { if (ctx.state !== 'running') ctx.resume().catch(() => {}); };
+  ctx.onstatechange = wek;
+  document.addEventListener('visibilitychange', wek);
+  window.addEventListener('focus', wek);
+  window.addEventListener('pointerdown', wek);
+
+  const eind = ctx.createDynamicsCompressor();
+  eind.threshold.value = -18;
+  eind.ratio.value = 8;
+  eind.connect(ctx.destination);
+
+  const master = ctx.createGain();
+  master.gain.setValueAtTime(0.0001, ctx.currentTime);
+  master.gain.setTargetAtTime(0.42, ctx.currentTime + 0.4, 3.5);
+  master.connect(eind);
+
+  const ruimte = maakRuimte(master);
+  bodem(master);
+
+  for (let i = 0; i < 3; i++) {
+    const g = ctx.createGain();
+    g.gain.value = 0.085;
+    const pan = ctx.createStereoPanner();
+    g.connect(pan).connect(ruimte);
+
+    const osc = [];
+    for (const [veelvoud, vol] of [[1, 1], [2, 0.3], [3, 0.12]]) {
+      const o = ctx.createOscillator();
+      o.type = 'sine';
+      o.frequency.value = GRONDTOON * veelvoud;
+      const og = ctx.createGain();
+      og.gain.value = vol;
+      o.connect(og).connect(g);
+      o.start();
+      osc.push(o);
+    }
+    STEMMEN.push({ osc, pan, g });
+  }
+}
+
+/* Een lage grond eronder, zodat de stilte niet leeg is. */
+function bodem(dest) {
+  const g = ctx.createGain();
+  g.gain.value = 0.3;
+  g.connect(dest);
+  const drift = ctx.createOscillator();
+  drift.frequency.value = 0.019;
+  const diep = ctx.createGain();
+  diep.gain.value = 8;
+  drift.connect(diep);
+  drift.start();
+  for (const [f, v] of [[38.8, 0.5], [39.1, 0.5], [77.9, 0.16]]) {
+    const o = ctx.createOscillator();
+    o.type = 'sine';
+    o.frequency.value = f;
+    diep.connect(o.detune);
+    const og = ctx.createGain();
+    og.gain.value = v;
+    o.connect(og).connect(g);
+    o.start();
+  }
+}
+
+function werkGeluidBij() {
+  if (!ctx || STEMMEN.length < 3 || LAMPEN.length < 3) return;
+  const t = ctx.currentTime;
+  const schaal = lampStraal() * 2.4;
+  for (let i = 0; i < 3; i++) {
+    let dichtst = Infinity;
+    for (let j = 0; j < 3; j++) {
+      if (i === j) continue;
+      dichtst = Math.min(dichtst, Math.hypot(LAMPEN[i].x - LAMPEN[j].x, LAMPEN[i].y - LAMPEN[j].y));
+    }
+    const uiteen = Math.min(1, dichtst / schaal);
+    const centen = CENTEN[i] * uiteen;
+    const s = STEMMEN[i];
+    for (let k = 0; k < s.osc.length; k++) s.osc[k].detune.setTargetAtTime(centen, t, 0.1);
+    s.pan.pan.setTargetAtTime(Math.max(-0.85, Math.min(0.85, (LAMPEN[i].x / innerWidth - 0.5) * 1.7)), t, 0.12);
+  }
+}
+
+/* De ruimte: twee delays die elkaar voeden, met een donker filter in de lus
+   zodat elke herhaling doffer wordt. */
+function maakRuimte(dest) {
+  const inlaat = ctx.createGain();
+  inlaat.gain.value = 1;
+  const d1 = ctx.createDelay(2); d1.delayTime.value = 0.41;
+  const d2 = ctx.createDelay(2); d2.delayTime.value = 0.63;
+  const t1 = ctx.createGain(); t1.gain.value = 0.5;
+  const t2 = ctx.createGain(); t2.gain.value = 0.5;
+  const dof = ctx.createBiquadFilter();
+  dof.type = 'lowpass';
+  dof.frequency.value = 1500;
+  inlaat.connect(dest);
+  inlaat.connect(dof);
+  dof.connect(d1); dof.connect(d2);
+  d1.connect(t1).connect(d2);
+  d2.connect(t2).connect(d1);
+  d1.connect(dest); d2.connect(dest);
+  return inlaat;
+}
+</script>
+</body>
+</html>

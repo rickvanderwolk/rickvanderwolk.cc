@@ -1,0 +1,646 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="robots" content="noindex, nofollow">
+  <title>bol</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Een zwarte kamer met een bol van licht. Pak hem vast en draai, scroll of knijp om dichterbij te komen — hij klinkt naar de kant die je aankijkt. Tik op zijn huid en er trekt een lichtgolf overheen. Drie plekken willen gevonden worden.">
+  <meta name="author" content="Rick van der Wolk">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      background: #000;
+      overflow: hidden;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: none;
+      cursor: grab;
+    }
+    body.pakt { cursor: grabbing; }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+<canvas id="bol"></canvas>
+<script>
+'use strict';
+
+/* ---------------------------------------------------------------------------
+   bol — een bol van licht in een zwarte kamer.
+
+   Pak hem vast en draai; hij is zwaar en tolt na. Scroll of knijp om
+   dichterbij te komen of weg te zweven. De bol zoemt altijd — maar wát
+   hij zoemt, hangt af van welke kant je aankijkt (de zweving en de
+   kleur draaien mee), hoe dichtbij je bent (dichtbij is dieper en
+   voller, veraf is klein en galmend) en hoe hard hij tolt (wind).
+   Tik op zijn huid en er trekt een lichtgolf overheen die klinkt naar
+   wáár je hem raakte.
+
+   Drie plekken op de bol willen gevonden worden. Wie er één recht voor
+   zich houdt en heel even stilhoudt, hoort hem zingen. Wie alle drie
+   vindt, geeft de bol een hart.
+--------------------------------------------------------------------------- */
+
+const canvas = document.getElementById('bol');
+const ctx = canvas.getContext('2d');
+const TAU = Math.PI * 2;
+const PERSP = 3.4;
+
+let W = 0, H = 0, dpr = 1;
+
+function hermeet() {
+  dpr = Math.min(2, window.devicePixelRatio || 1);
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+}
+window.addEventListener('resize', hermeet);
+hermeet();
+
+function klem(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+function glad(a, b, x) { const t = klem((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); }
+
+/* --------------------------------- draaien --------------------------------
+   De stand van de bol is een 3×3-matrix. Slepen draait om de schermassen
+   (voorvermenigvuldigen), dus de bol volgt altijd je vinger, hoe hij ook
+   al gedraaid staat. */
+
+let R = [1, 0, 0, 0, 1, 0, 0, 0, 1];
+
+function matMaal(a, b) {
+  const r = new Array(9);
+  for (let i = 0; i < 3; i++)
+    for (let j = 0; j < 3; j++)
+      r[i * 3 + j] = a[i * 3] * b[j] + a[i * 3 + 1] * b[3 + j] + a[i * 3 + 2] * b[6 + j];
+  return r;
+}
+
+/* Kleine draai om de schermassen: eerst om y (opzij), dan om x (kantelen). */
+function kanteling(ax, ay) {
+  const cx = Math.cos(ax), sx = Math.sin(ax);
+  const cy = Math.cos(ay), sy = Math.sin(ay);
+  return [cy, 0, sy, sx * sy, cx, -sx * cy, -cx * sy, sx, cx * cy];
+}
+
+/* Afronden vreet langzaam aan de matrix; elke beeldtik even rechttrekken. */
+function hernormeer(m) {
+  let l = Math.hypot(m[0], m[1], m[2]);
+  m[0] /= l; m[1] /= l; m[2] /= l;
+  const d = m[3] * m[0] + m[4] * m[1] + m[5] * m[2];
+  m[3] -= d * m[0]; m[4] -= d * m[1]; m[5] -= d * m[2];
+  l = Math.hypot(m[3], m[4], m[5]);
+  m[3] /= l; m[4] /= l; m[5] /= l;
+  m[6] = m[1] * m[5] - m[2] * m[4];
+  m[7] = m[2] * m[3] - m[0] * m[5];
+  m[8] = m[0] * m[4] - m[1] * m[3];
+}
+
+function matVec(m, v) {
+  return {
+    x: m[0] * v.x + m[1] * v.y + m[2] * v.z,
+    y: m[3] * v.x + m[4] * v.y + m[5] * v.z,
+    z: m[6] * v.x + m[7] * v.y + m[8] * v.z,
+  };
+}
+
+/* Terug van kijkruimte naar bolruimte (R is orthonormaal, dus R⁻¹ = Rᵀ). */
+function terugDraai(m, v) {
+  return {
+    x: m[0] * v.x + m[3] * v.y + m[6] * v.z,
+    y: m[1] * v.x + m[4] * v.y + m[7] * v.z,
+    z: m[2] * v.x + m[5] * v.y + m[8] * v.z,
+  };
+}
+
+/* Het punt op de bolhuid dat nu recht naar jou kijkt. */
+function kijkpunt() { return { x: R[6], y: R[7], z: R[8] }; }
+
+/* ---------------------------------- de bol -------------------------------- */
+
+const N = 850;
+const GOUDEN = Math.PI * (3 - Math.sqrt(5));
+const punten = [];
+for (let i = 0; i < N; i++) {
+  const y = 1 - 2 * (i + 0.5) / N;
+  const r = Math.sqrt(Math.max(0, 1 - y * y));
+  const f = i * GOUDEN;
+  punten.push({
+    x: Math.cos(f) * r, y, z: Math.sin(f) * r,
+    zaad: Math.random() * TAU, gr: 0.5 + Math.random(),
+    sx: 0, sy: 0,
+  });
+}
+
+function norm3(x, y, z) { const l = Math.hypot(x, y, z); return { x: x / l, y: y / l, z: z / l }; }
+
+/* De drie plekken. Eén hangt vlak bij waar je begint, de rest moet je zoeken. */
+const sterren = [
+  { p: norm3(0.30, 0.45, 0.84),  f: 523.25, glans: 0, wacht: 0, gevonden: false },
+  { p: norm3(-0.72, 0.15, -0.67), f: 659.25, glans: 0, wacht: 0, gevonden: false },
+  { p: norm3(0.30, -0.85, 0.43),  f: 783.99, glans: 0, wacht: 0, gevonden: false },
+];
+let hartAan = false, hartMix = 0;
+
+const golven = [];   // lichtgolven over de huid: { p (bolruimte), tijd }
+
+const stofjes = [];
+for (let i = 0; i < 46; i++) {
+  stofjes.push({ x: Math.random() * 2000, y: Math.random() * 1200, zaad: Math.random() * 100 });
+}
+
+let zoom = 1, zoomDoel = 1;
+let wx = 0, wy = 0;            // draaisnelheid om de schermassen, rad/s
+let laatsteInteractie = -999;
+
+function bolStraal() { return Math.min(W, H) * 0.24 * zoom; }
+
+/* --------------------------------- geluid ---------------------------------
+   Eén zoem op C die altijd klinkt. Een tweede grondtoon is nét ontstemd:
+   draaien verschuift de ontstemming, dus de zweving is een windroos.
+   De breedtegraad die je aankijkt opent en sluit het filter, zoomen
+   maakt vol en dichtbij of klein en ver, tollen is wind. */
+
+let actx = null, hoofd = null, galm = null, natGain = null;
+let droneFilter = null, droneGain = null, zoem2 = null;
+let subGain = null, hartGain = null;
+let ruisFilter = null, ruisGain = null;
+let stemOsc = null, stemGain = null, stemPan = null;
+const sterStemmen = [];
+
+const BASIS = 65.41; // C2
+
+function uit(knoop, natheid) {
+  knoop.connect(hoofd);
+  const s = actx.createGain(); s.gain.value = natheid;
+  knoop.connect(s); s.connect(galm);
+}
+
+function startGeluid() {
+  if (actx) { actx.resume(); return; }
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return;
+  actx = new AC();
+  actx.resume();
+
+  hoofd = actx.createGain();
+  hoofd.gain.value = 0;
+  hoofd.gain.linearRampToValueAtTime(0.85, actx.currentTime + 4);
+  hoofd.connect(actx.destination);
+
+  galm = actx.createGain();
+  const vertraging = actx.createDelay(0.9); vertraging.delayTime.value = 0.42;
+  const terug = actx.createGain(); terug.gain.value = 0.38;
+  const dof = actx.createBiquadFilter(); dof.type = 'lowpass'; dof.frequency.value = 1200;
+  natGain = actx.createGain(); natGain.gain.value = 0.25;
+  galm.connect(vertraging); vertraging.connect(dof); dof.connect(terug);
+  terug.connect(vertraging); dof.connect(natGain); natGain.connect(hoofd);
+
+  /* De zoem. */
+  droneFilter = actx.createBiquadFilter();
+  droneFilter.type = 'lowpass'; droneFilter.frequency.value = 500; droneFilter.Q.value = 0.7;
+  droneGain = actx.createGain(); droneGain.gain.value = 0.5;
+  droneFilter.connect(droneGain); droneGain.connect(hoofd);
+  const dg = actx.createGain(); dg.gain.value = 0.5;
+  droneGain.connect(dg); dg.connect(galm);
+
+  for (const [deel, sterk] of [[1, 0.034], [2, 0.017], [3, 0.009], [4.5, 0.0045]]) {
+    const o = actx.createOscillator(); o.type = 'sine'; o.frequency.value = BASIS * deel;
+    const g = actx.createGain(); g.gain.value = sterk;
+    o.connect(g); g.connect(droneFilter); o.start();
+  }
+
+  /* De zweving: ontstemming volgt straks de lengtegraad die je aankijkt. */
+  zoem2 = actx.createOscillator(); zoem2.type = 'sine'; zoem2.frequency.value = BASIS;
+  const zg = actx.createGain(); zg.gain.value = 0.026;
+  zoem2.connect(zg); zg.connect(droneFilter); zoem2.start();
+
+  /* Het hart: een warme terts, pas hoorbaar als alle drie plekken zijn gevonden. */
+  const ho = actx.createOscillator(); ho.type = 'sine'; ho.frequency.value = BASIS * 1.25;
+  hartGain = actx.createGain(); hartGain.gain.value = 0;
+  ho.connect(hartGain); hartGain.connect(droneFilter); ho.start();
+
+  /* De diepte: een sub die aanzwelt als je dichtbij komt. */
+  const so = actx.createOscillator(); so.type = 'sine'; so.frequency.value = BASIS / 2;
+  subGain = actx.createGain(); subGain.gain.value = 0;
+  so.connect(subGain); subGain.connect(hoofd); so.start();
+
+  /* De wind van het tollen. */
+  const n = Math.floor(actx.sampleRate * 2);
+  const buf = actx.createBuffer(1, n, actx.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
+  const bron = actx.createBufferSource(); bron.buffer = buf; bron.loop = true;
+  ruisFilter = actx.createBiquadFilter();
+  ruisFilter.type = 'bandpass'; ruisFilter.frequency.value = 300; ruisFilter.Q.value = 0.9;
+  ruisGain = actx.createGain(); ruisGain.gain.value = 0;
+  bron.connect(ruisFilter); ruisFilter.connect(ruisGain); ruisGain.connect(hoofd);
+  bron.start();
+
+  /* De stem onder je vingers: klinkt alleen tijdens het slepen. */
+  stemOsc = actx.createOscillator(); stemOsc.type = 'sine'; stemOsc.frequency.value = 130;
+  const vib = actx.createOscillator(); vib.frequency.value = 4.3;
+  const vibG = actx.createGain(); vibG.gain.value = 1.6;
+  vib.connect(vibG); vibG.connect(stemOsc.frequency); vib.start();
+  stemGain = actx.createGain(); stemGain.gain.value = 0;
+  stemPan = actx.createStereoPanner ? actx.createStereoPanner() : actx.createGain();
+  stemOsc.connect(stemGain); stemGain.connect(stemPan); stemPan.connect(hoofd);
+  const sg = actx.createGain(); sg.gain.value = 0.6;
+  stemGain.connect(sg); sg.connect(galm);
+  stemOsc.start();
+
+  /* De drie plekken: elk een eigen toon die opgloeit bij uitlijning. */
+  for (const ster of sterren) {
+    const o = actx.createOscillator(); o.type = 'sine'; o.frequency.value = ster.f;
+    const g = actx.createGain(); g.gain.value = 0;
+    o.connect(g); g.connect(hoofd);
+    const w = actx.createGain(); w.gain.value = 0.8;
+    g.connect(w); w.connect(galm);
+    o.start();
+    sterStemmen.push(g);
+  }
+}
+
+function bel(f, sterk, lang, wacht, pan) {
+  if (!actx) return;
+  const t0 = actx.currentTime + 0.02 + (wacht || 0);
+  let pn = null;
+  if (pan && actx.createStereoPanner) {
+    pn = actx.createStereoPanner(); pn.pan.value = klem(pan, -1, 1); pn.connect(hoofd);
+  }
+  for (const [deel, v, tau] of [[1, 1, 1], [2.01, 0.42, 0.5], [2.99, 0.15, 0.25]]) {
+    const o = actx.createOscillator(); o.type = 'sine'; o.frequency.value = f * deel;
+    const g = actx.createGain();
+    g.gain.setValueAtTime(0, t0);
+    g.gain.linearRampToValueAtTime(sterk * v, t0 + 0.02);
+    g.gain.setTargetAtTime(0, t0 + 0.06, lang * tau);
+    o.connect(g); g.connect(pn || hoofd);
+    const s = actx.createGain(); s.gain.value = 0.6;
+    g.connect(s); s.connect(galm);
+    o.start(t0); o.stop(t0 + lang * 8 + 2);
+  }
+}
+
+/* Een doffe plok bij het vastpakken: meer voelen dan horen. */
+function plok() {
+  if (!actx) return;
+  const t0 = actx.currentTime;
+  const o = actx.createOscillator(); o.type = 'sine';
+  o.frequency.setValueAtTime(120, t0);
+  o.frequency.exponentialRampToValueAtTime(60, t0 + 0.12);
+  const g = actx.createGain();
+  g.gain.setValueAtTime(0.015, t0);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.18);
+  o.connect(g); uit(g, 0.3);
+  o.start(t0); o.stop(t0 + 0.25);
+}
+
+/* De huid van de bol is een toonladder: tikken op een breedtegraad
+   speelt de dichtstbijzijnde toon uit een pentatoniek op C. */
+const TOONLADDER = [0, 2, 4, 7, 9];
+function toonBijBreedte(bn) {
+  const graad = Math.min(9, Math.floor(bn * 10));
+  const oct = Math.floor(graad / 5), st = TOONLADDER[graad % 5];
+  return 130.81 * Math.pow(2, oct + st / 12);
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (!actx) return;
+  if (document.hidden) actx.suspend(); else actx.resume();
+});
+
+/* ---------------------------------- invoer -------------------------------- */
+
+const vingers = new Map();
+let sleepId = null;
+let knijpAfstand = 0;
+let sleepAx = 0, sleepAy = 0;   // opgebouwde draai sinds vorige beeldtik
+const toetsen = new Set();
+
+function huidigeKnijp() {
+  const v = [...vingers.values()];
+  return v.length < 2 ? 0 : Math.hypot(v[0].x - v[1].x, v[0].y - v[1].y);
+}
+
+canvas.addEventListener('pointerdown', (e) => {
+  startGeluid();
+  vingers.set(e.pointerId, { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, t0: performance.now() });
+  if (vingers.size === 1) {
+    sleepId = e.pointerId;
+    document.body.classList.add('pakt');
+    wx = 0; wy = 0;
+    plok();
+  } else {
+    sleepId = null;
+    knijpAfstand = huidigeKnijp();
+  }
+  laatsteInteractie = performance.now() / 1000;
+});
+
+canvas.addEventListener('pointermove', (e) => {
+  const v = vingers.get(e.pointerId);
+  if (!v) return;
+  const dx = e.clientX - v.x, dy = e.clientY - v.y;
+  v.x = e.clientX; v.y = e.clientY;
+  if (vingers.size === 1 && e.pointerId === sleepId) {
+    const straal = bolStraal();
+    const ax = dy / straal, ay = dx / straal;
+    R = matMaal(kanteling(ax, ay), R);
+    sleepAx += ax; sleepAy += ay;
+  } else if (vingers.size === 2) {
+    const na = huidigeKnijp();
+    if (knijpAfstand > 0) zoomDoel = klem(zoomDoel * na / knijpAfstand, 0.5, 2.8);
+    knijpAfstand = na;
+  }
+  laatsteInteractie = performance.now() / 1000;
+});
+
+function vingerLos(e) {
+  const v = vingers.get(e.pointerId);
+  if (!v) return;
+  vingers.delete(e.pointerId);
+  const duur = performance.now() - v.t0;
+  const beweging = Math.hypot(e.clientX - v.x0, e.clientY - v.y0);
+  if (duur < 300 && beweging < 8) tik(e.clientX, e.clientY);
+  if (e.pointerId === sleepId) {
+    sleepId = null;
+    document.body.classList.remove('pakt');
+  }
+  if (vingers.size === 1) sleepId = [...vingers.keys()][0];
+  knijpAfstand = vingers.size === 2 ? huidigeKnijp() : 0;
+}
+window.addEventListener('pointerup', vingerLos);
+window.addEventListener('pointercancel', vingerLos);
+
+window.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  startGeluid();
+  zoomDoel = klem(zoomDoel * Math.exp(-e.deltaY * 0.0013), 0.5, 2.8);
+  laatsteInteractie = performance.now() / 1000;
+}, { passive: false });
+
+window.addEventListener('keydown', (e) => {
+  if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' ', '+', '=', '-', '_'].includes(e.key)) e.preventDefault();
+  startGeluid();
+  if (e.key === ' ' && !toetsen.has(' ')) tik(W / 2, H / 2);
+  toetsen.add(e.key);
+  laatsteInteractie = performance.now() / 1000;
+});
+window.addEventListener('keyup', (e) => toetsen.delete(e.key));
+canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+/* Een tik op de huid: een lichtgolf vanaf dat punt, en de toon die daar
+   woont. Naast de bol tikken geeft alleen een verre echo in het donker. */
+function tik(x, y) {
+  const straal = bolStraal();
+  const nx = (x - W / 2) / straal, ny = -(y - H / 2) / straal;
+  const rr = nx * nx + ny * ny;
+  if (rr <= 1) {
+    const p = terugDraai(R, { x: nx, y: ny, z: Math.sqrt(1 - rr) });
+    golven.push({ p, tijd: 0 });
+    const bn = (Math.asin(klem(p.y, -1, 1)) + Math.PI / 2) / Math.PI;
+    bel(toonBijBreedte(bn), 0.035, 1.4, 0, (x / W - 0.5) * 1.2);
+  } else {
+    bel(523.25, 0.008, 1.2, 0.15, (x / W - 0.5) * 1.6);
+  }
+}
+
+/* -------------------------------- bijwerken ------------------------------- */
+
+function bijwerken(dt, t) {
+  zoom += (zoomDoel - zoom) * Math.min(1, dt * 6);
+
+  /* Pijltjes draaien, plus en min zoomen. */
+  let tWx = 0, tWy = 0;
+  if (toetsen.has('ArrowRight')) tWy = 1.3;
+  if (toetsen.has('ArrowLeft')) tWy = -1.3;
+  if (toetsen.has('ArrowDown')) tWx = 1.3;
+  if (toetsen.has('ArrowUp')) tWx = -1.3;
+  if (toetsen.has('+') || toetsen.has('=')) zoomDoel = klem(zoomDoel * Math.exp(dt * 0.9), 0.5, 2.8);
+  if (toetsen.has('-') || toetsen.has('_')) zoomDoel = klem(zoomDoel * Math.exp(-dt * 0.9), 0.5, 2.8);
+
+  if (sleepId !== null) {
+    /* Slepen: de draai is al gezet; alleen de vaart onthouden voor straks. */
+    wx = wx * 0.75 + (sleepAx / Math.max(dt, 0.001)) * 0.25;
+    wy = wy * 0.75 + (sleepAy / Math.max(dt, 0.001)) * 0.25;
+  } else if (tWx !== 0 || tWy !== 0) {
+    wx = tWx; wy = tWy;
+    R = matMaal(kanteling(wx * dt, wy * dt), R);
+  } else {
+    /* Losgelaten: natollen, zwaar als glas. */
+    R = matMaal(kanteling(wx * dt, wy * dt), R);
+    wx *= Math.exp(-dt * 0.55);
+    wy *= Math.exp(-dt * 0.55);
+    /* Wie lang wegblijft: de bol gaat vanzelf heel traag rondwentelen. */
+    if (t - laatsteInteractie > 25) wy += (0.035 - wy) * Math.min(1, dt * 0.05);
+  }
+  sleepAx = 0; sleepAy = 0;
+  hernormeer(R);
+
+  const snelheid = Math.hypot(wx, wy);
+
+  for (const g of golven) g.tijd += dt;
+  while (golven.length && golven[0].tijd > 3.5) golven.shift();
+
+  /* De drie plekken: recht vooraan en bijna stil is uitgelijnd. */
+  for (let i = 0; i < sterren.length; i++) {
+    const ster = sterren[i];
+    const q = matVec(R, ster.p);
+    ster.q = q;
+    const stil = snelheid < 0.25 ? 1 : klem(1 - (snelheid - 0.25) * 2, 0, 1);
+    const doel = glad(0.975, 0.997, q.z) * stil;
+    ster.glans += (doel - ster.glans) * Math.min(1, dt * 3);
+    if (!ster.gevonden) {
+      if (ster.glans > 0.55) ster.wacht += dt; else ster.wacht = Math.max(0, ster.wacht - dt * 2);
+      if (ster.wacht >= 1.8) {
+        ster.gevonden = true;
+        bel(ster.f, 0.05, 2.5, 0, q.x * 0.5);
+        golven.push({ p: ster.p, tijd: 0 });
+        if (sterren.every(s => s.gevonden) && !hartAan) {
+          hartAan = true;
+          bel(BASIS * 2, 0.06, 5, 0.7);
+        }
+      }
+    }
+  }
+  hartMix += ((hartAan ? 1 : 0) - hartMix) * Math.min(1, dt * 0.3);
+
+  for (const m of stofjes) {
+    m.x += (Math.sin(t * 0.13 + m.zaad) * 3 + wy * 22) * dt;
+    m.y += (Math.cos(t * 0.11 + m.zaad * 1.7) * 3 - wx * 22) * dt;
+    if (m.x < -10) m.x += W + 20; else if (m.x > W + 10) m.x -= W + 20;
+    if (m.y < -10) m.y += H + 20; else if (m.y > H + 10) m.y -= H + 20;
+  }
+
+  /* Het geluid draait mee. */
+  if (actx) {
+    const kijk = kijkpunt();
+    const lengte = Math.atan2(kijk.x, kijk.z);
+    const breedteN = (Math.asin(klem(kijk.y, -1, 1)) + Math.PI / 2) / Math.PI;
+    const zoomN = (zoom - 0.5) / 2.3;
+    const nu = actx.currentTime;
+
+    droneFilter.frequency.setTargetAtTime(
+      (150 + 1500 * Math.pow(breedteN, 1.3)) * (0.55 + 0.8 * zoomN), nu, 0.2);
+    droneGain.gain.setTargetAtTime(0.42 + 0.58 * zoomN, nu, 0.3);
+    zoem2.detune.setTargetAtTime(Math.sin(lengte) * 9, nu, 0.3);
+    subGain.gain.setTargetAtTime(0.030 * zoomN * zoomN, nu, 0.4);
+    natGain.gain.setTargetAtTime(0.16 + 0.22 * (1 - zoomN), nu, 0.5);
+    hartGain.gain.setTargetAtTime(0.020 * hartMix, nu, 1);
+
+    ruisGain.gain.setTargetAtTime(klem(snelheid * 0.026, 0, 0.055), nu, 0.15);
+    ruisFilter.frequency.setTargetAtTime(240 + snelheid * 420, nu, 0.2);
+
+    if (sleepId !== null) {
+      stemGain.gain.setTargetAtTime(0.020, nu, 0.12);
+      stemOsc.frequency.setTargetAtTime(130.81 * Math.pow(2, breedteN * 1.2), nu, 0.09);
+      if (stemPan.pan) stemPan.pan.setTargetAtTime(Math.sin(lengte) * 0.6, nu, 0.1);
+    } else {
+      stemGain.gain.setTargetAtTime(0, nu, 0.25);
+    }
+
+    for (let i = 0; i < sterStemmen.length; i++) {
+      const ster = sterren[i];
+      const vol = ster.glans * (ster.gevonden ? 0.010 : 0.016) * (0.8 + 0.2 * Math.sin(t * 5 + i * 2));
+      sterStemmen[i].gain.setTargetAtTime(vol, nu, 0.1);
+    }
+  }
+}
+
+/* --------------------------------- tekenen -------------------------------- */
+
+function golfLicht(p) {
+  let extra = 0;
+  for (const g of golven) {
+    const d = klem(p.x * g.p.x + p.y * g.p.y + p.z * g.p.z, -1, 1);
+    const dd = (Math.acos(d) - g.tijd * 2.3) / 0.22;
+    extra += Math.exp(-dd * dd) * Math.exp(-g.tijd);
+  }
+  return extra;
+}
+
+function tekenen(t) {
+  /* Niet helemaal schoonvegen: een dun nalichten, als fosfor. */
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+  ctx.fillRect(0, 0, W, H);
+
+  const kijk = kijkpunt();
+  const lengte = Math.atan2(kijk.x, kijk.z);
+  const breedteN = (Math.asin(klem(kijk.y, -1, 1)) + Math.PI / 2) / Math.PI;
+  const snelheid = Math.hypot(wx, wy);
+
+  /* De kleur draait mee met de kant die je aankijkt; het hart maakt goud. */
+  let hue = 205 + Math.sin(lengte) * 28 - (breedteN - 0.5) * 40;
+  hue += (46 - hue) * hartMix * 0.75;
+  const sat = 55 + 20 * hartMix;
+
+  const cx = W / 2, cy = H / 2;
+  const straal = bolStraal();
+  const pols = 0.5 + 0.5 * Math.sin(t * TAU / 9);
+  const gloed = 0.8 + 0.25 * pols + klem(snelheid * 0.15, 0, 0.35);
+
+  /* Het stof in de kamer. */
+  for (const m of stofjes) {
+    const alfa = 0.035 * (0.5 + 0.5 * Math.sin(t * 0.8 + m.zaad * 5));
+    ctx.fillStyle = `hsla(${hue}, 30%, 85%, ${alfa})`;
+    ctx.beginPath(); ctx.arc(m.x, m.y, 1, 0, TAU); ctx.fill();
+  }
+
+  /* Het licht van binnen. */
+  const g1 = ctx.createRadialGradient(cx, cy, 0, cx, cy, straal * 1.35);
+  g1.addColorStop(0, `hsla(${hue}, ${sat}%, 70%, ${0.10 * gloed})`);
+  g1.addColorStop(1, `hsla(${hue}, ${sat}%, 70%, 0)`);
+  ctx.fillStyle = g1;
+  ctx.beginPath(); ctx.arc(cx, cy, straal * 1.35, 0, TAU); ctx.fill();
+
+  const g2 = ctx.createRadialGradient(cx, cy, 0, cx, cy, straal * 0.5);
+  g2.addColorStop(0, `hsla(${hue + 10}, ${sat}%, 82%, ${0.20 * gloed})`);
+  g2.addColorStop(1, `hsla(${hue + 10}, ${sat}%, 82%, 0)`);
+  ctx.fillStyle = g2;
+  ctx.beginPath(); ctx.arc(cx, cy, straal * 0.5, 0, TAU); ctx.fill();
+
+  /* De huid: puntjes met diepte. Bij hard tollen worden het strepen. */
+  const strepen = snelheid > 0.9;
+  ctx.lineCap = 'round';
+  for (const p of punten) {
+    const q = matVec(R, p);
+    const f = PERSP / (PERSP - q.z);
+    const sx = cx + q.x * straal * f;
+    const sy = cy - q.y * straal * f;
+    const extra = golfLicht(p);
+    const alfa = klem(
+      0.06 + 0.6 * Math.pow((q.z + 1) / 2, 2.2)
+      + 0.10 * Math.sin(t * (1 + p.gr) + p.zaad)
+      + extra * 0.7, 0, 1);
+    const grootte = (0.8 + 0.8 * p.gr) * (0.65 + 0.55 * f) * (1 + extra * 1.5);
+    const kleur = `hsla(${hue + p.gr * 12}, ${sat}%, ${68 + extra * 20}%, ${alfa})`;
+    const afst = Math.hypot(sx - p.sx, sy - p.sy);
+    if (strepen && afst > 2.5 && afst < 40) {
+      ctx.strokeStyle = kleur;
+      ctx.lineWidth = grootte;
+      ctx.beginPath(); ctx.moveTo(p.sx, p.sy); ctx.lineTo(sx, sy); ctx.stroke();
+    } else {
+      ctx.fillStyle = kleur;
+      ctx.beginPath(); ctx.arc(sx, sy, grootte, 0, TAU); ctx.fill();
+    }
+    p.sx = sx; p.sy = sy;
+  }
+
+  /* De drie plekken. Onopvallend tot je ze aankijkt. */
+  for (const ster of sterren) {
+    const q = ster.q || matVec(R, ster.p);
+    const f = PERSP / (PERSP - q.z);
+    const sx = cx + q.x * straal * f;
+    const sy = cy - q.y * straal * f;
+    const voor = q.z > 0 ? 1 : 0.15;
+    const alfa = (ster.gevonden ? 0.5 + 0.4 * ster.glans : 0.12 + 0.75 * ster.glans) * voor;
+    const kleur = ster.gevonden ? '46, 80%, 78%' : '190, 60%, 88%';
+    const rr = 1.6 + ster.glans * 3 + (ster.gevonden ? 0.8 : 0);
+
+    if (ster.glans > 0.02 || ster.gevonden) {
+      const halo = ctx.createRadialGradient(sx, sy, 0, sx, sy, 10 + 30 * ster.glans);
+      halo.addColorStop(0, `hsla(${kleur}, ${(0.25 * ster.glans + (ster.gevonden ? 0.10 : 0)) * voor})`);
+      halo.addColorStop(1, `hsla(${kleur}, 0)`);
+      ctx.fillStyle = halo;
+      ctx.beginPath(); ctx.arc(sx, sy, 10 + 30 * ster.glans, 0, TAU); ctx.fill();
+    }
+    ctx.fillStyle = `hsla(${kleur}, ${alfa})`;
+    ctx.beginPath(); ctx.arc(sx, sy, rr, 0, TAU); ctx.fill();
+
+    /* Een cirkel die zich langzaam sluit terwijl je stilhoudt. */
+    if (!ster.gevonden && ster.wacht > 0.1) {
+      ctx.strokeStyle = `hsla(${kleur}, ${0.35 * ster.glans})`;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(sx, sy, 9 + ster.glans * 3, -Math.PI / 2, -Math.PI / 2 + (ster.wacht / 1.8) * TAU);
+      ctx.stroke();
+    }
+  }
+
+  /* De rand, nauwelijks. */
+  ctx.strokeStyle = `hsla(${hue}, ${sat}%, 75%, ${0.04 + 0.05 * pols})`;
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.arc(cx, cy, straal, 0, TAU); ctx.stroke();
+}
+
+/* ----------------------------------- lus ---------------------------------- */
+
+let vorige = performance.now();
+
+function beeld(nu) {
+  const dt = Math.min(0.05, (nu - vorige) / 1000);
+  vorige = nu;
+  const t = nu / 1000;
+
+  bijwerken(dt, t);
+
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  tekenen(t);
+
+  requestAnimationFrame(beeld);
+}
+requestAnimationFrame(beeld);
+</script>
+</body>
+</html>

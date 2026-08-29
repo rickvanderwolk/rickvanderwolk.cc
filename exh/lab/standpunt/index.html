@@ -1,0 +1,606 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="robots" content="noindex, nofollow">
+  <title>standpunt</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Een witte leegte vol zwarte spikkels. Wie eromheen draait ziet chaos — behalve vanuit precies het goede standpunt. Er zijn er drie te vinden; je hoort het als je warm wordt. En wie alle drie vindt, moet nog héél even blijven.">
+  <meta name="author" content="Rick van der Wolk">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      background: #f4f1ea;
+      overflow: hidden;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: none;
+      cursor: grab;
+    }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+<canvas id="standpunt"></canvas>
+<script>
+'use strict';
+
+/* ---------------------------------------------------------------------------
+   standpunt — duizend spikkels, drie tekeningen, één leegte.
+
+   Een wolk zwarte spikkels hangt in een witte ruimte. Sleep om eromheen te
+   draaien (pijltjes kunnen ook, scrollen is dichterbij). Vanuit bijna elke
+   hoek is het chaos — maar er zijn drie standpunten waar de spikkels ineens
+   iets blijken te zijn. Je hoort het als je in de buurt komt: een toon met
+   een zweving die trager wordt naarmate je beter staat, en die stil valt
+   op precies het goede moment.
+
+   Wie alle drie de standpunten gevonden heeft, moet nog héél even blijven.
+--------------------------------------------------------------------------- */
+
+const canvas = document.getElementById('standpunt');
+const ctx = canvas.getContext('2d');
+const TAU = Math.PI * 2;
+const F0 = 1400;   // brandpuntsafstand van de projectie
+
+let W = 0, H = 0, dpr = 1;
+let vignet = null, korrel = null;
+
+function hermeet() {
+  dpr = Math.min(2, window.devicePixelRatio || 1);
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+  maakVignet();
+}
+window.addEventListener('resize', hermeet);
+
+function maakVignet() {
+  vignet = document.createElement('canvas');
+  vignet.width = W; vignet.height = H;
+  const v = vignet.getContext('2d');
+  const g = v.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.4, W / 2, H / 2, Math.max(W, H) * 0.78);
+  g.addColorStop(0, 'rgba(90,75,45,0)');
+  g.addColorStop(1, 'rgba(90,75,45,0.16)');
+  v.fillStyle = g; v.fillRect(0, 0, W, H);
+}
+
+function maakKorrel() {
+  korrel = document.createElement('canvas');
+  korrel.width = 160; korrel.height = 160;
+  const k = korrel.getContext('2d');
+  const beeld = k.createImageData(160, 160);
+  for (let i = 0; i < beeld.data.length; i += 4) {
+    const g = 110 + Math.random() * 70;
+    beeld.data[i] = beeld.data[i + 1] = beeld.data[i + 2] = g;
+    beeld.data[i + 3] = 10;
+  }
+  k.putImageData(beeld, 0, 0);
+}
+maakKorrel();
+hermeet();
+
+function klem(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+function wrapPI(a) { return ((a + Math.PI) % TAU + TAU) % TAU - Math.PI; }
+
+/* Vaste toevalsbron: de wolk ligt er elke keer precies zo bij.
+   Dit is een plek, geen generator. */
+function mulberry32(zaad) {
+  return function () {
+    zaad |= 0; zaad = zaad + 0x6D2B79F5 | 0;
+    let t = Math.imul(zaad ^ zaad >>> 15, 1 | zaad);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+const rnd = mulberry32(1974);
+
+/* -------------------------------- meetkunde ------------------------------ */
+
+function richting(theta, phi) {
+  return {
+    x: Math.cos(phi) * Math.cos(theta),
+    y: Math.sin(phi),
+    z: Math.cos(phi) * Math.sin(theta),
+  };
+}
+
+/* Camerabasis voor een oog dat vanaf richting(theta, phi) naar de
+   oorsprong kijkt: vooruit, rechts en op — rechtshandig, wereld-Y omhoog. */
+function basisVoor(theta, phi) {
+  const dir = richting(theta, phi);
+  const vooruit = { x: -dir.x, y: -dir.y, z: -dir.z };
+  let rx = -vooruit.z, rz = vooruit.x;
+  const rl = Math.hypot(rx, rz) || 1; rx /= rl; rz /= rl;
+  const rechts = { x: rx, y: 0, z: rz };
+  const op = {
+    x: -rz * vooruit.y,
+    y: rz * vooruit.x - rx * vooruit.z,
+    z: rx * vooruit.y,
+  };
+  return { dir, vooruit, rechts, op };
+}
+
+/* Een plat punt (canvasconventie: y omlaag) het vlak van een vorm in tillen,
+   met een eigen diepte langs de kijkrichting van dat standpunt. */
+function inVlak(B, sx, sy, diep) {
+  return {
+    x: B.rechts.x * sx - B.op.x * sy + B.dir.x * diep,
+    y: B.rechts.y * sx - B.op.y * sy + B.dir.y * diep,
+    z: B.rechts.z * sx - B.op.z * sy + B.dir.z * diep,
+  };
+}
+
+/* -------------------------------- de vormen ------------------------------ */
+
+function kwad(ax, ay, cx, cy, bx, by, n) {
+  const uit = [];
+  for (let i = 0; i <= n; i++) {
+    const t = i / n, mt = 1 - t;
+    uit.push({ x: mt * mt * ax + 2 * mt * t * cx + t * t * bx, y: mt * mt * ay + 2 * mt * t * cy + t * t * by });
+  }
+  return uit;
+}
+function lijn(ax, ay, bx, by) { return [{ x: ax, y: ay }, { x: bx, y: by }]; }
+function cirkelPad(cx, cy, r, n) {
+  const uit = [];
+  for (let i = 0; i <= n; i++) {
+    const h = i / n * TAU;
+    uit.push({ x: cx + Math.cos(h) * r, y: cy + Math.sin(h) * r });
+  }
+  return uit;
+}
+
+/* Drie schetsen — een vogel, een bootje, een oog. Wie de andere plekken
+   kent, heeft ze eerder gezien. */
+const VORMEN = [
+  {
+    naam: 'vogel', noot: 392, theta: 0.7, phi: 0.18,
+    paden: [
+      kwad(-360, -10, -205, -165, -30, -72, 18),
+      kwad(30, -72, 205, -165, 360, -10, 18),
+      kwad(-30, -72, 25, -25, 105, -14, 10),
+      lijn(105, -14, 182, 10),
+      lijn(105, -14, 176, -40),
+    ],
+    pupil: false,
+  },
+  {
+    naam: 'boot', noot: 329.6, theta: 2.75, phi: -0.34,
+    paden: [
+      [{ x: -150, y: 60 }, { x: 150, y: 60 }, { x: 100, y: 122 }, { x: -100, y: 122 }, { x: -150, y: 60 }],
+      lijn(0, 60, 0, -122),
+      [{ x: 10, y: -114 }, { x: 132, y: -18 }, { x: 10, y: -8 }, { x: 10, y: -114 }],
+      kwad(-232, 148, -200, 124, -168, 148, 8),
+      kwad(168, 148, 200, 124, 232, 148, 8),
+    ],
+    pupil: false,
+  },
+  {
+    naam: 'oog', noot: 261.6, theta: 4.55, phi: 0.52,
+    paden: [
+      kwad(-260, 0, 0, -198, 260, 0, 22),
+      kwad(260, 0, 0, 198, -260, 0, 22),
+      cirkelPad(0, 0, 86, 26),
+    ],
+    pupil: true,
+  },
+];
+
+const punten = [];   // { thuis, p, v, grootte, vorm, vloerY }
+
+for (const vorm of VORMEN) {
+  vorm.basis = basisVoor(vorm.theta, vorm.phi);
+  vorm.q = 0;
+  vorm.hoek = Math.PI;
+  vorm.vasthoud = 0;
+  vorm.ontdekt = false;
+  vorm.ontdektOp = -99;
+  vorm.lijnen3d = vorm.paden.map((pad) => pad.map((p) => inVlak(vorm.basis, p.x, p.y, 0)));
+
+  const monsters = [];
+  for (const pad of vorm.paden) {
+    for (let i = 1; i < pad.length; i++) {
+      const a = pad[i - 1], b = pad[i];
+      const L = Math.hypot(b.x - a.x, b.y - a.y);
+      const n = Math.max(1, Math.round(L / 14));
+      for (let k = 0; k < n; k++) {
+        const tt = (k + 0.5) / n;
+        monsters.push({
+          x: a.x + (b.x - a.x) * tt + (rnd() - 0.5) * 5,
+          y: a.y + (b.y - a.y) * tt + (rnd() - 0.5) * 5,
+        });
+      }
+    }
+  }
+  if (vorm.pupil) {
+    for (let i = 0; i < 26; i++) {
+      const h = rnd() * TAU, r = Math.sqrt(rnd()) * 34;
+      monsters.push({ x: Math.cos(h) * r, y: Math.sin(h) * r });
+    }
+  }
+  for (const m of monsters) {
+    const p = inVlak(vorm.basis, m.x, m.y, (rnd() - 0.5) * 840);
+    punten.push({
+      thuis: p, p: { x: p.x, y: p.y, z: p.z }, v: { x: 0, y: 0, z: 0 },
+      grootte: 2.2 + rnd() * 1.8, vorm, vloerY: -830 + rnd() * 50,
+    });
+  }
+}
+
+/* Vullers: spikkels die nergens bij horen. Zij maken de stilte
+   waarin de tekeningen kunnen schuilen. */
+for (let i = 0; i < 520; i++) {
+  const h = rnd() * TAU, ph = Math.asin(rnd() * 2 - 1), r = 760 * Math.cbrt(rnd());
+  const p = {
+    x: Math.cos(ph) * Math.cos(h) * r,
+    y: Math.sin(ph) * r,
+    z: Math.cos(ph) * Math.sin(h) * r,
+  };
+  punten.push({
+    thuis: p, p: { x: p.x, y: p.y, z: p.z }, v: { x: 0, y: 0, z: 0 },
+    grootte: 1.8 + rnd() * 2.0, vorm: null, vloerY: -830 + rnd() * 50,
+  });
+}
+
+/* --------------------------------- camera -------------------------------- */
+
+const camera = { theta: 1.9, phi: -0.05, afstand: 2600, vTheta: 0, vPhi: 0 };
+let modus = 'zweef';         // zweef | val | terug
+let finaleOp = 0, valOp = 0, terugOp = 0, finaleGeweest = false, ademt = false;
+let sluimer = 0;
+
+/* ---------------------------------- geluid ------------------------------- */
+
+/* Per vorm twee bijna gelijke tonen: hoe beter je staat, hoe trager de
+   zweving — tot hij stilvalt op precies het goede standpunt. */
+let actx = null, hoofd = null, galm = null;
+
+function uit(knoop, natheid) {
+  knoop.connect(hoofd);
+  const s = actx.createGain(); s.gain.value = natheid;
+  knoop.connect(s); s.connect(galm);
+}
+
+function startGeluid() {
+  if (actx) { actx.resume(); return; }
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return;
+  actx = new AC();
+  actx.resume();
+
+  hoofd = actx.createGain();
+  hoofd.gain.value = 0;
+  hoofd.gain.linearRampToValueAtTime(0.85, actx.currentTime + 4);
+  hoofd.connect(actx.destination);
+
+  galm = actx.createGain();
+  const vertraging = actx.createDelay(0.7); vertraging.delayTime.value = 0.32;
+  const terug = actx.createGain(); terug.gain.value = 0.32;
+  const dof = actx.createBiquadFilter(); dof.type = 'lowpass'; dof.frequency.value = 1400;
+  const nat = actx.createGain(); nat.gain.value = 0.22;
+  galm.connect(vertraging); vertraging.connect(dof); dof.connect(terug);
+  terug.connect(vertraging); dof.connect(nat); nat.connect(hoofd);
+
+  /* Lage bourdon, ver weg. */
+  const bo = actx.createOscillator(); bo.type = 'sine'; bo.frequency.value = 65.4;
+  const bg = actx.createGain(); bg.gain.value = 0.009;
+  bo.connect(bg); bg.connect(hoofd); bo.start();
+
+  /* Heel hoog, heel zacht geschitter. */
+  const n = Math.floor(actx.sampleRate * 2);
+  const buf = actx.createBuffer(1, n, actx.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
+  const sch = actx.createBufferSource(); sch.buffer = buf; sch.loop = true;
+  const schF = actx.createBiquadFilter(); schF.type = 'highpass'; schF.frequency.value = 5200;
+  const schVol = actx.createGain(); schVol.gain.value = 0.004;
+  const lfo = actx.createOscillator(); lfo.frequency.value = 0.05;
+  const lfoDiep = actx.createGain(); lfoDiep.gain.value = 0.002;
+  lfo.connect(lfoDiep); lfoDiep.connect(schVol.gain);
+  sch.connect(schF); schF.connect(schVol); schVol.connect(hoofd);
+  sch.start(); lfo.start();
+
+  for (const vorm of VORMEN) {
+    const g = actx.createGain(); g.gain.value = 0; g.connect(hoofd);
+    const s = actx.createGain(); s.gain.value = 0.4; g.connect(s); s.connect(galm);
+    const o1 = actx.createOscillator(); o1.type = 'sine'; o1.frequency.value = vorm.noot;
+    const o2 = actx.createOscillator(); o2.type = 'sine'; o2.frequency.value = vorm.noot + 4.5;
+    o1.connect(g); o2.connect(g); o1.start(); o2.start();
+    vorm.stem = { g, o2 };
+  }
+}
+
+function bel(f, vertraag) {
+  if (!actx) return;
+  const t0 = actx.currentTime + 0.03 + (vertraag || 0);
+  for (const [deel, v, tau] of [[1, 0.05, 2.4], [2.01, 0.017, 1.2], [2.99, 0.007, 0.6]]) {
+    const o = actx.createOscillator(); o.type = 'sine'; o.frequency.value = f * deel;
+    const g = actx.createGain();
+    g.gain.setValueAtTime(0, t0);
+    g.gain.linearRampToValueAtTime(v, t0 + 0.015);
+    g.gain.setTargetAtTime(0, t0 + 0.03, tau);
+    o.connect(g); uit(g, 0.5);
+    o.start(t0); o.stop(t0 + 7);
+  }
+}
+
+function akkoord() { bel(261.6, 0); bel(329.6, 0.15); bel(392, 0.32); }
+
+/* Het vallen zelf: een zachte ruisval, van hoog naar laag. */
+function roffel() {
+  if (!actx) return;
+  const t0 = actx.currentTime;
+  const n = Math.floor(actx.sampleRate * 2);
+  const buf = actx.createBuffer(1, n, actx.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
+  const bron = actx.createBufferSource(); bron.buffer = buf;
+  const f = actx.createBiquadFilter(); f.type = 'lowpass';
+  f.frequency.setValueAtTime(1600, t0);
+  f.frequency.exponentialRampToValueAtTime(140, t0 + 2);
+  const g = actx.createGain();
+  g.gain.setValueAtTime(0.04, t0);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + 2.2);
+  bron.connect(f); f.connect(g); uit(g, 0.5);
+  bron.start(t0); bron.stop(t0 + 2.3);
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (!actx) return;
+  if (document.hidden) actx.suspend(); else actx.resume();
+});
+
+/* ---------------------------------- invoer ------------------------------- */
+
+const aanrakingen = new Map();
+let knijp = 0;
+const toetsen = {};
+
+canvas.addEventListener('pointerdown', (e) => {
+  startGeluid();
+  sluimer = 0;
+  aanrakingen.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  camera.vTheta = 0; camera.vPhi = 0;
+  if (aanrakingen.size === 2) {
+    const [a, b] = [...aanrakingen.values()];
+    knijp = Math.hypot(a.x - b.x, a.y - b.y);
+  }
+});
+canvas.addEventListener('pointermove', (e) => {
+  if (!aanrakingen.has(e.pointerId)) return;
+  const vorig = aanrakingen.get(e.pointerId);
+  const dx = e.clientX - vorig.x, dy = e.clientY - vorig.y;
+  aanrakingen.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  sluimer = 0;
+  if (aanrakingen.size === 1) {
+    camera.theta += dx * 0.0042;
+    camera.phi = klem(camera.phi + dy * 0.0042, -1.25, 1.25);
+    camera.vTheta = dx * 0.25;
+    camera.vPhi = dy * 0.25;
+  } else if (aanrakingen.size === 2) {
+    const [a, b] = [...aanrakingen.values()];
+    const nieuw = Math.hypot(a.x - b.x, a.y - b.y);
+    if (knijp > 0) camera.afstand = klem(camera.afstand * knijp / nieuw, 1700, 3600);
+    knijp = nieuw;
+  }
+});
+function laatLos(e) {
+  aanrakingen.delete(e.pointerId);
+  if (aanrakingen.size < 2) knijp = 0;
+}
+window.addEventListener('pointerup', laatLos);
+window.addEventListener('pointercancel', laatLos);
+canvas.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  startGeluid();
+  sluimer = 0;
+  camera.afstand = klem(camera.afstand * Math.exp(e.deltaY * 0.0009), 1700, 3600);
+}, { passive: false });
+window.addEventListener('keydown', (e) => {
+  if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
+    toetsen[e.key] = true; startGeluid(); sluimer = 0;
+  }
+});
+window.addEventListener('keyup', (e) => { delete toetsen[e.key]; });
+canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+/* --------------------------------- bijwerken ----------------------------- */
+
+function bijwerken(dt, t) {
+  sluimer += dt;
+  const sleept = aanrakingen.size === 1;
+
+  if (toetsen.ArrowLeft) { camera.theta -= dt * 0.8; }
+  if (toetsen.ArrowRight) { camera.theta += dt * 0.8; }
+  if (toetsen.ArrowUp) { camera.phi = klem(camera.phi + dt * 0.6, -1.25, 1.25); }
+  if (toetsen.ArrowDown) { camera.phi = klem(camera.phi - dt * 0.6, -1.25, 1.25); }
+
+  if (!sleept) {
+    camera.theta += camera.vTheta * dt;
+    camera.phi = klem(camera.phi + camera.vPhi * dt, -1.25, 1.25);
+    camera.vTheta *= Math.exp(-dt * 2.2);
+    camera.vPhi *= Math.exp(-dt * 2.2);
+  }
+
+  /* Uitlijning per vorm: de hoek tussen je kijkrichting en het standpunt.
+     Spiegelbeeldig telt ook — een gespiegelde vogel is nog steeds een vogel. */
+  const dir = richting(camera.theta, camera.phi);
+  let hoekMin = Math.PI;
+  let best = null;
+  for (const vorm of VORMEN) {
+    const cosd = Math.abs(dir.x * vorm.basis.dir.x + dir.y * vorm.basis.dir.y + dir.z * vorm.basis.dir.z);
+    vorm.hoek = Math.acos(Math.min(1, cosd));
+    const qDoel = modus === 'zweef' ? Math.pow(klem(1 - vorm.hoek / 0.55, 0, 1), 1.7) : 0;
+    vorm.q += (qDoel - vorm.q) * Math.min(1, dt * 5);
+    if (vorm.hoek < hoekMin) { hoekMin = vorm.hoek; best = vorm; }
+  }
+
+  /* Zachte magneet: wie dichtbij komt en loslaat, wordt op zijn plek gezet. */
+  if (best && best.hoek < 0.15 && !sleept && modus === 'zweef' &&
+      Math.abs(camera.vTheta) + Math.abs(camera.vPhi) < 0.3) {
+    const naar = (dir.x * best.basis.dir.x + dir.y * best.basis.dir.y + dir.z * best.basis.dir.z) > 0;
+    const doelTheta = naar ? best.theta : best.theta + Math.PI;
+    const doelPhi = naar ? best.phi : -best.phi;
+    camera.theta += wrapPI(doelTheta - camera.theta) * Math.min(1, dt * 1.6);
+    camera.phi += (doelPhi - camera.phi) * Math.min(1, dt * 1.6);
+    camera.vTheta *= Math.exp(-dt * 6);
+    camera.vPhi *= Math.exp(-dt * 6);
+  }
+
+  /* Wie lang niets doet, wordt heel traag rondgeleid. */
+  if (sluimer > 18 && modus === 'zweef' && hoekMin > 0.25) {
+    camera.theta += dt * 0.028;
+    camera.phi += (Math.sin(t * 0.043) * 0.3 - camera.phi) * dt * 0.05;
+  }
+
+  /* Ontdekken: even blijven staan waar het klopt. */
+  for (const vorm of VORMEN) {
+    if (modus === 'zweef' && vorm.hoek < 0.05) vorm.vasthoud += dt;
+    else vorm.vasthoud = Math.max(0, vorm.vasthoud - dt * 2);
+    if (!vorm.ontdekt && vorm.vasthoud > 0.9) {
+      vorm.ontdekt = true;
+      vorm.ontdektOp = t;
+      bel(vorm.noot, 0);
+      if (VORMEN.every((v) => v.ontdekt) && !finaleGeweest) finaleOp = t + 2.6;
+    }
+  }
+
+  /* De finale: alle spikkels laten los, vallen, liggen even stil —
+     en vinden dan hun plek terug. Daarna ademt de wolk voorgoed. */
+  if (finaleOp && t > finaleOp && !finaleGeweest) {
+    finaleGeweest = true;
+    modus = 'val';
+    valOp = t;
+    roffel();
+    for (const p of punten) {
+      p.v.x = (Math.random() - 0.5) * 40;
+      p.v.y = 0;
+      p.v.z = (Math.random() - 0.5) * 40;
+    }
+  }
+  if (modus === 'val') {
+    for (const p of punten) {
+      p.v.y -= 1500 * dt;
+      p.p.x += p.v.x * dt; p.p.y += p.v.y * dt; p.p.z += p.v.z * dt;
+      if (p.p.y < p.vloerY) {
+        p.p.y = p.vloerY;
+        p.v.y *= -0.22;
+        p.v.x *= 0.6; p.v.z *= 0.6;
+      }
+    }
+    if (t > valOp + 5.5) { modus = 'terug'; terugOp = t; akkoord(); }
+  } else if (modus === 'terug') {
+    const f = Math.min(1, dt * 1.6);
+    for (const p of punten) {
+      p.p.x += (p.thuis.x - p.p.x) * f;
+      p.p.y += (p.thuis.y - p.p.y) * f;
+      p.p.z += (p.thuis.z - p.p.z) * f;
+    }
+    if (t > terugOp + 4.5) {
+      modus = 'zweef';
+      ademt = true;
+      for (const p of punten) { p.p.x = p.thuis.x; p.p.y = p.thuis.y; p.p.z = p.thuis.z; }
+    }
+  }
+
+  /* Geluid: de zweving vertraagt naarmate je beter staat. */
+  if (actx) {
+    for (const vorm of VORMEN) {
+      const vol = Math.pow(vorm.q, 2.4) * 0.026;
+      vorm.stem.g.gain.setTargetAtTime(vol, actx.currentTime, 0.15);
+      vorm.stem.o2.frequency.setTargetAtTime(vorm.noot + (1 - vorm.q) * 4.5, actx.currentTime, 0.1);
+    }
+  }
+}
+
+/* ---------------------------------- tekenen ------------------------------ */
+
+function projecteer(px, py, pz, C, B) {
+  const qx = px - C.x, qy = py - C.y, qz = pz - C.z;
+  const zc = qx * B.vooruit.x + qy * B.vooruit.y + qz * B.vooruit.z;
+  if (zc < 120) return null;
+  const s = F0 / zc;
+  return {
+    x: W / 2 + (qx * B.rechts.x + qy * B.rechts.y + qz * B.rechts.z) * s,
+    y: H / 2 - (qx * B.op.x + qy * B.op.y + qz * B.op.z) * s,
+    zc,
+  };
+}
+
+function tekenen(t) {
+  const B = basisVoor(camera.theta, camera.phi);
+  const C = { x: B.dir.x * camera.afstand, y: B.dir.y * camera.afstand, z: B.dir.z * camera.afstand };
+  const schaal = ademt ? 1 + 0.012 * Math.sin(t * 0.33) : 1;
+
+  for (const p of punten) {
+    const pr = projecteer(p.p.x * schaal, p.p.y * schaal, p.p.z * schaal, C, B);
+    if (!pr) continue;
+    const diepte = klem((camera.afstand + 900 - pr.zc) / 1700, 0, 1);
+    let a = 0.12 + 0.55 * diepte;
+    let g = p.grootte * (F0 / pr.zc);
+    if (p.vorm) {
+      a += p.vorm.q * 0.35;
+      g *= 1 + p.vorm.q * 0.4;
+      if (p.vorm.ontdekt) a = Math.max(a, 0.5);
+    }
+    ctx.fillStyle = `rgba(30,26,20,${a})`;
+    ctx.beginPath();
+    ctx.arc(pr.x, pr.y, Math.max(0.4, g), 0, TAU);
+    ctx.fill();
+  }
+
+  /* Op (en vlak na) het goede standpunt: heel even de potloodlijn zelf. */
+  for (const vorm of VORMEN) {
+    const flits = klem(1 - (t - vorm.ontdektOp) / 2.5, 0, 1);
+    const la = Math.max(
+      vorm.q > 0.85 ? (vorm.q - 0.85) / 0.15 * 0.3 * (vorm.ontdekt ? 1 : 0.6) : 0,
+      flits * 0.45
+    );
+    if (la < 0.01 || modus !== 'zweef') continue;
+    ctx.strokeStyle = `rgba(30,26,20,${la})`;
+    ctx.lineWidth = 1.4;
+    ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    for (const pad of vorm.lijnen3d) {
+      ctx.beginPath();
+      let eerst = true;
+      for (const p of pad) {
+        const pr = projecteer(p.x * schaal, p.y * schaal, p.z * schaal, C, B);
+        if (!pr) { eerst = true; continue; }
+        if (eerst) { ctx.moveTo(pr.x, pr.y); eerst = false; }
+        else ctx.lineTo(pr.x, pr.y);
+      }
+      ctx.stroke();
+    }
+  }
+}
+
+/* ----------------------------------- lus --------------------------------- */
+
+let vorige = performance.now();
+
+function beeld(nu) {
+  const dt = Math.min(0.05, (nu - vorige) / 1000);
+  vorige = nu;
+  const t = nu / 1000;
+
+  bijwerken(dt, t);
+
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = '#f4f1ea';
+  ctx.fillRect(0, 0, W, H);
+
+  tekenen(t);
+
+  ctx.drawImage(vignet, 0, 0);
+  ctx.globalAlpha = 0.35;
+  ctx.drawImage(korrel, Math.floor(Math.random() * 80) - 80, Math.floor(Math.random() * 80) - 80, W + 160, H + 160);
+  ctx.globalAlpha = 1;
+
+  requestAnimationFrame(beeld);
+}
+requestAnimationFrame(beeld);
+</script>
+</body>
+</html>

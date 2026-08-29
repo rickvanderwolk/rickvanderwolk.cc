@@ -1,0 +1,461 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="robots" content="noindex, nofollow">
+  <title>adem</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Een kleur die ademt, traag als iets dat slaapt. Adem mee — vasthouden is in, loslaten is uit — en de ruimte wordt stap voor stap dieper. Welke kleur het is, hangt af van hoe laat het is.">
+  <meta name="author" content="Rick van der Wolk">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      background: #1a1830;
+      overflow: hidden;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: none;
+      cursor: pointer;
+    }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+<canvas id="adem"></canvas>
+<script>
+'use strict';
+
+/* ---------------------------------------------------------------------------
+   adem — een kleur die ademt, en die merkt of jij meedoet.
+
+   Het veld zwelt en krimpt in het tempo van een rustige ademhaling.
+   Houd ingedrukt om mee in te ademen, laat los om uit te ademen
+   (spatiebalk kan ook). Niemand telt mee en niets gaat fout — maar wie
+   een tijdje in de maat blijft, voelt de ruimte stap voor stap dieper
+   worden: eerst een ring, dan stof, dan een horizon.
+
+   Welke kleur het veld heeft, hangt af van hoe laat het is: middernacht
+   is hier donkerblauw, zeven uur 's ochtends roze, vier uur 's middags
+   warm goud. Wie morgen terugkomt, komt ergens anders.
+--------------------------------------------------------------------------- */
+
+const canvas = document.getElementById('adem');
+const ctx = canvas.getContext('2d');
+const TAU = Math.PI * 2;
+
+const PERIODE = 11;   // seconden per ademtocht: 5,5 in, 5,5 uit
+
+let W = 0, H = 0, dpr = 1;
+let vignet = null, korrel = null;
+
+function hermeet() {
+  dpr = Math.min(2, window.devicePixelRatio || 1);
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+  maakVignet();
+}
+window.addEventListener('resize', hermeet);
+
+function maakVignet() {
+  vignet = document.createElement('canvas');
+  vignet.width = W; vignet.height = H;
+  const v = vignet.getContext('2d');
+  const g = v.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.35, W / 2, H / 2, Math.max(W, H) * 0.75);
+  g.addColorStop(0, 'rgba(10,8,20,0)');
+  g.addColorStop(1, 'rgba(10,8,20,0.38)');
+  v.fillStyle = g; v.fillRect(0, 0, W, H);
+}
+
+function maakKorrel() {
+  korrel = document.createElement('canvas');
+  korrel.width = 160; korrel.height = 160;
+  const k = korrel.getContext('2d');
+  const beeld = k.createImageData(160, 160);
+  for (let i = 0; i < beeld.data.length; i += 4) {
+    const g = 110 + Math.random() * 70;
+    beeld.data[i] = beeld.data[i + 1] = beeld.data[i + 2] = g;
+    beeld.data[i + 3] = 10;
+  }
+  k.putImageData(beeld, 0, 0);
+}
+maakKorrel();
+hermeet();
+
+function klem(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+/* -------------------------------- de kleurklok ---------------------------- */
+
+/* De kleur van het veld volgt de klok: [uur, tint, verzadiging, lichtheid].
+   Tussen de ankers wordt vloeiend overgegaan, de kortste weg rond de
+   kleurencirkel. Middernacht indigo, dageraad roze, middag hemelsblauw. */
+const KLEURKLOK = [
+  [0,    250, 40, 17],
+  [4.5,  262, 36, 22],
+  [6.5,  16,  52, 58],
+  [9.5,  42,  46, 68],
+  [13,   205, 45, 64],
+  [16.5, 33,  55, 58],
+  [19.5, 292, 32, 40],
+  [22,   252, 38, 24],
+  [24,   250, 40, 17],
+];
+
+function kleurNu() {
+  const d = new Date();
+  const uur = d.getHours() + d.getMinutes() / 60 + d.getSeconds() / 3600;
+  let i = 0;
+  while (i < KLEURKLOK.length - 2 && KLEURKLOK[i + 1][0] <= uur) i++;
+  const a0 = KLEURKLOK[i], b0 = KLEURKLOK[i + 1];
+  const f = klem((uur - a0[0]) / ((b0[0] - a0[0]) || 1), 0, 1);
+  const dh = ((b0[1] - a0[1] + 540) % 360) - 180;
+  return {
+    h: (a0[1] + dh * f + 360) % 360,
+    s: a0[2] + (b0[2] - a0[2]) * f,
+    l: a0[3] + (b0[3] - a0[3]) * f,
+  };
+}
+
+/* ------------------------------- de ademhaling ---------------------------- */
+
+let fase = 0.02;        // 0..0,5 is inademen, 0,5..1 is uitademen
+let a = 0;              // hoe vol de longen zijn: 0..1
+let adSnel = 0;         // hoe hard er nu geademd wordt
+
+let ingedrukt = false;
+const vingers = new Set();
+let spatie = false;
+let drukX = 0, drukY = 0;
+
+let matchTijd = 0;              // hoeveel van deze ademtocht jij meedeed
+let gedruktDezeCyclus = 0;      // heb je überhaupt meegedaan?
+let streak = 0;                 // ademtochten in de maat, na elkaar
+let peil = 0;                   // bereikte diepte (0..3), zakt heel traag
+let diepte = 0;                 // gladgestreken peil, voor het beeld
+let laatsteInteractie = -999;
+let bevestigFlits = 0;
+
+const DREMPELS = [3, 7, 12];
+
+/* ---------------------------------- geluid ------------------------------- */
+
+/* Eén ademende ruis (de longen van het veld), en een akkoord op G dat per
+   diepte een boventoon erbij krijgt. Alles zwelt mee met de ademhaling. */
+let actx = null, hoofd = null, galm = null;
+let adVol = null, adFilter = null;
+const stemmen = [];   // { osc, g, sterkte, laag }
+
+function uit(knoop, natheid) {
+  knoop.connect(hoofd);
+  const s = actx.createGain(); s.gain.value = natheid;
+  knoop.connect(s); s.connect(galm);
+}
+
+function startGeluid() {
+  if (actx) { actx.resume(); return; }
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return;
+  actx = new AC();
+  actx.resume();
+
+  hoofd = actx.createGain();
+  hoofd.gain.value = 0;
+  hoofd.gain.linearRampToValueAtTime(0.85, actx.currentTime + 5);
+  hoofd.connect(actx.destination);
+
+  galm = actx.createGain();
+  const vertraging = actx.createDelay(0.7); vertraging.delayTime.value = 0.34;
+  const terug = actx.createGain(); terug.gain.value = 0.32;
+  const dof = actx.createBiquadFilter(); dof.type = 'lowpass'; dof.frequency.value = 1300;
+  const nat = actx.createGain(); nat.gain.value = 0.22;
+  galm.connect(vertraging); vertraging.connect(dof); dof.connect(terug);
+  terug.connect(vertraging); dof.connect(nat); nat.connect(hoofd);
+
+  /* De adem: ruis door een filter dat met de longen meebeweegt. */
+  const n = Math.floor(actx.sampleRate * 2);
+  const buf = actx.createBuffer(1, n, actx.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
+  const bron = actx.createBufferSource(); bron.buffer = buf; bron.loop = true;
+  adFilter = actx.createBiquadFilter(); adFilter.type = 'lowpass'; adFilter.frequency.value = 300;
+  adVol = actx.createGain(); adVol.gain.value = 0;
+  bron.connect(adFilter); adFilter.connect(adVol); adVol.connect(hoofd);
+  bron.start();
+
+  /* Het akkoord: grondtoon altijd, de rest hoort bij een diepte. */
+  for (const [deel, sterkte, laag] of [
+    [1, 0.020, 0], [1.5, 0.014, 1], [2, 0.011, 2],
+    [2.52, 0.007, 2], [3, 0.007, 3], [4.05, 0.004, 3],
+  ]) {
+    const osc = actx.createOscillator(); osc.type = 'sine'; osc.frequency.value = 98 * deel;
+    const g = actx.createGain(); g.gain.value = 0;
+    osc.connect(g); g.connect(hoofd);
+    const s = actx.createGain(); s.gain.value = 0.3; g.connect(s); s.connect(galm);
+    osc.start();
+    stemmen.push({ osc, g, sterkte, laag });
+  }
+}
+
+function bel(f, vertraag) {
+  if (!actx) return;
+  const t0 = actx.currentTime + 0.03 + (vertraag || 0);
+  for (const [deel, v, tau] of [[1, 0.04, 2.4], [2.01, 0.014, 1.2], [2.99, 0.006, 0.6]]) {
+    const o = actx.createOscillator(); o.type = 'sine'; o.frequency.value = f * deel;
+    const g = actx.createGain();
+    g.gain.setValueAtTime(0, t0);
+    g.gain.linearRampToValueAtTime(v, t0 + 0.015);
+    g.gain.setTargetAtTime(0, t0 + 0.03, tau);
+    o.connect(g); uit(g, 0.5);
+    o.start(t0); o.stop(t0 + 7);
+  }
+}
+
+/* Een ademtocht in de maat: een lage brom, meer voelen dan horen. */
+function bevestig() {
+  bevestigFlits = 1;
+  if (!actx) return;
+  const t0 = actx.currentTime;
+  const o = actx.createOscillator(); o.type = 'sine';
+  o.frequency.setValueAtTime(196, t0);
+  o.frequency.exponentialRampToValueAtTime(98, t0 + 0.4);
+  const g = actx.createGain();
+  g.gain.setValueAtTime(0.02, t0);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.5);
+  o.connect(g); uit(g, 0.4);
+  o.start(t0); o.stop(t0 + 0.6);
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (!actx) return;
+  if (document.hidden) actx.suspend(); else actx.resume();
+});
+
+/* ---------------------------------- invoer ------------------------------- */
+
+const rimpels = [];
+
+function drukAan(x, y, t) {
+  startGeluid();
+  drukX = x; drukY = y;
+  laatsteInteractie = t;
+  rimpels.push({ x, y, r: 8, kracht: 1 });
+}
+function drukUit(x, y, t) {
+  laatsteInteractie = t;
+  rimpels.push({ x, y, r: 30, kracht: 0.6 });
+}
+
+canvas.addEventListener('pointerdown', (e) => {
+  vingers.add(e.pointerId);
+  drukAan(e.clientX, e.clientY, performance.now() / 1000);
+});
+canvas.addEventListener('pointermove', (e) => {
+  if (vingers.has(e.pointerId)) { drukX = e.clientX; drukY = e.clientY; }
+});
+function vingerLos(e) {
+  if (!vingers.has(e.pointerId)) return;
+  vingers.delete(e.pointerId);
+  drukUit(e.clientX, e.clientY, performance.now() / 1000);
+}
+window.addEventListener('pointerup', vingerLos);
+window.addEventListener('pointercancel', vingerLos);
+window.addEventListener('keydown', (e) => {
+  if (e.key === ' ' && !spatie) {
+    spatie = true;
+    drukAan(W / 2, H * 0.52, performance.now() / 1000);
+  }
+});
+window.addEventListener('keyup', (e) => {
+  if (e.key === ' ') { spatie = false; drukUit(W / 2, H * 0.52, performance.now() / 1000); }
+});
+canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+/* ---------------------------------- het stof ------------------------------ */
+
+const motes = [];
+for (let i = 0; i < 70; i++) {
+  motes.push({ x: Math.random() * 2000, y: Math.random() * 1200, zaad: Math.random() * 100 });
+}
+
+/* --------------------------------- bijwerken ----------------------------- */
+
+function cyclusEinde() {
+  if (gedruktDezeCyclus > 0.4) {
+    const score = matchTijd / PERIODE;
+    if (score > 0.62) {
+      streak++;
+      bevestig();
+      for (let n = Math.floor(peil) + 1; n <= 3; n++) {
+        if (streak >= DREMPELS[n - 1] && peil < n) {
+          peil = n;
+          bel([261.6, 329.6, 392][n - 1], 0.1);
+        }
+      }
+    } else if (score < 0.35) {
+      streak = Math.max(0, streak - 1);
+    }
+  }
+  matchTijd = 0;
+  gedruktDezeCyclus = 0;
+}
+
+function bijwerken(dt, t) {
+  fase += dt / PERIODE;
+  if (fase >= 1) { cyclusEinde(); fase -= 1; }
+  a = 0.5 - 0.5 * Math.cos(fase * TAU);
+  adSnel = Math.sin(fase * TAU) * Math.PI / PERIODE;
+
+  ingedrukt = vingers.size > 0 || spatie;
+  if (ingedrukt === (fase < 0.5)) matchTijd += dt;
+  if (ingedrukt) { gedruktDezeCyclus += dt; laatsteInteractie = t; }
+
+  /* Wie heel lang wegblijft: de diepte zucht langzaam weer weg. */
+  if (t - laatsteInteractie > 240 && peil > 0) {
+    peil = Math.max(0, peil - dt / 150);
+    streak = 0;
+  }
+  diepte += (peil - diepte) * Math.min(1, dt * 0.12);
+  bevestigFlits = Math.max(0, bevestigFlits - dt * 0.8);
+
+  for (const r of rimpels) {
+    r.r += dt * 230;
+    r.kracht *= Math.exp(-dt * 1.4);
+  }
+  while (rimpels.length && rimpels[0].kracht < 0.02) rimpels.shift();
+
+  const f2 = klem(diepte - 1, 0, 1);
+  for (const m of motes) {
+    m.x += Math.sin(t * 0.2 + m.zaad) * 8 * dt;
+    m.y += (adSnel * 110 + Math.cos(t * 0.17 + m.zaad * 2) * 4) * dt;
+    if (m.x < -10) m.x += W + 20; else if (m.x > W + 10) m.x -= W + 20;
+    if (m.y < -10) m.y += H + 20; else if (m.y > H + 10) m.y -= H + 20;
+  }
+
+  /* Geluid ademt mee. */
+  if (actx) {
+    const doelVol = klem(0.010 + Math.abs(adSnel) * 0.14 + (ingedrukt ? 0.008 : 0), 0, 0.055);
+    adVol.gain.setTargetAtTime(doelVol, actx.currentTime, 0.2);
+    adFilter.frequency.setTargetAtTime(260 + 1700 * a, actx.currentTime, 0.25);
+    const lagen = [1, klem(diepte, 0, 1), f2, klem(diepte - 2, 0, 1)];
+    for (const stem of stemmen) {
+      const vol = stem.sterkte * lagen[stem.laag] * (0.5 + 0.5 * a) * (ingedrukt ? 1.15 : 1);
+      stem.g.gain.setTargetAtTime(vol, actx.currentTime, 0.25);
+    }
+  }
+}
+
+/* ---------------------------------- tekenen ------------------------------ */
+
+function tekenen(t) {
+  const kl = kleurNu();
+  const dw = ((40 - kl.h + 540) % 360) - 180;
+  const warmH = (kl.h + dw * 0.5 + 360) % 360;
+
+  const f1 = klem(diepte, 0, 1);
+  const f2 = klem(diepte - 1, 0, 1);
+  const f3 = klem(diepte - 2, 0, 1);
+
+  const lichtAdem = (a - 0.5) * 3.2 + (ingedrukt ? 1.1 : 0) + bevestigFlits * 2.5;
+
+  /* De lucht. */
+  const g0 = ctx.createLinearGradient(0, 0, 0, H);
+  g0.addColorStop(0, `hsl(${kl.h}, ${kl.s}%, ${klem(kl.l - 13 + lichtAdem, 3, 96)}%)`);
+  g0.addColorStop(1, `hsl(${(kl.h + 14) % 360}, ${kl.s * 0.9}%, ${klem(kl.l + 5 + lichtAdem, 4, 97)}%)`);
+  ctx.fillStyle = g0;
+  ctx.fillRect(0, 0, W, H);
+
+  const cx = W / 2 + (ingedrukt ? (drukX - W / 2) * 0.03 : 0);
+  const cy = H * 0.52 + (ingedrukt ? (drukY - H * 0.52) * 0.03 : 0);
+  const straal = Math.min(W, H) * (0.17 + 0.15 * a) * (1 + diepte * 0.12);
+
+  /* De grond en de horizon — pas op diepte drie. */
+  if (f3 > 0.01) {
+    const hy = H * 0.64;
+    const gg = ctx.createLinearGradient(0, hy, 0, H);
+    gg.addColorStop(0, `hsla(${(kl.h + 6) % 360}, ${kl.s * 0.7}%, ${Math.max(8, kl.l - 34)}%, ${0.9 * f3})`);
+    gg.addColorStop(1, `hsla(${(kl.h + 10) % 360}, ${kl.s * 0.6}%, ${Math.max(4, kl.l - 44)}%, ${0.95 * f3})`);
+    ctx.fillStyle = gg;
+    ctx.fillRect(0, hy, W, H - hy);
+
+    ctx.lineCap = 'round';
+    for (let i = 0; i < 2; i++) {
+      ctx.strokeStyle = `hsla(${(kl.h + 24 + i * 18) % 360}, 55%, 78%, ${0.05 * f3 * (0.6 + 0.4 * a)})`;
+      ctx.lineWidth = 30 + i * 16;
+      ctx.beginPath();
+      for (let x = -40; x <= W + 40; x += 40) {
+        const y = H * (0.30 - i * 0.07)
+          + Math.sin(x * 0.004 + t * 0.10 + i * 2.4) * 34
+          + Math.sin(x * 0.0013 - t * 0.06) * 20;
+        if (x === -40) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+
+    const ha = f3 * (0.35 + 0.45 * a);
+    for (const [lw, aa] of [[16, 0.06], [6, 0.12], [1.5, 0.3]]) {
+      ctx.strokeStyle = `hsla(${warmH}, 70%, 82%, ${aa * ha})`;
+      ctx.lineWidth = lw;
+      ctx.beginPath(); ctx.moveTo(0, hy); ctx.lineTo(W, hy); ctx.stroke();
+    }
+  }
+
+  /* De ring — diepte één. Hij ademt in tegenfase, als een iris. */
+  if (f1 > 0.01) {
+    const rr = straal * 1.6 * (1 + (1 - a) * 0.05);
+    ctx.strokeStyle = `hsla(${warmH}, 65%, 86%, ${0.15 * f1 * (0.5 + 0.5 * a)})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(cx, cy, rr, 0, TAU); ctx.stroke();
+  }
+
+  /* Het licht in het midden: de longen zelf. */
+  const kernS = Math.min(85, kl.s + 16);
+  const kernL = Math.min(92, kl.l + 20);
+  const g2 = ctx.createRadialGradient(cx, cy, straal * 0.05, cx, cy, straal);
+  g2.addColorStop(0, `hsla(${warmH}, ${kernS}%, ${kernL}%, ${0.42 + 0.20 * a})`);
+  g2.addColorStop(1, `hsla(${warmH}, ${kernS}%, ${kernL}%, 0)`);
+  ctx.fillStyle = g2;
+  ctx.beginPath(); ctx.arc(cx, cy, straal, 0, TAU); ctx.fill();
+
+  /* Het stof — diepte twee. Het zakt bij inademen en stijgt bij uitademen. */
+  if (f2 > 0.01) {
+    for (const m of motes) {
+      const alfa = 0.3 * f2 * (0.4 + 0.6 * (0.5 + 0.5 * Math.sin(t * 0.9 + m.zaad * 5)));
+      ctx.fillStyle = `hsla(${warmH}, 40%, 90%, ${alfa})`;
+      ctx.beginPath(); ctx.arc(m.x, m.y, 1.4, 0, TAU); ctx.fill();
+    }
+  }
+
+  /* Rimpels van aanraken en loslaten. */
+  for (const r of rimpels) {
+    ctx.strokeStyle = `hsla(${warmH}, 60%, 88%, ${0.10 * r.kracht})`;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(r.x, r.y, r.r, 0, TAU); ctx.stroke();
+  }
+}
+
+/* ----------------------------------- lus --------------------------------- */
+
+let vorige = performance.now();
+
+function beeld(nu) {
+  const dt = Math.min(0.05, (nu - vorige) / 1000);
+  vorige = nu;
+  const t = nu / 1000;
+
+  bijwerken(dt, t);
+
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  tekenen(t);
+
+  ctx.drawImage(vignet, 0, 0);
+  ctx.globalAlpha = 0.35;
+  ctx.drawImage(korrel, Math.floor(Math.random() * 80) - 80, Math.floor(Math.random() * 80) - 80, W + 160, H + 160);
+  ctx.globalAlpha = 1;
+
+  requestAnimationFrame(beeld);
+}
+requestAnimationFrame(beeld);
+</script>
+</body>
+</html>

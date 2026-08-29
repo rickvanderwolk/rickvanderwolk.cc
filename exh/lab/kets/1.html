@@ -1,0 +1,538 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="robots" content="noindex, nofollow">
+  <title>kets 1 · strepen</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Een veld vol streepjes. Om de tien seconden vertrekt vanaf hetzelfde punt een lichtstraal die op de streepjes ketst tot hij het scherm uit is — alles wat hij raakt, klinkt. Draai en verschuif de streepjes en je verlegt zijn route en zijn melodie. Een tekening die je bespeelt.">
+  <meta name="author" content="Rick van der Wolk">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      background: #05060a;
+      overflow: hidden;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: none;
+      cursor: crosshair;
+    }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+<canvas id="kets"></canvas>
+<script>
+'use strict';
+
+/* ---------------------------------------------------------------------------
+   kets — een tekening die je bespeelt.
+
+   Een veld vol streepjes. Tik op een streepje en het draait een stukje;
+   houd het vast en het draait door; sleep het en het verhuist. Zijn stand
+   en zijn plek bepalen samen zijn kleur.
+
+   Om de tien seconden vertrekt vanaf een vast punt op de linkerrand een
+   lichtstraal, altijd in dezelfde richting.
+   Elk streepje is een spiegeltje: waar de straal er één raakt, ketst hij
+   af en klinkt een toon — hoog bovenin, laag onderin, en hoe verder de
+   straal vloog sinds de vorige kets, hoe langer de toon nazingt.
+   Alleen jouw handen veranderen het veld: hetzelfde veld geeft exact
+   dezelfde route, elke tien seconden opnieuw.
+
+   De straal ketst op alles wat hij onderweg raakt en stopt pas voorbij
+   de rand van het scherm. Wie schuift en draait, legt zo een steeds
+   langer parcours voor het licht — en hoort het veld vanzelf muziek
+   worden.
+--------------------------------------------------------------------------- */
+
+const canvas = document.getElementById('kets');
+const ctx = canvas.getContext('2d');
+const TAU = Math.PI * 2;
+
+let W = 0, H = 0, dpr = 1;
+
+function hermeet() {
+  dpr = Math.min(2, window.devicePixelRatio || 1);
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  for (const s of strepen) {
+    s.x = klem(s.x, 10, W - 10);
+    s.y = klem(s.y, 10, H - 10);
+  }
+  if (volgende) planVolgende(volgende.t);
+}
+window.addEventListener('resize', hermeet);
+
+function klem(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+/* --------------------------------- strepen -------------------------------- */
+
+/* Het veld begint als een rustig raster: allemaal horizontaal, allemaal
+   even lang. Alles wat daarvan afwijkt, heeft de speler gedaan. */
+const strepen = [];
+let stap = 84;
+
+function zaaiVeld() {
+  strepen.length = 0;
+  const w = window.innerWidth, h = window.innerHeight;
+  stap = klem(Math.sqrt(w * h) / 13, 56, 104);
+  const lenBasis = stap * 0.3;
+  const margeX = stap * 0.7, margeY = stap * 0.7;
+  const rijen = Math.max(3, Math.round((h - margeY * 2) / (stap * 0.92)));
+  const kolommen = Math.max(3, Math.round((w - margeX * 2) / stap));
+  for (let r = 0; r <= rijen; r++) {
+    const y = margeY + (h - margeY * 2) * (rijen ? r / rijen : 0.5);
+    const schuif = (r % 2) * stap * 0.5;
+    for (let k = 0; k <= kolommen; k++) {
+      const x = margeX + (w - margeX * 2) * (kolommen ? k / kolommen : 0.5) + schuif * 0.5;
+      strepen.push({
+        x, y,
+        a: 0,                 // hoek
+        len: lenBasis,
+        flits: 0,             // licht even op na een kets
+      });
+    }
+  }
+}
+
+/* Stand én plek bepalen de kleur: draaien verschuift de tint, en hetzelfde
+   streepje ergens anders op het scherm kleurt anders. */
+function streepHSL(s) {
+  const hoek = ((s.a % Math.PI) + Math.PI) % Math.PI;
+  const hue = (hoek / Math.PI * 300 + (s.x / W) * 120 + (s.y / H) * 120) % 360;
+  return [hue, 70, 55];
+}
+
+function eindpunten(s) {
+  const hx = Math.cos(s.a) * s.len * 0.5, hy = Math.sin(s.a) * s.len * 0.5;
+  return { ax: s.x - hx, ay: s.y - hy, bx: s.x + hx, by: s.y + hy };
+}
+
+/* --------------------------------- straal --------------------------------- */
+
+const VUUR_INTERVAL = 10000;   // om de tien seconden vertrekt een straal
+const SNELHEID = 950;          // px per seconde
+const MAX_PAD = 14000;         // px; gevangen licht vliegt daarna rechtdoor naar buiten
+
+let aanpassingen = 0;          // alleen om de hint te laten verdwijnen
+const stralen = [];            // stralen die nu onderweg zijn
+const spoor = [];              // afgelegde benen, vervagend als een tekening
+const SPOOR_DUUR = 22000;
+let volgende = null;           // { t, x, y, dx, dy } — de aangekondigde straal
+
+/* De straal vertrekt altijd van dezelfde plek in dezelfde richting: alleen
+   dan kun je hem bewust omleiden door de streepjes te verzetten. */
+function planVolgende(t) {
+  const r = 0.2; // ietsje omlaag, zodat hij het horizontale beginveld kruist
+  volgende = { t, x: 1, y: H * 0.382, dx: Math.cos(r), dy: Math.sin(r) };
+}
+
+function tTotRand(p, d) {
+  let t = Infinity;
+  if (d.x < -1e-9) t = Math.min(t, (0 - p.x) / d.x);
+  if (d.x > 1e-9) t = Math.min(t, (W - p.x) / d.x);
+  if (d.y < -1e-9) t = Math.min(t, (0 - p.y) / d.y);
+  if (d.y > 1e-9) t = Math.min(t, (H - p.y) / d.y);
+  return t;
+}
+
+function dichtstbijzijnde(p, d, behalve) {
+  let beste = null;
+  for (const s of strepen) {
+    if (s === behalve) continue;
+    const e = eindpunten(s);
+    const ex = e.bx - e.ax, ey = e.by - e.ay;
+    const det = ex * d.y - ey * d.x;
+    if (Math.abs(det) < 1e-9) continue;
+    const fx = e.ax - p.x, fy = e.ay - p.y;
+    const t = (ex * fy - ey * fx) / det;
+    const u = (d.x * fy - d.y * fx) / det;
+    if (t > 1e-4 && u >= 0 && u <= 1 && (!beste || t < beste.t)) beste = { t, s };
+  }
+  return beste;
+}
+
+function bouwStraal(o) {
+  const benen = [];
+  let p = { x: o.x, y: o.y }, d = { x: o.dx, y: o.dy };
+  let vorige = null, totaal = 0;
+  while (true) {
+    const hsl = vorige ? streepHSL(vorige) : [0, 0, 88];
+    const hit = dichtstbijzijnde(p, d, vorige);
+    const tR = tTotRand(p, d);
+    if (hit && hit.t < tR && totaal < MAX_PAD) {
+      const hx = p.x + d.x * hit.t, hy = p.y + d.y * hit.t;
+      benen.push({ x0: p.x, y0: p.y, x1: hx, y1: hy, len: hit.t, dash: hit.s, hsl });
+      const nx = -Math.sin(hit.s.a), ny = Math.cos(hit.s.a);
+      const dot = d.x * nx + d.y * ny;
+      d = { x: d.x - 2 * dot * nx, y: d.y - 2 * dot * ny };
+      p = { x: hx + d.x * 0.5, y: hy + d.y * 0.5 };
+      vorige = hit.s; totaal += hit.t;
+    } else {
+      /* geen kets (meer): rechtdoor tot voorbij de rand van het scherm */
+      benen.push({ x0: p.x, y0: p.y, x1: p.x + d.x * tR, y1: p.y + d.y * tR, len: tR, dash: null, hsl });
+      break;
+    }
+  }
+  const cum = [];
+  let som = 0;
+  for (const b of benen) { som += b.len; cum.push(som); }
+  return { benen, cum, tot: som, born: nu, klaar: 0 }; // klaar = aantal afgeronde benen
+}
+
+function voltooiBeen(straal, i, stil) {
+  const b = straal.benen[i];
+  spoor.push({ x0: b.x0, y0: b.y0, x1: b.x1, y1: b.y1, hsl: b.hsl, geboren: nu });
+  if (b.dash && !stil) {
+    const s = b.dash;
+    s.flits = 1;
+    ping(s.x, s.y, b.len);
+  }
+}
+
+/* --------------------------------- geluid --------------------------------- */
+
+let actx = null, master = null;
+
+function wekAudio() {
+  if (actx) { actx.resume(); return; }
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return;
+  actx = new AC();
+  const comp = actx.createDynamicsCompressor();
+  comp.threshold.value = -18; comp.ratio.value = 6;
+  master = actx.createGain();
+  master.gain.value = 0.7;
+  comp.connect(master); master.connect(actx.destination);
+  actx.compressorIn = comp;
+  actx.resume();
+}
+
+function knoop(node, x) {
+  /* hang een node aan de master, met stereo naar gelang de plek op het scherm */
+  if (actx.createStereoPanner) {
+    const pan = actx.createStereoPanner();
+    pan.pan.value = klem(x / W * 2 - 1, -1, 1) * 0.8;
+    node.connect(pan); pan.connect(actx.compressorIn);
+  } else {
+    node.connect(actx.compressorIn);
+  }
+}
+
+/* Eén kets = één toon: de hoogte komt van de plek op het scherm (hoog
+   bovenin), de naklank van de afstand die het licht aflegde. */
+const TOONLADDER = [0, 3, 5, 7, 10]; // mineur pentatonisch
+let vorigePingT = 0;
+
+function ping(x, y, afstand) {
+  if (!actx) return;
+  const t = actx.currentTime;
+  if (t - vorigePingT < 0.035) return; // heel dichte ketsen niet allemaal laten klinken
+  vorigePingT = t;
+  const rij = klem(Math.floor((1 - y / H) * 25), 0, 24);
+  const semi = TOONLADDER[rij % 5] + 12 * Math.floor(rij / 5);
+  const freq = 98 * Math.pow(2, semi / 12);
+  const duur = klem(afstand / 700, 0.25, 1.6);
+
+  const g = actx.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.2, t + 0.008);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + duur);
+
+  const filter = actx.createBiquadFilter();
+  filter.type = 'lowpass';
+  filter.frequency.value = klem(freq * 4, 500, 6000);
+
+  const o1 = actx.createOscillator();
+  o1.type = 'triangle'; o1.frequency.value = freq;
+  const o2 = actx.createOscillator();
+  o2.type = 'sine'; o2.frequency.value = freq * 2.003;
+  const g2 = actx.createGain(); g2.gain.value = 0.25;
+
+  o1.connect(filter); o2.connect(g2); g2.connect(filter);
+  filter.connect(g); knoop(g, x);
+  o1.start(t); o2.start(t);
+  o1.stop(t + duur + 0.05); o2.stop(t + duur + 0.05);
+}
+
+function tik(s) {
+  /* zacht klikje bij het verdraaien van een streepje */
+  if (!actx) return;
+  const t = actx.currentTime;
+  const g = actx.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.05, t + 0.004);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.06);
+  const o = actx.createOscillator();
+  o.type = 'square';
+  o.frequency.value = 700 + ((s.a % TAU) + TAU) % TAU / TAU * 500;
+  o.connect(g); knoop(g, s.x);
+  o.start(t); o.stop(t + 0.08);
+}
+
+let ruisBuf = null;
+
+function zoef(x) {
+  /* zachte zucht wanneer een straal vertrekt */
+  if (!actx) return;
+  if (!ruisBuf) {
+    ruisBuf = actx.createBuffer(1, actx.sampleRate * 0.5, actx.sampleRate);
+    const d = ruisBuf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  }
+  const t = actx.currentTime;
+  const src = actx.createBufferSource();
+  src.buffer = ruisBuf;
+  const f = actx.createBiquadFilter();
+  f.type = 'bandpass'; f.Q.value = 2;
+  f.frequency.setValueAtTime(350, t);
+  f.frequency.exponentialRampToValueAtTime(1600, t + 0.35);
+  const g = actx.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.06, t + 0.04);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.45);
+  src.connect(f); f.connect(g); knoop(g, x);
+  src.start(t); src.stop(t + 0.5);
+}
+
+/* -------------------------------- bediening ------------------------------- */
+
+/* tik: draai een stukje · vasthouden: draai door · slepen: verplaats */
+const wijzers = new Map();
+
+function afstandTotSegment(px, py, ax, ay, bx, by) {
+  const ex = bx - ax, ey = by - ay;
+  const l2 = ex * ex + ey * ey;
+  const t = l2 ? klem(((px - ax) * ex + (py - ay) * ey) / l2, 0, 1) : 0;
+  return Math.hypot(px - (ax + ex * t), py - (ay + ey * t));
+}
+
+/* Alleen raak als je écht bij het streepje bent: een klik op lege ruimte
+   mag niets veranderen, anders verandert het veld zonder dat je het merkt. */
+function vindStreep(x, y) {
+  let beste = null, besteD = 20;
+  for (const s of strepen) {
+    const e = eindpunten(s);
+    const d = afstandTotSegment(x, y, e.ax, e.ay, e.bx, e.by);
+    if (d < besteD) { besteD = d; beste = s; }
+  }
+  return beste;
+}
+
+function aanpassing() {
+  aanpassingen++;
+}
+
+canvas.addEventListener('pointerdown', (e) => {
+  wekAudio();
+  const s = vindStreep(e.clientX, e.clientY);
+  if (!s) return;
+  canvas.setPointerCapture(e.pointerId);
+  wijzers.set(e.pointerId, { s, mode: 'tik', x0: e.clientX, y0: e.clientY, t0: nu, accum: 0 });
+});
+
+canvas.addEventListener('pointermove', (e) => {
+  const w = wijzers.get(e.pointerId);
+  if (!w) return;
+  if (w.mode === 'tik' && Math.hypot(e.clientX - w.x0, e.clientY - w.y0) > 12) w.mode = 'sleep';
+  if (w.mode === 'sleep') {
+    w.s.x = klem(e.clientX, 6, W - 6);
+    w.s.y = klem(e.clientY, 6, H - 6);
+  }
+});
+
+function laatLos(e) {
+  const w = wijzers.get(e.pointerId);
+  if (!w) return;
+  wijzers.delete(e.pointerId);
+  if (w.mode === 'tik') {
+    w.s.a += Math.PI / 8;
+    w.s.flits = Math.max(w.s.flits, 0.7);
+    aanpassing();
+    tik(w.s);
+  } else if (w.mode === 'sleep') {
+    aanpassing();
+  }
+  /* 'draai' telt zichzelf al, per halve slag */
+}
+canvas.addEventListener('pointerup', laatLos);
+canvas.addEventListener('pointercancel', laatLos);
+window.addEventListener('contextmenu', (e) => e.preventDefault());
+
+document.addEventListener('visibilitychange', () => {
+  if (!actx) return;
+  if (document.hidden) { actx.suspend(); }
+  else {
+    actx.resume();
+    /* stralen die tijdens het wegkijken vlogen niet in één klap laten knallen */
+    stralen.length = 0;
+    if (volgende) volgende.t = Math.max(volgende.t, nu + 3000);
+  }
+});
+
+/* --------------------------------- tekenen -------------------------------- */
+
+let nu = performance.now();
+let vorigeTijd = nu;
+let hintAlpha = 0;
+
+function tekenStrepen() {
+  ctx.lineCap = 'round';
+  for (const s of strepen) {
+    const [h, sa, l] = streepHSL(s);
+    const licht = l + s.flits * 32;
+    ctx.strokeStyle = `hsl(${h}, ${sa}%, ${licht}%)`;
+    ctx.lineWidth = 3 + s.flits * 2;
+    if (s.flits > 0.05) {
+      ctx.shadowBlur = 14 * s.flits;
+      ctx.shadowColor = `hsl(${h}, ${sa}%, 65%)`;
+    }
+    const e = eindpunten(s);
+    ctx.beginPath();
+    ctx.moveTo(e.ax, e.ay);
+    ctx.lineTo(e.bx, e.by);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+  /* ringetje rond het streepje dat wordt vastgehouden */
+  ctx.strokeStyle = 'rgba(230,235,255,0.3)';
+  ctx.lineWidth = 1;
+  for (const w of wijzers.values()) {
+    ctx.beginPath();
+    ctx.arc(w.s.x, w.s.y, w.s.len * 0.6 + 10, 0, TAU);
+    ctx.stroke();
+  }
+}
+
+function tekenSpoor() {
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.lineCap = 'round';
+  for (let i = spoor.length - 1; i >= 0; i--) {
+    const b = spoor[i];
+    const leeftijd = (nu - b.geboren) / SPOOR_DUUR;
+    if (leeftijd >= 1) { spoor.splice(i, 1); continue; }
+    const a = Math.pow(1 - leeftijd, 1.6) * 0.4;
+    ctx.strokeStyle = `hsla(${b.hsl[0]}, ${b.hsl[1]}%, ${Math.min(80, b.hsl[2] + 15)}%, ${a})`;
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(b.x0, b.y0);
+    ctx.lineTo(b.x1, b.y1);
+    ctx.stroke();
+  }
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+function tekenStralen() {
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.lineCap = 'round';
+  for (let i = stralen.length - 1; i >= 0; i--) {
+    const st = stralen[i];
+    const afgelegd = (nu - st.born) / 1000 * SNELHEID;
+    while (st.klaar < st.benen.length && st.cum[st.klaar] <= afgelegd) {
+      voltooiBeen(st, st.klaar, false);
+      st.klaar++;
+    }
+    if (st.klaar >= st.benen.length) { stralen.splice(i, 1); continue; }
+    const b = st.benen[st.klaar];
+    const begin = st.klaar ? st.cum[st.klaar - 1] : 0;
+    const f = klem((afgelegd - begin) / b.len, 0, 1);
+    const px = b.x0 + (b.x1 - b.x0) * f, py = b.y0 + (b.y1 - b.y0) * f;
+    ctx.strokeStyle = `hsla(${b.hsl[0]}, ${b.hsl[1]}%, 75%, 0.85)`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(b.x0, b.y0);
+    ctx.lineTo(px, py);
+    ctx.stroke();
+    /* de gloeiende kop van de straal */
+    const kop = ctx.createRadialGradient(px, py, 0, px, py, 11);
+    kop.addColorStop(0, 'rgba(255,255,255,0.9)');
+    kop.addColorStop(0.4, `hsla(${b.hsl[0]}, 80%, 70%, 0.5)`);
+    kop.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = kop;
+    ctx.beginPath();
+    ctx.arc(px, py, 11, 0, TAU);
+    ctx.fill();
+  }
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+function tekenAankondiging() {
+  if (!volgende) return;
+  const resterend = (volgende.t - nu) / 1000;
+  const a = 0.12 + 0.68 * klem((3 - resterend) / 3, 0, 1);
+  const puls = 2.5 + Math.sin(nu / 150) * 0.8;
+  ctx.fillStyle = `rgba(255,255,255,${a})`;
+  ctx.beginPath();
+  ctx.arc(volgende.x, volgende.y, puls, 0, TAU);
+  ctx.fill();
+  ctx.strokeStyle = `rgba(255,255,255,${a * 0.7})`;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(volgende.x, volgende.y);
+  ctx.lineTo(volgende.x + volgende.dx * 14, volgende.y + volgende.dy * 14);
+  ctx.stroke();
+}
+
+function tekenHint() {
+  const doel = aanpassingen >= 3 ? 0 : 0.55;
+  hintAlpha += (doel - hintAlpha) * 0.02;
+  if (hintAlpha < 0.01) return;
+  ctx.fillStyle = `rgba(215,222,245,${hintAlpha})`;
+  ctx.font = '500 13px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('tik: draai · houd vast: draai door · sleep: verplaats', W / 2, H - 42);
+  ctx.fillText('elke 10 s vertrekt dezelfde lichtstraal — verleg de streepjes en verleg zijn route', W / 2, H - 22);
+}
+
+/* ----------------------------------- lus ---------------------------------- */
+
+function frame(t) {
+  nu = t;
+  const dt = klem((nu - vorigeTijd) / 1000, 0, 0.05);
+  vorigeTijd = nu;
+
+  /* vasthouden = doordraaien; elke halve slag telt als aanpassing */
+  for (const w of wijzers.values()) {
+    if (w.mode === 'tik' && nu - w.t0 > 350) w.mode = 'draai';
+    if (w.mode === 'draai') {
+      w.s.a += dt * 2.0;
+      w.s.flits = Math.max(w.s.flits, 0.5);
+      w.accum += dt * 2.0;
+      if (w.accum > Math.PI / 2) { w.accum -= Math.PI / 2; aanpassing(); tik(w.s); }
+    }
+  }
+
+  for (const s of strepen) {
+    s.flits = Math.max(0, s.flits - dt * 2.2);
+  }
+
+  if (volgende && nu >= volgende.t) {
+    stralen.push(bouwStraal(volgende));
+    zoef(volgende.x);
+    planVolgende(nu + VUUR_INTERVAL);
+  }
+
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#05060a';
+  ctx.fillRect(0, 0, W, H);
+
+  tekenSpoor();
+  tekenStrepen();
+  tekenStralen();
+  tekenAankondiging();
+  tekenHint();
+
+  requestAnimationFrame(frame);
+}
+
+zaaiVeld();
+hermeet();
+planVolgende(performance.now() + 3000);
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

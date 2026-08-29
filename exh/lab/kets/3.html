@@ -1,0 +1,658 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="robots" content="noindex, nofollow">
+  <title>kets 3 · eigen toon</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Een veld vol vormen: streepjes, cirkels, driehoeken, vierkanten, rechthoeken. Om de tien seconden vertrekt vanaf hetzelfde punt een lichtstraal die op de vormen ketst tot hij het scherm uit is. Elke vorm klinkt als zijn eigen golfvorm én houdt zijn eigen noot, waar je hem ook neerzet — de kleur is de toon. Verplaatsen verandert de melodie, nooit de noten.">
+  <meta name="author" content="Rick van der Wolk">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      background: #05060a;
+      overflow: hidden;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: none;
+      cursor: crosshair;
+    }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+<canvas id="kets"></canvas>
+<script>
+'use strict';
+
+/* ---------------------------------------------------------------------------
+   kets · vormen — dezelfde tekening, maar nu met een heel gezelschap.
+
+   Streepjes, cirkels, driehoeken, vierkanten en rechthoeken. Tik en een
+   vorm draait een stukje (een cirkel groeit); houd vast en hij draait
+   door; sleep en hij verhuist.
+
+   Om de tien seconden vertrekt vanaf een vast punt op de linkerrand een
+   lichtstraal, altijd in dezelfde richting. Hij ketst op alles wat hij
+   onderweg raakt en stopt pas voorbij de rand van het scherm.
+
+   Elke vorm zingt zijn eigen stem: de driehoek een driehoeksgolf, het
+   vierkant een blokgolf, de cirkel een zuivere sinus, het streepje een
+   zaagtand en de rechthoek een lage blokgolf. En elke vorm heeft zijn
+   eigen noot, die hij houdt waar je hem ook neerzet — de kleur ís de
+   toon. Alleen een cirkel buigt zijn noot met zijn grootte: groot
+   klinkt laag, klein hoog. Verplaatsen verandert dus de melodie, nooit
+   de noten — wie het veld herschikt, componeert.
+--------------------------------------------------------------------------- */
+
+const canvas = document.getElementById('kets');
+const ctx = canvas.getContext('2d');
+const TAU = Math.PI * 2;
+
+let W = 0, H = 0, dpr = 1;
+
+function hermeet() {
+  dpr = Math.min(2, window.devicePixelRatio || 1);
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  for (const v of vormen) {
+    v.x = klem(v.x, 10, W - 10);
+    v.y = klem(v.y, 10, H - 10);
+  }
+  if (volgende) planVolgende(volgende.t);
+}
+window.addEventListener('resize', hermeet);
+
+function klem(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+function mulberry32(zaad) {
+  return function () {
+    zaad |= 0; zaad = zaad + 0x6D2B79F5 | 0;
+    let t = Math.imul(zaad ^ zaad >>> 15, 1 | zaad);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+/* ---------------------------------- vormen -------------------------------- */
+
+/* Het veld is een raster met een vaste, gezaaide mix van vormen: elke keer
+   dat je de pagina opent staat alles weer precies zo. */
+const vormen = [];
+let stap = 84, cMin = 6, cMax = 26;
+
+function zaaiVeld() {
+  vormen.length = 0;
+  const rnd = mulberry32(7);
+  const w = window.innerWidth, h = window.innerHeight;
+  stap = klem(Math.sqrt(w * h) / 12.5, 60, 110);
+  cMin = stap * 0.07; cMax = stap * 0.3;
+  const margeX = stap * 0.7, margeY = stap * 0.7;
+  const rijen = Math.max(3, Math.round((h - margeY * 2) / (stap * 0.92)));
+  const kolommen = Math.max(3, Math.round((w - margeX * 2) / stap));
+  for (let r = 0; r <= rijen; r++) {
+    const y = margeY + (h - margeY * 2) * (rijen ? r / rijen : 0.5);
+    const schuif = (r % 2) * stap * 0.5;
+    for (let k = 0; k <= kolommen; k++) {
+      const x = margeX + (w - margeX * 2) * (kolommen ? k / kolommen : 0.5) + schuif * 0.5;
+      const trek = rnd();
+      const soort = trek < 0.52 ? 'streep'
+        : trek < 0.65 ? 'cirkel'
+        : trek < 0.78 ? 'driehoek'
+        : trek < 0.90 ? 'vierkant' : 'rechthoek';
+      const maat = { streep: 0.15, cirkel: 0.13, driehoek: 0.16, vierkant: 0.13, rechthoek: 0.17 }[soort];
+      vormen.push({
+        soort, x, y,
+        a: 0,                 // hoek
+        r: stap * maat,       // halve lengte, straal of halve zijde
+        noot: Math.floor(rnd() * 15), // zijn eigen toon, voor altijd
+        flits: 0,             // licht even op na een kets
+      });
+    }
+  }
+}
+
+function eindpunten(v) {
+  const hx = Math.cos(v.a) * v.r, hy = Math.sin(v.a) * v.r;
+  return { ax: v.x - hx, ay: v.y - hy, bx: v.x + hx, by: v.y + hy };
+}
+
+function hoekpunten(v) {
+  const p = [];
+  if (v.soort === 'driehoek') {
+    for (let k = 0; k < 3; k++) {
+      const hk = v.a - Math.PI / 2 + k * TAU / 3;
+      p.push([v.x + Math.cos(hk) * v.r * 1.25, v.y + Math.sin(hk) * v.r * 1.25]);
+    }
+  } else if (v.soort === 'vierkant') {
+    for (let k = 0; k < 4; k++) {
+      const hk = v.a + Math.PI / 4 + k * Math.PI / 2;
+      p.push([v.x + Math.cos(hk) * v.r * 1.414, v.y + Math.sin(hk) * v.r * 1.414]);
+    }
+  } else { // rechthoek
+    const bw = v.r * 1.15, bh = v.r * 0.5;
+    const ca = Math.cos(v.a), sa = Math.sin(v.a);
+    for (const [lx, ly] of [[bw, bh], [-bw, bh], [-bw, -bh], [bw, -bh]]) {
+      p.push([v.x + lx * ca - ly * sa, v.y + lx * sa + ly * ca]);
+    }
+  }
+  return p;
+}
+
+/* Elke vorm krijgt bij het zaaien zijn eigen toon en houdt die voor
+   altijd — verplaatsen verandert de melodie, niet de noot. Alleen een
+   cirkel buigt zijn noot met zijn grootte: groot klinkt laag, klein hoog. */
+function freqVan(v) {
+  const semi = TOONLADDER[v.noot % 5] + 12 * Math.floor(v.noot / 5);
+  let f = 98 * Math.pow(2, semi / 12) * STEMMEN[v.soort].oct;
+  if (v.soort === 'cirkel') f *= Math.pow(2, 1 - 2 * klem((v.r - cMin) / (cMax - cMin), 0, 1));
+  return f;
+}
+
+/* De kleur ís de toon: je ziet aan een vorm welke noot je oppakt, waar
+   je hem ook neerzet. */
+function vormHSL(v) {
+  const hue = ((Math.log2(freqVan(v) / 98) * 110) % 360 + 360) % 360;
+  return [hue, 70, 55];
+}
+
+/* --------------------------------- straal --------------------------------- */
+
+const VUUR_INTERVAL = 10000;   // om de tien seconden vertrekt een straal
+const SNELHEID = 950;          // px per seconde
+const MAX_PAD = 14000;         // px; gevangen licht vliegt daarna rechtdoor naar buiten
+
+let aanpassingen = 0;          // alleen om de hint te laten verdwijnen
+const stralen = [];            // stralen die nu onderweg zijn
+const spoor = [];              // afgelegde benen, vervagend als een tekening
+const SPOOR_DUUR = 22000;
+let volgende = null;           // { t, x, y, dx, dy } — de aangekondigde straal
+
+/* De straal vertrekt altijd van dezelfde plek in dezelfde richting: alleen
+   dan kun je hem bewust omleiden door de vormen te verzetten. */
+function planVolgende(t) {
+  const r = 0.2; // ietsje omlaag, zodat hij het rustige beginveld kruist
+  volgende = { t, x: 1, y: H * 0.382, dx: Math.cos(r), dy: Math.sin(r) };
+}
+
+function tTotRand(p, d) {
+  let t = Infinity;
+  if (d.x < -1e-9) t = Math.min(t, (0 - p.x) / d.x);
+  if (d.x > 1e-9) t = Math.min(t, (W - p.x) / d.x);
+  if (d.y < -1e-9) t = Math.min(t, (0 - p.y) / d.y);
+  if (d.y > 1e-9) t = Math.min(t, (H - p.y) / d.y);
+  return t;
+}
+
+function snijSegment(p, d, ax, ay, bx, by) {
+  const ex = bx - ax, ey = by - ay;
+  const det = ex * d.y - ey * d.x;
+  if (Math.abs(det) < 1e-9) return null;
+  const fx = ax - p.x, fy = ay - p.y;
+  const t = (ex * fy - ey * fx) / det;
+  const u = (d.x * fy - d.y * fx) / det;
+  if (t <= 1e-4 || u < 0 || u > 1) return null;
+  const l = Math.hypot(ex, ey);
+  return { t, nx: -ey / l, ny: ex / l };
+}
+
+function snijVorm(p, d, v) {
+  if (v.soort === 'cirkel') {
+    const cx = p.x - v.x, cy = p.y - v.y;
+    const b = 2 * (cx * d.x + cy * d.y);
+    const c = cx * cx + cy * cy - v.r * v.r;
+    const disc = b * b - 4 * c;
+    if (disc <= 0) return null;
+    const w = Math.sqrt(disc);
+    let t = (-b - w) / 2;
+    if (t <= 1e-4) t = (-b + w) / 2; // vanuit binnenin: de verre kant
+    if (t <= 1e-4) return null;
+    const hx = p.x + d.x * t - v.x, hy = p.y + d.y * t - v.y;
+    const l = Math.hypot(hx, hy) || 1;
+    return { t, nx: hx / l, ny: hy / l };
+  }
+  if (v.soort === 'streep') {
+    const e = eindpunten(v);
+    return snijSegment(p, d, e.ax, e.ay, e.bx, e.by);
+  }
+  const pts = hoekpunten(v);
+  let beste = null;
+  for (let i = 0; i < pts.length; i++) {
+    const [ax, ay] = pts[i];
+    const [bx, by] = pts[(i + 1) % pts.length];
+    const s = snijSegment(p, d, ax, ay, bx, by);
+    if (s && (!beste || s.t < beste.t)) beste = s;
+  }
+  return beste;
+}
+
+function dichtstbijzijnde(p, d, behalve) {
+  let beste = null;
+  for (const v of vormen) {
+    if (v === behalve) continue;
+    const s = snijVorm(p, d, v);
+    if (s && (!beste || s.t < beste.t)) beste = { ...s, v };
+  }
+  return beste;
+}
+
+function bouwStraal(o) {
+  const benen = [];
+  let p = { x: o.x, y: o.y }, d = { x: o.dx, y: o.dy };
+  let vorige = null, totaal = 0;
+  while (true) {
+    const hsl = vorige ? vormHSL(vorige) : [0, 0, 88];
+    const hit = dichtstbijzijnde(p, d, vorige);
+    const tR = tTotRand(p, d);
+    if (hit && hit.t < tR && totaal < MAX_PAD) {
+      const hx = p.x + d.x * hit.t, hy = p.y + d.y * hit.t;
+      benen.push({ x0: p.x, y0: p.y, x1: hx, y1: hy, len: hit.t, dash: hit.v, hsl });
+      const dot = d.x * hit.nx + d.y * hit.ny;
+      d = { x: d.x - 2 * dot * hit.nx, y: d.y - 2 * dot * hit.ny };
+      p = { x: hx + d.x * 0.5, y: hy + d.y * 0.5 };
+      vorige = hit.v; totaal += hit.t;
+    } else {
+      /* geen kets (meer): rechtdoor tot voorbij de rand van het scherm */
+      benen.push({ x0: p.x, y0: p.y, x1: p.x + d.x * tR, y1: p.y + d.y * tR, len: tR, dash: null, hsl });
+      break;
+    }
+  }
+  const cum = [];
+  let som = 0;
+  for (const b of benen) { som += b.len; cum.push(som); }
+  return { benen, cum, tot: som, born: nu, klaar: 0 }; // klaar = aantal afgeronde benen
+}
+
+function voltooiBeen(straal, i, stil) {
+  const b = straal.benen[i];
+  spoor.push({ x0: b.x0, y0: b.y0, x1: b.x1, y1: b.y1, hsl: b.hsl, geboren: nu });
+  if (b.dash && !stil) {
+    b.dash.flits = 1;
+    ping(b.dash, b.len);
+  }
+}
+
+/* --------------------------------- geluid --------------------------------- */
+
+let actx = null, master = null;
+
+function wekAudio() {
+  if (actx) { actx.resume(); return; }
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return;
+  actx = new AC();
+  const comp = actx.createDynamicsCompressor();
+  comp.threshold.value = -18; comp.ratio.value = 6;
+  master = actx.createGain();
+  master.gain.value = 0.7;
+  comp.connect(master); master.connect(actx.destination);
+  actx.compressorIn = comp;
+  actx.resume();
+}
+
+function knoop(node, x) {
+  /* hang een node aan de master, met stereo naar gelang de plek op het scherm */
+  if (actx.createStereoPanner) {
+    const pan = actx.createStereoPanner();
+    pan.pan.value = klem(x / W * 2 - 1, -1, 1) * 0.8;
+    node.connect(pan); pan.connect(actx.compressorIn);
+  } else {
+    node.connect(actx.compressorIn);
+  }
+}
+
+/* Elke vorm zijn eigen stem, elke vorm zijn eigen noot. Geen filters of
+   dofheid: het verschil zit puur in toonhoogte en golfvorm. De naklank
+   komt van de afstand die het licht aflegde sinds de vorige kets. */
+const TOONLADDER = [0, 3, 5, 7, 10]; // mineur pentatonisch
+const STEMMEN = {
+  streep:    { golf: 'sawtooth', sterk: 0.07, oct: 1 },
+  cirkel:    { golf: 'sine',     sterk: 0.28, oct: 1 },
+  driehoek:  { golf: 'triangle', sterk: 0.22, oct: 1 },
+  vierkant:  { golf: 'square',   sterk: 0.06, oct: 1 },
+  rechthoek: { golf: 'square',   sterk: 0.07, oct: 0.5 },
+};
+let vorigePingT = 0;
+
+function ping(v, afstand) {
+  if (!actx) return;
+  const t = actx.currentTime;
+  if (t - vorigePingT < 0.035) return; // heel dichte ketsen niet allemaal laten klinken
+  vorigePingT = t;
+  const stem = STEMMEN[v.soort];
+  const freq = freqVan(v);
+  const duur = klem(afstand / 700, 0.25, 1.6);
+
+  const g = actx.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(stem.sterk, t + 0.008);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + duur);
+
+  const o1 = actx.createOscillator();
+  o1.type = stem.golf; o1.frequency.value = freq;
+  o1.connect(g);
+  if (stem.golf === 'sine' || stem.golf === 'triangle') {
+    const o2 = actx.createOscillator();
+    o2.type = 'sine'; o2.frequency.value = freq * 2.003;
+    const g2 = actx.createGain(); g2.gain.value = 0.25;
+    o2.connect(g2); g2.connect(g);
+    o2.start(t); o2.stop(t + duur + 0.05);
+  }
+  knoop(g, v.x);
+  o1.start(t); o1.stop(t + duur + 0.05);
+}
+
+function tikklik(v) {
+  /* wie een vorm aanraakt, hoort heel kort zijn eigen noot: voorproeven */
+  if (!actx) return;
+  const t = actx.currentTime;
+  const g = actx.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.06, t + 0.005);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
+  const o = actx.createOscillator();
+  o.type = STEMMEN[v.soort].golf;
+  o.frequency.value = freqVan(v) * 2;
+  o.connect(g); knoop(g, v.x);
+  o.start(t); o.stop(t + 0.15);
+}
+
+let ruisBuf = null;
+
+function zoef(x) {
+  /* zachte zucht wanneer een straal vertrekt */
+  if (!actx) return;
+  if (!ruisBuf) {
+    ruisBuf = actx.createBuffer(1, actx.sampleRate * 0.5, actx.sampleRate);
+    const d = ruisBuf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  }
+  const t = actx.currentTime;
+  const src = actx.createBufferSource();
+  src.buffer = ruisBuf;
+  const f = actx.createBiquadFilter();
+  f.type = 'bandpass'; f.Q.value = 2;
+  f.frequency.setValueAtTime(350, t);
+  f.frequency.exponentialRampToValueAtTime(1600, t + 0.35);
+  const g = actx.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.06, t + 0.04);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.45);
+  src.connect(f); f.connect(g); knoop(g, x);
+  src.start(t); src.stop(t + 0.5);
+}
+
+/* -------------------------------- bediening ------------------------------- */
+
+/* tik: draai (cirkel: groei) · vasthouden: draai door · slepen: verplaats */
+const wijzers = new Map();
+
+function afstandTotSegment(px, py, ax, ay, bx, by) {
+  const ex = bx - ax, ey = by - ay;
+  const l2 = ex * ex + ey * ey;
+  const t = l2 ? klem(((px - ax) * ex + (py - ay) * ey) / l2, 0, 1) : 0;
+  return Math.hypot(px - (ax + ex * t), py - (ay + ey * t));
+}
+
+/* Alleen raak als je écht bij de vorm bent: een klik op lege ruimte mag
+   niets veranderen, anders verandert het veld zonder dat je het merkt. */
+function vindVorm(x, y) {
+  let beste = null, besteD = 0;
+  for (const v of vormen) {
+    let d;
+    if (v.soort === 'streep') {
+      const e = eindpunten(v);
+      d = afstandTotSegment(x, y, e.ax, e.ay, e.bx, e.by) - 14;
+    } else {
+      const reik = v.soort === 'rechthoek' ? v.r * 1.15 : v.soort === 'vierkant' ? v.r * 1.414 : v.r * 1.25;
+      d = Math.hypot(x - v.x, y - v.y) - reik - 10;
+    }
+    if (d < besteD) { besteD = d; beste = v; }
+  }
+  return beste;
+}
+
+function aanpassing() {
+  aanpassingen++;
+}
+
+canvas.addEventListener('pointerdown', (e) => {
+  wekAudio();
+  const v = vindVorm(e.clientX, e.clientY);
+  if (!v) return;
+  canvas.setPointerCapture(e.pointerId);
+  wijzers.set(e.pointerId, { v, mode: 'tik', x0: e.clientX, y0: e.clientY, t0: nu, accum: 0 });
+});
+
+canvas.addEventListener('pointermove', (e) => {
+  const w = wijzers.get(e.pointerId);
+  if (!w) return;
+  if (w.mode === 'tik' && Math.hypot(e.clientX - w.x0, e.clientY - w.y0) > 12) w.mode = 'sleep';
+  if (w.mode === 'sleep') {
+    w.v.x = klem(e.clientX, 6, W - 6);
+    w.v.y = klem(e.clientY, 6, H - 6);
+  }
+});
+
+function laatLos(e) {
+  const w = wijzers.get(e.pointerId);
+  if (!w) return;
+  wijzers.delete(e.pointerId);
+  if (w.mode === 'tik') {
+    if (w.v.soort === 'cirkel') {
+      w.v.r += stap * 0.05;
+      if (w.v.r > cMax) w.v.r = cMin;
+    } else {
+      w.v.a += Math.PI / 8;
+    }
+    w.v.flits = Math.max(w.v.flits, 0.7);
+    aanpassing();
+    tikklik(w.v);
+  } else if (w.mode === 'sleep') {
+    aanpassing();
+  }
+  /* 'draai' telt zichzelf al */
+}
+canvas.addEventListener('pointerup', laatLos);
+canvas.addEventListener('pointercancel', laatLos);
+window.addEventListener('contextmenu', (e) => e.preventDefault());
+
+document.addEventListener('visibilitychange', () => {
+  if (!actx) return;
+  if (document.hidden) { actx.suspend(); }
+  else {
+    actx.resume();
+    /* stralen die tijdens het wegkijken vlogen niet in één klap laten knallen */
+    stralen.length = 0;
+    if (volgende) volgende.t = Math.max(volgende.t, nu + 3000);
+  }
+});
+
+/* --------------------------------- tekenen -------------------------------- */
+
+let nu = performance.now();
+let vorigeTijd = nu;
+let hintAlpha = 0;
+
+function vormPad(v) {
+  ctx.beginPath();
+  if (v.soort === 'streep') {
+    const e = eindpunten(v);
+    ctx.moveTo(e.ax, e.ay);
+    ctx.lineTo(e.bx, e.by);
+  } else if (v.soort === 'cirkel') {
+    ctx.arc(v.x, v.y, v.r, 0, TAU);
+  } else {
+    const pts = hoekpunten(v);
+    ctx.moveTo(pts[0][0], pts[0][1]);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+    ctx.closePath();
+  }
+}
+
+function tekenVormen() {
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  for (const v of vormen) {
+    const [h, sa, l] = vormHSL(v);
+    const licht = l + v.flits * 32;
+    ctx.strokeStyle = `hsl(${h}, ${sa}%, ${licht}%)`;
+    ctx.lineWidth = 2.5 + v.flits * 2;
+    if (v.flits > 0.05) {
+      ctx.shadowBlur = 14 * v.flits;
+      ctx.shadowColor = `hsl(${h}, ${sa}%, 65%)`;
+    }
+    vormPad(v);
+    if (v.soort !== 'streep') {
+      ctx.fillStyle = `hsla(${h}, ${sa}%, ${licht}%, ${0.07 + v.flits * 0.2})`;
+      ctx.fill();
+    }
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+  /* ringetje rond de vorm die wordt vastgehouden */
+  ctx.strokeStyle = 'rgba(230,235,255,0.3)';
+  ctx.lineWidth = 1;
+  for (const w of wijzers.values()) {
+    ctx.beginPath();
+    ctx.arc(w.v.x, w.v.y, w.v.r * 1.5 + 10, 0, TAU);
+    ctx.stroke();
+  }
+}
+
+function tekenSpoor() {
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.lineCap = 'round';
+  for (let i = spoor.length - 1; i >= 0; i--) {
+    const b = spoor[i];
+    const leeftijd = (nu - b.geboren) / SPOOR_DUUR;
+    if (leeftijd >= 1) { spoor.splice(i, 1); continue; }
+    const a = Math.pow(1 - leeftijd, 1.6) * 0.4;
+    ctx.strokeStyle = `hsla(${b.hsl[0]}, ${b.hsl[1]}%, ${Math.min(80, b.hsl[2] + 15)}%, ${a})`;
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(b.x0, b.y0);
+    ctx.lineTo(b.x1, b.y1);
+    ctx.stroke();
+  }
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+function tekenStralen() {
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.lineCap = 'round';
+  for (let i = stralen.length - 1; i >= 0; i--) {
+    const st = stralen[i];
+    const afgelegd = (nu - st.born) / 1000 * SNELHEID;
+    while (st.klaar < st.benen.length && st.cum[st.klaar] <= afgelegd) {
+      voltooiBeen(st, st.klaar, false);
+      st.klaar++;
+    }
+    if (st.klaar >= st.benen.length) { stralen.splice(i, 1); continue; }
+    const b = st.benen[st.klaar];
+    const begin = st.klaar ? st.cum[st.klaar - 1] : 0;
+    const f = klem((afgelegd - begin) / b.len, 0, 1);
+    const px = b.x0 + (b.x1 - b.x0) * f, py = b.y0 + (b.y1 - b.y0) * f;
+    ctx.strokeStyle = `hsla(${b.hsl[0]}, ${b.hsl[1]}%, 75%, 0.85)`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(b.x0, b.y0);
+    ctx.lineTo(px, py);
+    ctx.stroke();
+    /* de gloeiende kop van de straal */
+    const kop = ctx.createRadialGradient(px, py, 0, px, py, 11);
+    kop.addColorStop(0, 'rgba(255,255,255,0.9)');
+    kop.addColorStop(0.4, `hsla(${b.hsl[0]}, 80%, 70%, 0.5)`);
+    kop.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = kop;
+    ctx.beginPath();
+    ctx.arc(px, py, 11, 0, TAU);
+    ctx.fill();
+  }
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+function tekenAankondiging() {
+  if (!volgende) return;
+  const resterend = (volgende.t - nu) / 1000;
+  const a = 0.12 + 0.68 * klem((3 - resterend) / 3, 0, 1);
+  const puls = 2.5 + Math.sin(nu / 150) * 0.8;
+  ctx.fillStyle = `rgba(255,255,255,${a})`;
+  ctx.beginPath();
+  ctx.arc(volgende.x, volgende.y, puls, 0, TAU);
+  ctx.fill();
+  ctx.strokeStyle = `rgba(255,255,255,${a * 0.7})`;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(volgende.x, volgende.y);
+  ctx.lineTo(volgende.x + volgende.dx * 14, volgende.y + volgende.dy * 14);
+  ctx.stroke();
+}
+
+function tekenHint() {
+  const doel = aanpassingen >= 3 ? 0 : 0.55;
+  hintAlpha += (doel - hintAlpha) * 0.02;
+  if (hintAlpha < 0.01) return;
+  ctx.fillStyle = `rgba(215,222,245,${hintAlpha})`;
+  ctx.font = '500 13px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('tik: draai (een cirkel groeit) · houd vast: draai door · sleep: verplaats', W / 2, H - 42);
+  ctx.fillText('elke vorm houdt zijn eigen toon, waar je hem ook neerzet — de kleur is de toon', W / 2, H - 22);
+}
+
+/* ----------------------------------- lus ---------------------------------- */
+
+function frame(t) {
+  nu = t;
+  const dt = klem((nu - vorigeTijd) / 1000, 0, 0.05);
+  vorigeTijd = nu;
+
+  /* vasthouden = doordraaien (een cirkel groeit door); telt af en toe als aanpassing */
+  for (const w of wijzers.values()) {
+    if (w.mode === 'tik' && nu - w.t0 > 350) w.mode = 'draai';
+    if (w.mode === 'draai') {
+      if (w.v.soort === 'cirkel') {
+        w.v.r += dt * stap * 0.18;
+        if (w.v.r > cMax) w.v.r = cMin;
+      } else {
+        w.v.a += dt * 2.0;
+      }
+      w.v.flits = Math.max(w.v.flits, 0.5);
+      w.accum += dt;
+      if (w.accum > 0.8) { w.accum -= 0.8; aanpassing(); tikklik(w.v); }
+    }
+  }
+
+  for (const v of vormen) {
+    v.flits = Math.max(0, v.flits - dt * 2.2);
+  }
+
+  if (volgende && nu >= volgende.t) {
+    stralen.push(bouwStraal(volgende));
+    zoef(volgende.x);
+    planVolgende(nu + VUUR_INTERVAL);
+  }
+
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#05060a';
+  ctx.fillRect(0, 0, W, H);
+
+  tekenSpoor();
+  tekenVormen();
+  tekenStralen();
+  tekenAankondiging();
+  tekenHint();
+
+  requestAnimationFrame(frame);
+}
+
+zaaiVeld();
+hermeet();
+planVolgende(performance.now() + 3000);
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

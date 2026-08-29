@@ -1,0 +1,802 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="robots" content="noindex, nofollow">
+  <title>zaal</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Een klein digitaal museum met één zaal. Loop rustig rond en ontdek drie vreemde objecten. Geen menu's, geen uitleg — alleen sfeer.">
+  <meta name="author" content="Rick van der Wolk">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      background: #14100c;
+      overflow: hidden;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: none;          /* geen dubbeltik-zoom op mobiel — klikken is lopen */
+    }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+<canvas id="zaal"></canvas>
+<script>
+'use strict';
+
+/* ---------------------------------------------------------------------------
+   zaal — een museum met één zaal.
+
+   Geen menu's, geen tekst, geen UI. Klik ergens en de bezoeker wandelt er
+   rustig heen, zoals in oude point-and-clickavontuurspellen. Klik op een
+   object en de bezoeker loopt er eerst naartoe voordat er iets gebeurt.
+   Drie vreemde objecten: een speeldoos, een stolp met een lichtje, en een
+   schilderij van deze zaal zelf. Alle geluid wordt ter plekke gesynthetiseerd.
+--------------------------------------------------------------------------- */
+
+const canvas = document.getElementById('zaal');
+const ctx = canvas.getContext('2d');
+
+/* De wereld is getekend in vaste "zaal-eenheden" en wordt geschaald naar het
+   scherm. Zo blijft de compositie overal hetzelfde, alleen groter of kleiner. */
+const ZAAL = { w: 3400, h: 900, vloer: 780 };
+
+let W = 0, H = 0, dpr = 1;
+let S = 1;        // schaal wereld → scherm
+let ty = 0;       // verticale centrering als de wereld hoger is dan het scherm
+let vignet = null;
+let korrel = null;
+
+function hermeet() {
+  dpr = Math.min(2, window.devicePixelRatio || 1);
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+  /* Schaal op hoogte, maar nooit zo klein dat de zaal smaller wordt dan het
+     scherm — op brede schermen wordt de zaal dus iets aangesneden van boven. */
+  S = Math.max(H / ZAAL.h, W / ZAAL.w);
+  ty = (H - ZAAL.h * S) / 2;
+  maakVignet();
+}
+window.addEventListener('resize', hermeet);
+
+/* Vignet vooraf bakken: donkere hoeken maken het licht in het midden warmer. */
+function maakVignet() {
+  vignet = document.createElement('canvas');
+  vignet.width = W; vignet.height = H;
+  const v = vignet.getContext('2d');
+  const g = v.createRadialGradient(W / 2, H * 0.44, Math.min(W, H) * 0.36, W / 2, H * 0.5, Math.max(W, H) * 0.75);
+  g.addColorStop(0, 'rgba(0,0,0,0)');
+  g.addColorStop(1, 'rgba(8,5,2,0.55)');
+  v.fillStyle = g; v.fillRect(0, 0, W, H);
+}
+
+/* Filmkorrel: één tegel ruis, elk frame op een andere plek getekend. */
+function maakKorrel() {
+  korrel = document.createElement('canvas');
+  korrel.width = 160; korrel.height = 160;
+  const k = korrel.getContext('2d');
+  const beeld = k.createImageData(160, 160);
+  for (let i = 0; i < beeld.data.length; i += 4) {
+    const g = 120 + Math.random() * 60;
+    beeld.data[i] = beeld.data[i + 1] = beeld.data[i + 2] = g;
+    beeld.data[i + 3] = 14;
+  }
+  k.putImageData(beeld, 0, 0);
+}
+maakKorrel();
+hermeet();
+
+/* --------------------------------- bezoeker ------------------------------ */
+
+const speler = {
+  x: 150, doel: 460,          // komt bij binnenkomst rustig de zaal in gelopen
+  kijk: 1,                     // 1 = naar rechts
+  loopt: false,
+  fase: 0,                     // loop-huppel
+  vorigeSin: 0,
+  stapLinks: false,
+};
+const LOOPSNELHEID = 165;
+
+/* ---------------------------------- camera ------------------------------- */
+
+let cam = 0;
+
+/* --------------------------------- objecten ------------------------------ */
+
+/* standX is waar de bezoeker gaat staan; pas als die er is, gebeurt er iets. */
+const OBJECTEN = [
+  { id: 'speeldoos',  hit: { x: 650, y: 555, w: 220, h: 230 }, standX: 950 },
+  { id: 'stolp',      hit: { x: 1625, y: 460, w: 150, h: 320 }, standX: 1545 },
+  { id: 'schilderij', hit: { x: 2595, y: 320, w: 190, h: 190 }, standX: 2690 },
+];
+let onderweg = null;   // object waar de bezoeker naartoe loopt
+let zweeft = false;    // muis boven een object → handje
+
+/* Toestand van de objecten. */
+const doos = { energie: 0, i: 0, volgende: 0, slinger: 0 };    // speeldoos loopt langzaam af
+const vuurvliegje = { x: 1700, y: 545, gloed: 1, flits: 0 };
+const schilderij = { zwaai: -1 };                              // >=0: het figuurtje zwaait
+let onrust = 0;                                                // lampen flakkeren even na klik op schilderij
+
+/* --------------------------------- stofjes ------------------------------- */
+
+/* Stofdeeltjes zweven in de lichtbundels — het raam en de twee lampen. */
+const GEBIEDEN = [
+  { x: 1520, y: 220, w: 400, h: 630 },   // maanlicht door het raam
+  { x: 620, y: 300, w: 300, h: 470 },    // hanglamp boven de speeldoos
+  { x: 2790, y: 420, w: 280, h: 350 },   // staande lamp bij het schilderij
+];
+const stofjes = [];
+for (let i = 0; i < 54; i++) {
+  const g = GEBIEDEN[i % GEBIEDEN.length];
+  stofjes.push({
+    g,
+    x: g.x + Math.random() * g.w,
+    y: g.y + Math.random() * g.h,
+    r: 0.8 + Math.random() * 1.6,
+    zaad: Math.random() * 100,
+    v: 2.5 + Math.random() * 3,
+  });
+}
+
+/* Glinsteringen die uit de spelende speeldoos opstijgen. */
+const glinsters = [];
+let glinsterKlok = 0;
+
+/* ---------------------------------- geluid ------------------------------- */
+
+/* Alles gesynthetiseerd: kamertoon (gefilterde ruis), een lage bourdon,
+   voetstappen, en per object een eigen klank. Eén gedeelde galm (delay)
+   geeft alles dezelfde ruimte. Start pas na de eerste klik (browserregel),
+   en komt dan langzaam op zodat het niet opvalt dat het "aan" gaat. */
+let actx = null, hoofd = null, galm = null;
+
+function ruisBuffer(seconden, bruin) {
+  const n = Math.floor(actx.sampleRate * seconden);
+  const buf = actx.createBuffer(1, n, actx.sampleRate);
+  const d = buf.getChannelData(0);
+  let vorig = 0;
+  for (let i = 0; i < n; i++) {
+    const wit = Math.random() * 2 - 1;
+    if (bruin) { vorig = (vorig + wit * 0.02) * 0.998; d[i] = vorig * 3.5; }
+    else d[i] = wit;
+  }
+  return buf;
+}
+
+function startGeluid() {
+  if (actx) { actx.resume(); return; }
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return;
+  actx = new AC();
+  actx.resume();
+
+  hoofd = actx.createGain();
+  hoofd.gain.value = 0;
+  hoofd.gain.linearRampToValueAtTime(0.85, actx.currentTime + 5);
+  hoofd.connect(actx.destination);
+
+  /* Galm: korte delay met terugkoppeling, dof gefilterd. */
+  galm = actx.createGain(); galm.gain.value = 1;
+  const vertraging = actx.createDelay(0.6); vertraging.delayTime.value = 0.29;
+  const terug = actx.createGain(); terug.gain.value = 0.32;
+  const dof = actx.createBiquadFilter(); dof.type = 'lowpass'; dof.frequency.value = 1500;
+  const nat = actx.createGain(); nat.gain.value = 0.22;
+  galm.connect(vertraging); vertraging.connect(dof); dof.connect(terug);
+  terug.connect(vertraging); dof.connect(nat); nat.connect(hoofd);
+
+  /* Kamertoon: bijna onhoorbare lage ruis die heel traag ademt. */
+  const kamer = actx.createBufferSource();
+  kamer.buffer = ruisBuffer(3, true); kamer.loop = true;
+  const kamerFilter = actx.createBiquadFilter();
+  kamerFilter.type = 'lowpass'; kamerFilter.frequency.value = 240;
+  const kamerVol = actx.createGain(); kamerVol.gain.value = 0.05;
+  const adem = actx.createOscillator(); adem.frequency.value = 0.06;
+  const ademDiep = actx.createGain(); ademDiep.gain.value = 0.02;
+  adem.connect(ademDiep); ademDiep.connect(kamerVol.gain);
+  kamer.connect(kamerFilter); kamerFilter.connect(kamerVol); kamerVol.connect(hoofd);
+  kamer.start(); adem.start();
+
+  /* Bourdon: twee heel zachte lage tonen, een kwint uit elkaar. */
+  for (const [f, v] of [[55, 0.018], [82.4, 0.011]]) {
+    const o = actx.createOscillator(); o.type = 'sine'; o.frequency.value = f;
+    const g = actx.createGain(); g.gain.value = v;
+    o.connect(g); g.connect(hoofd); o.start();
+  }
+}
+
+/* Verbind een tijdelijke klank met droog + galm. */
+function uit(knoop, natheid) {
+  knoop.connect(hoofd);
+  if (galm) { const s = actx.createGain(); s.gain.value = natheid; knoop.connect(s); s.connect(galm); }
+}
+
+function voetstap(links) {
+  if (!actx) return;
+  const t = actx.currentTime;
+  const bron = actx.createBufferSource(); bron.buffer = ruisBuffer(0.08, false);
+  const band = actx.createBiquadFilter(); band.type = 'bandpass';
+  band.frequency.value = links ? 330 : 370; band.Q.value = 1.1;
+  const vol = actx.createGain();
+  vol.gain.setValueAtTime(0.05, t);
+  vol.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
+  bron.connect(band); band.connect(vol); uit(vol, 0.1);
+  bron.start(t); bron.stop(t + 0.1);
+}
+
+/* Speeldoos: één nootje — sinus met een hoge boventoon die snel wegsterft. */
+function nootje(midi, t, kracht) {
+  if (!midi) return;
+  const f = 440 * Math.pow(2, (midi - 69) / 12) * (1 + (Math.random() - 0.5) * 0.004);
+  const o = actx.createOscillator(); o.type = 'sine'; o.frequency.value = f;
+  const g = actx.createGain();
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(0.11 * kracht, t + 0.008);
+  g.gain.setTargetAtTime(0, t + 0.02, 0.33);
+  const boven = actx.createOscillator(); boven.type = 'sine'; boven.frequency.value = f * 3.01;
+  const bg = actx.createGain();
+  bg.gain.setValueAtTime(0.018 * kracht, t);
+  bg.gain.setTargetAtTime(0, t, 0.09);
+  o.connect(g); boven.connect(bg); uit(g, 0.35); uit(bg, 0.35);
+  o.start(t); o.stop(t + 2); boven.start(t); boven.stop(t + 0.6);
+}
+
+/* Opwinden: een zacht ratelend palletje. */
+function opwinden() {
+  if (!actx) return;
+  const t = actx.currentTime;
+  for (let i = 0; i < 8; i++) {
+    const bron = actx.createBufferSource(); bron.buffer = ruisBuffer(0.03, false);
+    const band = actx.createBiquadFilter(); band.type = 'bandpass';
+    band.frequency.value = 1900; band.Q.value = 4;
+    const vol = actx.createGain();
+    vol.gain.setValueAtTime(0.03, t + i * 0.055);
+    vol.gain.exponentialRampToValueAtTime(0.0001, t + i * 0.055 + 0.04);
+    bron.connect(band); band.connect(vol); uit(vol, 0.15);
+    bron.start(t + i * 0.055); bron.stop(t + i * 0.055 + 0.05);
+  }
+}
+
+/* Stolp: glas dat heel zacht aangetikt wordt — lange, fragiele naklank. */
+function glasklank() {
+  if (!actx) return;
+  const t = actx.currentTime;
+  for (const [deel, v, tau] of [[1, 0.06, 1.4], [2.32, 0.022, 0.9], [4.16, 0.01, 0.5]]) {
+    const o = actx.createOscillator(); o.type = 'sine';
+    o.frequency.value = 987.77 * deel;
+    const g = actx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(v, t + 0.012);
+    g.gain.setTargetAtTime(0, t + 0.02, tau);
+    o.connect(g); uit(g, 0.45);
+    o.start(t); o.stop(t + 6);
+  }
+}
+
+/* Schilderij: een gedempte bons, alsof er iets achter de muur beweegt. */
+function bons() {
+  if (!actx) return;
+  const t = actx.currentTime;
+  const o = actx.createOscillator(); o.type = 'sine';
+  o.frequency.setValueAtTime(95, t);
+  o.frequency.exponentialRampToValueAtTime(48, t + 0.22);
+  const g = actx.createGain();
+  g.gain.setValueAtTime(0.09, t);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
+  const bron = actx.createBufferSource(); bron.buffer = ruisBuffer(0.25, false);
+  const dof = actx.createBiquadFilter(); dof.type = 'lowpass'; dof.frequency.value = 240;
+  const rg = actx.createGain();
+  rg.gain.setValueAtTime(0.04, t);
+  rg.gain.exponentialRampToValueAtTime(0.0001, t + 0.25);
+  o.connect(g); bron.connect(dof); dof.connect(rg);
+  uit(g, 0.5); uit(rg, 0.5);
+  o.start(t); o.stop(t + 0.4); bron.start(t); bron.stop(t + 0.3);
+}
+
+/* Wijsje in a-mineurpentatoniek (0 = rust): valt nergens lelijk. */
+const WIJSJE = [
+  81, 0, 76, 79, 81, 0, 84, 0, 79, 0, 76, 74, 76, 0, 72, 0,
+  81, 0, 76, 79, 81, 0, 84, 88, 84, 0, 79, 76, 74, 0, 72, 0,
+];
+
+/* ---------------------------------- invoer ------------------------------- */
+
+function naarWereld(mx, my) {
+  return { x: mx / S + cam, y: (my - ty) / S };
+}
+
+function objectOp(wx, wy) {
+  for (const o of OBJECTEN) {
+    if (wx >= o.hit.x && wx <= o.hit.x + o.hit.w && wy >= o.hit.y && wy <= o.hit.y + o.hit.h) return o;
+  }
+  return null;
+}
+
+canvas.addEventListener('pointermove', (e) => {
+  const w = naarWereld(e.clientX, e.clientY);
+  zweeft = !!objectOp(w.x, w.y);
+  canvas.style.cursor = zweeft ? 'pointer' : 'default';
+});
+
+canvas.addEventListener('pointerdown', (e) => {
+  startGeluid();
+  const w = naarWereld(e.clientX, e.clientY);
+  const o = objectOp(w.x, w.y);
+  if (o) { speler.doel = o.standX; onderweg = o; }
+  else { speler.doel = Math.max(180, Math.min(ZAAL.w - 140, w.x)); onderweg = null; }
+});
+
+/* Pijltjestoetsen mogen ook — maar klikken blijft de bedoeling. */
+const toetsen = {};
+window.addEventListener('keydown', (e) => {
+  if (['ArrowLeft', 'ArrowRight', 'a', 'd'].includes(e.key)) { toetsen[e.key] = true; startGeluid(); }
+});
+window.addEventListener('keyup', (e) => { delete toetsen[e.key]; });
+
+document.addEventListener('visibilitychange', () => {
+  if (!actx) return;
+  if (document.hidden) actx.suspend(); else actx.resume();
+});
+
+/* ------------------------------- interacties ----------------------------- */
+
+function bekijk(o) {
+  if (o.id === 'speeldoos') {
+    speler.kijk = -1;                       // tafel staat links van de standplek
+    opwinden();
+    doos.energie = 1;
+    doos.i = 0;
+    if (actx) doos.volgende = actx.currentTime + 0.55;
+  } else if (o.id === 'stolp') {
+    speler.kijk = 1;
+    glasklank();
+    vuurvliegje.flits = 1;
+  } else if (o.id === 'schilderij') {
+    bons();
+    schilderij.zwaai = 0;
+    onrust = 1;
+  }
+}
+
+/* --------------------------------- bijwerken ----------------------------- */
+
+function bijwerken(dt, t) {
+  /* Toetsen sturen het doel bij. */
+  if (toetsen.ArrowLeft || toetsen.a) { speler.doel = Math.max(180, speler.x - 200); onderweg = null; }
+  if (toetsen.ArrowRight || toetsen.d) { speler.doel = Math.min(ZAAL.w - 140, speler.x + 200); onderweg = null; }
+
+  /* Wandelen: vaste kalme snelheid, zacht afremmen bij aankomst. */
+  const afstand = speler.doel - speler.x;
+  if (Math.abs(afstand) > 3) {
+    speler.loopt = true;
+    speler.kijk = afstand > 0 ? 1 : -1;
+    const rem = Math.min(1, Math.max(0.3, Math.abs(afstand) / 60));
+    speler.x += Math.sign(afstand) * LOOPSNELHEID * rem * dt;
+    speler.fase += dt * 7.2;
+    const sin = Math.sin(speler.fase);
+    if (speler.vorigeSin <= 0 && sin > 0 || speler.vorigeSin >= 0 && sin < 0) {
+      speler.stapLinks = !speler.stapLinks;
+      voetstap(speler.stapLinks);
+    }
+    speler.vorigeSin = sin;
+  } else {
+    if (speler.loopt && onderweg) { bekijk(onderweg); onderweg = null; }
+    speler.loopt = false;
+  }
+
+  /* Camera volgt met vertraging, en blijft binnen de zaal. */
+  const zichtbaar = W / S;
+  const camDoel = Math.max(0, Math.min(ZAAL.w - zichtbaar, speler.x - zichtbaar / 2));
+  cam += (camDoel - cam) * Math.min(1, dt * 2.2);
+
+  /* Speeldoos: loopt in ongeveer een minuut af; het tempo zakt op het eind. */
+  if (doos.energie > 0) {
+    doos.energie = Math.max(0, doos.energie - dt / 62);
+    doos.slinger += dt * (1.5 + 2.5 * doos.energie);
+    if (actx) {
+      if (doos.volgende < actx.currentTime) doos.volgende = actx.currentTime + 0.05;
+      while (doos.volgende < actx.currentTime + 0.15 && doos.energie > 0) {
+        const kracht = Math.pow(Math.min(1, doos.energie / 0.2), 0.7);
+        nootje(WIJSJE[doos.i % WIJSJE.length], doos.volgende, kracht);
+        const tempo = 0.5 + 0.5 * Math.min(1, doos.energie / 0.35);
+        doos.volgende += 0.36 / tempo;
+        doos.i++;
+      }
+    }
+    /* Glinsteringen boven de doos, spaarzaam. */
+    glinsterKlok -= dt;
+    if (glinsterKlok <= 0) {
+      glinsterKlok = 0.3 + Math.random() * 0.5 / Math.max(0.2, doos.energie);
+      glinsters.push({ x: 760 + (Math.random() - 0.5) * 90, y: 580, leeft: 0 });
+    }
+  }
+  for (let i = glinsters.length - 1; i >= 0; i--) {
+    const s = glinsters[i];
+    s.leeft += dt; s.y -= dt * 16;
+    if (s.leeft > 1.6) glinsters.splice(i, 1);
+  }
+
+  /* Vuurvliegje: dwaalt in de stolp, danst mee met de muziek en komt
+     nieuwsgierig jouw kant op als je dichtbij staat. */
+  const levendig = 1 + doos.energie * 1.5;
+  let vx = Math.sin(t * 0.62 * levendig + 1.7) * 26 + Math.sin(t * 1.31 * levendig) * 9;
+  let vy = Math.sin(t * 0.83 * levendig) * 20 + Math.sin(t * 1.7 * levendig + 4) * 7;
+  const naarSpeler = speler.x - 1700;
+  if (Math.abs(naarSpeler) < 300) vx += Math.sign(naarSpeler) * (1 - Math.abs(naarSpeler) / 300) * 22;
+  vuurvliegje.x = 1700 + vx;
+  vuurvliegje.y = 545 + vy;
+  vuurvliegje.gloed = 0.6 + 0.4 * Math.sin(t * 1.3 + Math.sin(t * 0.4) * 2);
+  vuurvliegje.flits = Math.max(0, vuurvliegje.flits - dt * 0.7);
+
+  /* Zwaaiend figuurtje in het schilderij; de lampen zijn even onrustig. */
+  if (schilderij.zwaai >= 0) {
+    schilderij.zwaai += dt;
+    if (schilderij.zwaai > 3) schilderij.zwaai = -1;
+  }
+  onrust = Math.max(0, onrust - dt * 0.8);
+
+  /* Stofjes dwarrelen langzaam omhoog en beginnen onderaan opnieuw. */
+  for (const s of stofjes) {
+    s.x += Math.sin(t * 0.13 + s.zaad) * dt * 4;
+    s.y -= s.v * dt;
+    if (s.y < s.g.y) { s.y = s.g.y + s.g.h; s.x = s.g.x + Math.random() * s.g.w; }
+  }
+}
+
+/* ---------------------------------- tekenen ------------------------------ */
+
+function lampkracht(t) {
+  /* Heel licht natuurlijk trillen; na een klik op het schilderij even flakkeren. */
+  return (1 + Math.sin(t * 13.7) * 0.012 + Math.sin(t * 7.1) * 0.008)
+    * (1 - 0.35 * onrust * (0.5 + 0.5 * Math.sin(t * 31)));
+}
+
+function tekenZaal(t) {
+  const lamp = lampkracht(t);
+
+  /* Muur met plafondrand en lambrisering. */
+  const muur = ctx.createLinearGradient(0, 0, 0, ZAAL.vloer);
+  muur.addColorStop(0, '#3d332a');
+  muur.addColorStop(1, '#332a21');
+  ctx.fillStyle = muur; ctx.fillRect(0, 0, ZAAL.w, ZAAL.vloer);
+  ctx.fillStyle = '#241e17'; ctx.fillRect(0, 0, ZAAL.w, 66);
+  ctx.fillStyle = '#2c251d'; ctx.fillRect(0, 560, ZAAL.w, ZAAL.vloer - 560);
+  ctx.fillStyle = '#221c15'; ctx.fillRect(0, 556, ZAAL.w, 5);
+  ctx.fillStyle = '#1e1912'; ctx.fillRect(0, ZAAL.vloer - 16, ZAAL.w, 16);
+
+  /* Vloer. */
+  const vloer = ctx.createLinearGradient(0, ZAAL.vloer, 0, ZAAL.h);
+  vloer.addColorStop(0, '#4d3b28');
+  vloer.addColorStop(1, '#241a10');
+  ctx.fillStyle = vloer; ctx.fillRect(0, ZAAL.vloer, ZAAL.w, ZAAL.h - ZAAL.vloer);
+  ctx.strokeStyle = 'rgba(0,0,0,0.18)'; ctx.lineWidth = 2;
+  for (let y = ZAAL.vloer + 26; y < ZAAL.h; y += 30) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(ZAAL.w, y); ctx.stroke();
+  }
+
+  /* Donkere uiteinden: de zaal houdt voelbaar ergens op. */
+  for (const [x0, x1] of [[0, 260], [ZAAL.w, ZAAL.w - 260]]) {
+    const rand = ctx.createLinearGradient(x0, 0, x1, 0);
+    rand.addColorStop(0, 'rgba(10,7,4,0.55)');
+    rand.addColorStop(1, 'rgba(10,7,4,0)');
+    ctx.fillStyle = rand; ctx.fillRect(Math.min(x0, x1), 0, 260, ZAAL.h);
+  }
+
+  /* Deur links — daar kwam je binnen. */
+  ctx.fillStyle = '#221b14'; ctx.fillRect(80, 290, 170, ZAAL.vloer - 290);
+  ctx.fillStyle = '#191410'; ctx.fillRect(94, 306, 142, ZAAL.vloer - 306);
+  ctx.strokeStyle = '#2c241b'; ctx.lineWidth = 3;
+  ctx.strokeRect(110, 330, 110, 180); ctx.strokeRect(110, 545, 110, 200);
+  ctx.fillStyle = '#5d4c33';
+  ctx.beginPath(); ctx.arc(220, 540, 5, 0, 7); ctx.fill();
+
+  tekenRaam(t);
+  tekenHanglamp(lamp);
+  tekenStaandeLamp(lamp);
+  tekenSpeeldoos(t);
+  tekenStolp(t);
+  tekenSchilderij(t);
+}
+
+function tekenRaam(t) {
+  /* Boograam met nacht erachter; het maanlicht valt koel de zaal in
+     als tegenwicht voor al het warme lamplicht. */
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(1560, 560); ctx.lineTo(1560, 260);
+  ctx.arc(1700, 260, 140, Math.PI, 0);
+  ctx.lineTo(1840, 560); ctx.closePath();
+  const nacht = ctx.createLinearGradient(0, 120, 0, 560);
+  nacht.addColorStop(0, '#1b2836');
+  nacht.addColorStop(1, '#101a26');
+  ctx.fillStyle = nacht; ctx.fill();
+  ctx.clip();
+  ctx.fillStyle = 'rgba(215,225,235,0.9)';
+  ctx.beginPath(); ctx.arc(1762, 250, 26, 0, 7); ctx.fill();
+  ctx.fillStyle = '#16222f';
+  ctx.beginPath(); ctx.arc(1753, 242, 24, 0, 7); ctx.fill();   // wassende maan
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  for (const [sx, sy] of [[1600, 200], [1660, 165], [1810, 300], [1590, 330], [1789, 189], [1636, 268]]) {
+    ctx.fillRect(sx, sy + Math.sin(t * 0.5 + sx) * 0.5, 2, 2);
+  }
+  ctx.restore();
+
+  /* Kozijn. */
+  ctx.strokeStyle = '#241d15'; ctx.lineWidth = 14;
+  ctx.beginPath();
+  ctx.moveTo(1560, 560); ctx.lineTo(1560, 260);
+  ctx.arc(1700, 260, 140, Math.PI, 0);
+  ctx.lineTo(1840, 560); ctx.closePath(); ctx.stroke();
+  ctx.lineWidth = 6;
+  ctx.beginPath(); ctx.moveTo(1700, 126); ctx.lineTo(1700, 560); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(1560, 380); ctx.lineTo(1840, 380); ctx.stroke();
+  ctx.fillStyle = '#2a2219'; ctx.fillRect(1540, 556, 320, 14);
+
+  /* Lichtbundel op de vloer. */
+  ctx.globalCompositeOperation = 'lighter';
+  const bundel = ctx.createLinearGradient(0, 200, 0, 880);
+  bundel.addColorStop(0, 'rgba(150,185,225,0.10)');
+  bundel.addColorStop(1, 'rgba(150,185,225,0)');
+  ctx.fillStyle = bundel;
+  ctx.beginPath();
+  ctx.moveTo(1568, 200); ctx.lineTo(1832, 200);
+  ctx.lineTo(1960, 880); ctx.lineTo(1440, 880); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = 'rgba(150,185,225,0.06)';
+  ctx.beginPath(); ctx.ellipse(1700, 830, 250, 34, 0, 0, 7); ctx.fill();
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+function tekenHanglamp(lamp) {
+  ctx.strokeStyle = '#171310'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(760, 66); ctx.lineTo(760, 218); ctx.stroke();
+  ctx.fillStyle = '#20180f';
+  ctx.beginPath();
+  ctx.moveTo(722, 262); ctx.lineTo(742, 218); ctx.lineTo(778, 218); ctx.lineTo(798, 262);
+  ctx.closePath(); ctx.fill();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.fillStyle = `rgba(255,196,110,${0.5 * lamp})`;
+  ctx.beginPath(); ctx.arc(760, 258, 9, 0, 7); ctx.fill();
+  const kegel = ctx.createLinearGradient(0, 260, 0, 800);
+  kegel.addColorStop(0, `rgba(255,190,105,${0.10 * lamp})`);
+  kegel.addColorStop(1, 'rgba(255,190,105,0)');
+  ctx.fillStyle = kegel;
+  ctx.beginPath();
+  ctx.moveTo(726, 262); ctx.lineTo(794, 262);
+  ctx.lineTo(972, 800); ctx.lineTo(548, 800); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = `rgba(255,190,105,${0.08 * lamp})`;
+  ctx.beginPath(); ctx.ellipse(760, 792, 210, 28, 0, 0, 7); ctx.fill();
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+function tekenStaandeLamp(lamp) {
+  ctx.strokeStyle = '#1a1510'; ctx.lineWidth = 6;
+  ctx.beginPath(); ctx.moveTo(2920, ZAAL.vloer); ctx.lineTo(2920, 408); ctx.stroke();
+  ctx.beginPath(); ctx.ellipse(2920, ZAAL.vloer, 30, 7, 0, 0, 7); ctx.stroke();
+  ctx.fillStyle = '#26190e';
+  ctx.beginPath();
+  ctx.moveTo(2874, 408); ctx.lineTo(2890, 344); ctx.lineTo(2950, 344); ctx.lineTo(2966, 408);
+  ctx.closePath(); ctx.fill();
+  ctx.globalCompositeOperation = 'lighter';
+  const gloed = ctx.createRadialGradient(2920, 400, 8, 2920, 400, 190);
+  gloed.addColorStop(0, `rgba(255,186,100,${0.16 * lamp})`);
+  gloed.addColorStop(1, 'rgba(255,186,100,0)');
+  ctx.fillStyle = gloed;
+  ctx.beginPath(); ctx.arc(2920, 400, 190, 0, 7); ctx.fill();
+  ctx.fillStyle = `rgba(255,186,100,${0.07 * lamp})`;
+  ctx.beginPath(); ctx.ellipse(2920, 792, 170, 24, 0, 0, 7); ctx.fill();
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+function tekenSpeeldoos(t) {
+  /* Tafeltje. */
+  ctx.fillStyle = '#33261a';
+  ctx.fillRect(660, 640, 200, 12);
+  ctx.fillRect(674, 652, 10, ZAAL.vloer - 652);
+  ctx.fillRect(836, 652, 10, ZAAL.vloer - 652);
+  /* Doos. */
+  ctx.fillStyle = '#5a4430'; ctx.fillRect(700, 594, 120, 46);
+  ctx.fillStyle = '#6a5138'; ctx.fillRect(700, 588, 120, 8);
+  ctx.strokeStyle = '#8a6f42'; ctx.lineWidth = 2;
+  ctx.strokeRect(708, 602, 104, 32);
+  /* Zwengel draait terwijl het wijsje speelt. */
+  const hoek = doos.slinger;
+  ctx.save();
+  ctx.translate(826, 612);
+  ctx.strokeStyle = '#8a6f42'; ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.moveTo(0, 0);
+  ctx.lineTo(Math.cos(hoek) * 13, Math.sin(hoek) * 13); ctx.stroke();
+  ctx.fillStyle = '#a88650';
+  ctx.beginPath(); ctx.arc(Math.cos(hoek) * 13, Math.sin(hoek) * 13, 3.5, 0, 7); ctx.fill();
+  ctx.restore();
+  /* Warme glans op de doos zolang er muziek is. */
+  if (doos.energie > 0) {
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = `rgba(255,214,140,${0.10 * doos.energie})`;
+    ctx.fillRect(700, 588, 120, 52);
+    ctx.globalCompositeOperation = 'source-over';
+  }
+  /* Glinsteringen. */
+  ctx.globalCompositeOperation = 'lighter';
+  for (const s of glinsters) {
+    const a = Math.sin(Math.min(1, s.leeft / 1.6) * Math.PI) * 0.5;
+    ctx.fillStyle = `rgba(255,226,160,${a})`;
+    ctx.fillRect(s.x, s.y, 2, 2);
+  }
+  ctx.globalCompositeOperation = 'source-over';
+  /* Naamplaatje zonder leesbare naam. */
+  plaatje(736, 668);
+}
+
+function tekenStolp(t) {
+  /* Sokkel. */
+  ctx.fillStyle = '#453b2e'; ctx.fillRect(1642, 612, 116, ZAAL.vloer - 612);
+  ctx.fillStyle = '#524738'; ctx.fillRect(1632, 600, 136, 14);
+  ctx.fillStyle = '#3a3126'; ctx.fillRect(1642, 614, 116, 5);
+  plaatje(1672, 700);
+  /* Vuurvliegje — de gloed gaat vóór het glas zodat het glas oplicht. */
+  const gl = vuurvliegje.gloed + vuurvliegje.flits * 1.6;
+  ctx.globalCompositeOperation = 'lighter';
+  const gloed = ctx.createRadialGradient(vuurvliegje.x, vuurvliegje.y, 1, vuurvliegje.x, vuurvliegje.y, 30 + vuurvliegje.flits * 26);
+  gloed.addColorStop(0, `rgba(228,255,170,${0.5 * gl})`);
+  gloed.addColorStop(1, 'rgba(228,255,170,0)');
+  ctx.fillStyle = gloed;
+  ctx.beginPath(); ctx.arc(vuurvliegje.x, vuurvliegje.y, 30 + vuurvliegje.flits * 26, 0, 7); ctx.fill();
+  ctx.fillStyle = `rgba(250,255,220,${Math.min(1, 0.85 * gl)})`;
+  ctx.beginPath(); ctx.arc(vuurvliegje.x, vuurvliegje.y, 2.2, 0, 7); ctx.fill();
+  /* Zachte schijn op de sokkel. */
+  ctx.fillStyle = `rgba(228,255,170,${0.05 * gl})`;
+  ctx.beginPath(); ctx.ellipse(1700, 606, 62, 9, 0, 0, 7); ctx.fill();
+  ctx.globalCompositeOperation = 'source-over';
+  /* Glazen stolp. */
+  ctx.beginPath();
+  ctx.moveTo(1652, 600); ctx.lineTo(1652, 520);
+  ctx.arc(1700, 520, 48, Math.PI, 0);
+  ctx.lineTo(1748, 600); ctx.closePath();
+  ctx.fillStyle = 'rgba(185,215,240,0.06)'; ctx.fill();
+  ctx.strokeStyle = 'rgba(200,225,245,0.35)'; ctx.lineWidth = 2.5; ctx.stroke();
+  /* Glimlichtje op het glas. */
+  ctx.strokeStyle = 'rgba(220,240,255,0.25)'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.arc(1700, 522, 40, Math.PI * 1.15, Math.PI * 1.45); ctx.stroke();
+  /* Knopje bovenop. */
+  ctx.fillStyle = 'rgba(200,225,245,0.4)';
+  ctx.beginPath(); ctx.arc(1700, 468, 4, 0, 7); ctx.fill();
+}
+
+function tekenSchilderij(t) {
+  /* Lijst en passe-partout. */
+  ctx.fillStyle = '#59431f'; ctx.fillRect(2600, 328, 180, 130);
+  ctx.fillStyle = '#6d5528'; ctx.fillRect(2606, 334, 168, 118);
+  ctx.fillStyle = '#171310'; ctx.fillRect(2614, 342, 152, 102);
+  /* In de lijst: deze zaal, in het klein — inclusief jezelf. */
+  const fx = 2618, fy = 346, fw = 144, fh = 94;
+  ctx.save();
+  ctx.beginPath(); ctx.rect(fx, fy, fw, fh); ctx.clip();
+  ctx.fillStyle = '#46392c'; ctx.fillRect(fx, fy, fw, fh);
+  ctx.fillStyle = '#2f2820'; ctx.fillRect(fx, fy + fh - 22, fw, 22);              // lambrisering
+  ctx.fillStyle = '#57432c'; ctx.fillRect(fx, fy + fh - 12, fw, 12);              // vloer
+  const mx = (wx) => fx + (wx / ZAAL.w) * fw;                                      // wereld-x → lijst-x
+  ctx.fillStyle = '#1b2836'; ctx.fillRect(mx(1560) , fy + 14, 12, 34);            // raampje
+  ctx.fillStyle = 'rgba(150,185,225,0.25)'; ctx.fillRect(mx(1560), fy + 46, 14, 36);
+  ctx.fillStyle = 'rgba(255,190,105,0.3)';                                        // lampjes
+  ctx.fillRect(mx(760), fy + 20, 3, 3); ctx.fillRect(mx(2920), fy + 40, 3, 3);
+  ctx.fillStyle = '#241d16';                                                      // meubeltjes
+  ctx.fillRect(mx(700) - 1, fy + fh - 22, 8, 10);
+  ctx.fillRect(mx(1650), fy + fh - 26, 6, 14);
+  ctx.fillStyle = '#3a2d1c'; ctx.fillRect(mx(2600), fy + 26, 8, 6);               // het schilderijtje zelf
+  /* Het figuurtje staat waar jij staat. Klik, en het zwaait naar je. */
+  const px = mx(speler.x);
+  ctx.fillStyle = '#141010';
+  ctx.fillRect(px - 1.5, fy + fh - 24, 3, 10);
+  ctx.beginPath(); ctx.arc(px, fy + fh - 26, 2.2, 0, 7); ctx.fill();
+  if (schilderij.zwaai >= 0) {
+    const zw = Math.sin(schilderij.zwaai * 9) * 0.6;
+    ctx.strokeStyle = '#141010'; ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(px + 1.5, fy + fh - 22);
+    ctx.lineTo(px + 4.5, fy + fh - 28 + zw * 3);
+    ctx.stroke();
+  }
+  ctx.restore();
+  plaatje(2662, 476);
+}
+
+/* Messing naamplaatje met onleesbaar gekras — een museum legt niets uit. */
+function plaatje(x, y) {
+  ctx.fillStyle = '#6b5b38'; ctx.fillRect(x, y, 56, 16);
+  ctx.fillStyle = '#57492c'; ctx.fillRect(x + 1, y + 1, 54, 14);
+  ctx.strokeStyle = 'rgba(20,16,10,0.7)'; ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(x + 6, y + 6); ctx.lineTo(x + 34, y + 6);
+  ctx.moveTo(x + 6, y + 10); ctx.lineTo(x + 46, y + 10);
+  ctx.stroke();
+}
+
+function tekenBezoeker(t) {
+  const p = speler;
+  const hup = p.loopt ? Math.abs(Math.sin(p.fase)) * 3.4 : 0;
+  const adem = p.loopt ? 0 : Math.sin(t * 0.9) * 1.2;
+  const y = ZAAL.vloer;
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.beginPath(); ctx.ellipse(p.x, y + 4, 26, 6, 0, 0, 7); ctx.fill();
+  ctx.save();
+  ctx.translate(p.x, y - hup);
+  ctx.scale(p.kijk, 1);
+  const kleur = '#1a1410';
+  /* Benen. */
+  const zwaai = p.loopt ? Math.sin(p.fase) * 11 : 2;
+  ctx.strokeStyle = kleur; ctx.lineWidth = 8; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(-2, -46); ctx.lineTo(-2 + zwaai, hup - 2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(2, -46); ctx.lineTo(2 - zwaai, hup - 2); ctx.stroke();
+  /* Romp. */
+  ctx.fillStyle = kleur;
+  ctx.beginPath(); ctx.ellipse(0, -78 + adem * 0.3, 17, 35, 0, 0, 7); ctx.fill();
+  /* Arm. */
+  ctx.strokeStyle = kleur; ctx.lineWidth = 6;
+  ctx.beginPath(); ctx.moveTo(-3, -96 + adem * 0.3);
+  ctx.quadraticCurveTo(-14, -78, -10 - zwaai * 0.25, -58); ctx.stroke();
+  /* Sjaaltje — het enige kleurige aan de bezoeker. */
+  ctx.fillStyle = '#7a4028';
+  ctx.beginPath(); ctx.ellipse(1, -106 + adem * 0.4, 11, 6, 0, 0, 7); ctx.fill();
+  ctx.fillRect(-4, -106 + adem * 0.4, 7, 18);
+  /* Hoofd. */
+  ctx.fillStyle = kleur;
+  ctx.beginPath(); ctx.arc(2, -125 + adem * 0.5, 15, 0, 7); ctx.fill();
+  ctx.restore();
+}
+
+function tekenStofjes(t) {
+  ctx.globalCompositeOperation = 'lighter';
+  for (const s of stofjes) {
+    const a = 0.05 + 0.07 * (0.5 + 0.5 * Math.sin(t * 0.7 + s.zaad * 3));
+    ctx.fillStyle = `rgba(235,225,200,${a})`;
+    ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, 7); ctx.fill();
+  }
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+function tekenBankje() {
+  /* Bankje net vóór de bezoeker langs — een klein beetje diepte. */
+  ctx.fillStyle = '#241a11';
+  ctx.fillRect(1120, 688, 210, 14);
+  ctx.fillRect(1134, 702, 12, 82);
+  ctx.fillRect(1304, 702, 12, 82);
+  ctx.fillRect(1120, 730, 210, 8);
+}
+
+/* ----------------------------------- lus --------------------------------- */
+
+let vorige = performance.now();
+
+function beeld(nu) {
+  const dt = Math.min(0.05, (nu - vorige) / 1000);
+  vorige = nu;
+  const t = nu / 1000;
+
+  bijwerken(dt, t);
+
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = '#0e0a07'; ctx.fillRect(0, 0, W, H);
+
+  /* Wereld. */
+  ctx.setTransform(dpr * S, 0, 0, dpr * S, -cam * S * dpr, ty * dpr);
+  tekenZaal(t);
+  tekenBezoeker(t);
+  tekenBankje();
+  tekenStofjes(t);
+
+  /* Schermlaagjes: vignet en filmkorrel. */
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.drawImage(vignet, 0, 0);
+  ctx.globalAlpha = 0.5;
+  ctx.drawImage(korrel, Math.floor(Math.random() * 80) - 80, Math.floor(Math.random() * 80) - 80, W + 160, H + 160);
+  ctx.globalAlpha = 1;
+
+  requestAnimationFrame(beeld);
+}
+requestAnimationFrame(beeld);
+</script>
+</body>
+</html>

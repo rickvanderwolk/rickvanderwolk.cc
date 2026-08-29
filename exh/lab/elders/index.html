@@ -1,0 +1,769 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="robots" content="noindex, nofollow">
+  <title>elders</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#000000">
+  <meta name="color-scheme" content="dark">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="description" content="Een zwarte kamer, groter dan je scherm, met alleen een zaklamp met drie kleuren licht. Elke kleur toont een andere wereld: ogen die naar je kijken, klokken die niet gelijk lopen, een zwerm die je licht ontwijkt.">
+  <meta name="author" content="Rick van der Wolk">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; background: #000; }
+    body {
+      background: #000;
+      overflow: hidden;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: none;
+      font-family: system-ui, 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    }
+    body.binnen { cursor: none; }
+
+    /* -- de lamp: een lichtvlek die de cursor vervangt -- */
+    #lamp {
+      position: fixed; inset: 0;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.09s ease;
+    }
+    #lamp.aan { opacity: 1; }
+
+    /* -- de muur: een witte laag met vormen in geheime inkt, vermenig-
+          vuldigd met het licht eronder (mix-blend-mode: multiply). Echte
+          kleurfysica: een oppervlak kaatst alleen kleuren terug die het
+          licht bevat. De vormen staan in complementaire kleuren:
+
+            cyaan   kaatst groen+blauw  → alleen onder ROOD licht donker
+            magenta kaatst rood+blauw   → alleen onder GROEN licht donker
+            geel    kaatst rood+groen   → alleen onder BLAUW licht donker
+
+          Onder de twee andere kleuren valt zo'n vorm exact weg tegen de
+          aangelichte muur. Zwart blijft onder elke kleur een silhouet. -- */
+    #muur {
+      /* Geen background-color hier: het doek vult zichzelf elk frame
+         wit. iOS 26 kleurt zijn status- en werkbalk naar de
+         background-color van fixed elementen aan de randen (zonder de
+         blend mee te rekenen) — een witte laag hier maakt die balken
+         wit. */
+      position: fixed; inset: 0;
+      mix-blend-mode: multiply;
+      pointer-events: none;
+      overflow: hidden;
+      font-weight: 700;
+    }
+
+    /* -- de randen: theme-color doet op iOS 26 niets meer; Safari leest
+          de background-color van fixed elementen die de randen raken.
+          Twee zwarte strookjes, onzichtbaar op de zwarte kamer, houden
+          de balken donker. -- */
+    .balk {
+      position: fixed;
+      left: 0; right: 0;
+      height: 12px;
+      background-color: #000;
+      pointer-events: none;
+      z-index: 10;
+    }
+    #balkboven { top: -8px; }
+    #balkonder { bottom: -8px; }
+    /* Het doek waarop de werken staan; de camera (schuiven/zoomen) wordt
+       bij het tekenen toegepast, niet met CSS. */
+    #wereld {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+    }
+
+    /* -- de drempel: een popup met tekst, daarachter is alles al zwart -- */
+    #drempel {
+      position: fixed; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      padding: 24px;
+      opacity: 1;
+      transition: opacity 1.8s ease;
+    }
+    #drempel.weg { opacity: 0; pointer-events: none; }
+    #kader {
+      max-width: 26em;
+      border: 1px solid #2a2a2a;
+      background: #050505;
+      padding: 40px 44px 36px;
+    }
+    #kader p {
+      color: #9a9a9a;
+      font-size: 15px;
+      line-height: 1.9;
+      letter-spacing: 0.02em;
+      margin-bottom: 32px;
+    }
+    #ok {
+      display: block;
+      margin: 0 auto;
+      background: none;
+      border: 1px solid #3a3a3a;
+      color: #9a9a9a;
+      font: inherit;
+      font-size: 14px;
+      letter-spacing: 0.12em;
+      padding: 9px 34px;
+      cursor: pointer;
+      transition: border-color 0.4s ease, color 0.4s ease;
+    }
+    #ok:hover, #ok:focus-visible {
+      border-color: #777;
+      color: #ddd;
+      outline: none;
+    }
+  </style>
+</head>
+<body>
+
+<div class="balk" id="balkboven"></div>
+<div class="balk" id="balkonder"></div>
+<div id="lamp"></div>
+<div id="muur">
+  <canvas id="wereld"></canvas>
+</div>
+
+<div id="drempel">
+  <div id="kader">
+    <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do
+    eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad
+    minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip
+    ex ea commodo consequat.</p>
+    <button id="ok" type="button">ok</button>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+/* ---------------------------------------------------------------------------
+   elders — stap 6.
+
+   Een drempel: een popup met tekst. Wie op ok drukt (of Enter) laat de
+   tekst achter zich en staat in een zwarte kamer. Daar is niets te zien,
+   alleen te horen. Het geluid komt langzaam op en zet een sfeer die net
+   niet klopt: een lage drone waarvan de tonen elkaar bijna raken, ademende
+   ruis als een ruimte die te groot is, en af en toe een flard die aanzwelt
+   en dan halverwege ophoudt.
+
+   In de kamer is je cursor weg. Klikken (of tikken) knipt een zaklamp
+   aan: een lichtvlek die met je muis meebeweegt, of op mobiel staat
+   waar je tikt — wie even vasthoudt heeft de lamp beet en schijnt met
+   zijn vinger. Elke klik draait het filter verder: rood, groen, blauw —
+   en dan weer donker. Er is geen wit licht.
+
+   In de kamer hangen drie werken in geheime inkt, door elkaar heen over
+   de hele ruimte. Echte kleurfysica (multiply), geen truc: cyaan bestaat
+   alleen onder rood licht, magenta alleen onder groen, geel alleen onder
+   blauw — onder de andere kleuren valt de inkt exact weg tegen de muur.
+   Onder rood kijken tientallen ogen naar je licht. Onder groen lopen
+   klokken die geen van allen gelijk gaan. Onder blauw woont een zwerm
+   die je licht ontwijkt. Je ziet dus nooit alles tegelijk, en in het
+   midden ademt een zwart gat dat er onder elke kleur is.
+
+   De kamer is groter dan het scherm. Slepen, vegen, scrollen of de
+   pijltjes schuiven de wereld onder je licht door; knijpen of
+   ctrl+scroll of +/− zoomt.
+--------------------------------------------------------------------------- */
+
+const drempel = document.getElementById('drempel');
+const ok = document.getElementById('ok');
+let binnen = false;
+
+function gaBinnen() {
+  if (binnen) return;
+  binnen = true;
+  drempel.classList.add('weg');
+  document.body.classList.add('binnen');
+  startGeluid();
+}
+
+ok.addEventListener('click', gaBinnen);
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') gaBinnen();
+});
+ok.focus();
+
+/* --------------------------------- de lamp ------------------------------- */
+
+/* Elke klik draait het filter één stand verder; na blauw is het weer
+   donker. Alleen de drie kleuren — er is geen wit of warm licht, dus geen
+   stand die alle inkten tegelijk verraadt. De standen zijn echt monochroom,
+   anders lekt er alsnog van alles door. */
+const STANDEN = [
+  { kern: '255, 44, 26', rand: '212, 16, 8' },     // rood
+  { kern: '46, 245, 60', rand: '12, 205, 36' },    // groen
+  { kern: '46, 46, 255', rand: '18, 22, 224' },    // blauw
+];
+
+const lamp = document.getElementById('lamp');
+let stand = -1;                    // -1 = uit
+let px = innerWidth / 2;
+let py = innerHeight / 2;
+
+/* -------------------------------- de wereld ------------------------------ */
+
+/* Drie vervreemdende werken in geheime inkt, door elkaar heen over de
+   hele kamer. Elk bestaat alleen onder zijn eigen kleur:
+
+     rood  → de ogen (cyaan): tientallen ogen, en ze kijken allemaal
+             naar jouw licht. Af en toe knippert er één.
+     groen → de klokken (magenta): ze lopen allemaal, maar geen twee
+             gelijk — te snel, achteruit, of bijna stil.
+     blauw → de schuwen (geel): een zwerm die je licht ontwijkt; je
+             ziet ze alleen wegglippen langs de rand van je vlek.
+
+   In het midden ademt een zwart gat, zichtbaar onder elke kleur. */
+
+const WERELD = { w: 4000, h: 3000 };
+const CYAAN = 'rgb(0, 255, 255)';
+const MAGENTA = 'rgb(255, 0, 255)';
+const GEEL = 'rgb(255, 255, 0)';
+
+const doek = document.getElementById('wereld');
+const dctx = doek.getContext('2d');
+let dpr = 1;
+
+function pasDoekAan() {
+  dpr = Math.min(devicePixelRatio || 1, 2);
+  doek.width = Math.round(innerWidth * dpr);
+  doek.height = Math.round(innerHeight * dpr);
+}
+pasDoekAan();
+
+const OGEN = Array.from({ length: 70 }, () => ({
+  x: Math.random() * WERELD.w,
+  y: Math.random() * WERELD.h,
+  r: 18 + Math.random() * 40,
+  knip: Math.random() * Math.PI * 2,
+  tempo: 0.6 + Math.random() * 1.2,
+}));
+
+const KLOKKEN = Array.from({ length: 40 }, () => ({
+  x: Math.random() * WERELD.w,
+  y: Math.random() * WERELD.h,
+  r: 30 + Math.random() * 55,
+  uur: Math.random() * Math.PI * 2,
+  minuut: Math.random() * Math.PI * 2,
+  tempo: (Math.random() < 0.4 ? -1 : 1) * (0.02 + Math.random() * 2.4),
+}));
+
+const SCHUWEN = Array.from({ length: 130 }, () => {
+  const x = Math.random() * WERELD.w;
+  const y = Math.random() * WERELD.h;
+  return { hx: x, hy: y, x, y, vx: 0, vy: 0, r: 4 + Math.random() * 7 };
+});
+
+let vorigeT = 0;
+
+function tekenWereld(t) {
+  const dt = Math.min(t - vorigeT, 0.1);
+  vorigeT = t;
+
+  /* uitrol: na een veeg rolt de wereld nog even door */
+  if (vingers.size === 0 && (vaartX || vaartY)) {
+    cx -= vaartX * dt / zoom;
+    cy -= vaartY * dt / zoom;
+    toonWereld();
+    const rem = Math.exp(-4 * dt);
+    vaartX *= rem;
+    vaartY *= rem;
+    if (Math.hypot(vaartX, vaartY) < 6) {
+      vaartX = 0;
+      vaartY = 0;
+    }
+  }
+
+  /* de lamp in wereldcoördinaten: daar kijken de ogen naar, daar
+     vluchten de schuwen voor */
+  const lx = cx + (px - innerWidth / 2) / zoom;
+  const ly = cy + (py - innerHeight / 2) / zoom;
+
+  dctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  dctx.fillStyle = '#fff';
+  dctx.fillRect(0, 0, innerWidth, innerHeight);
+  dctx.setTransform(dpr * zoom, 0, 0, dpr * zoom,
+    dpr * (innerWidth / 2 - cx * zoom), dpr * (innerHeight / 2 - cy * zoom));
+
+  /* rood → de ogen */
+  dctx.strokeStyle = CYAAN;
+  dctx.fillStyle = CYAAN;
+  dctx.lineCap = 'round';
+  for (const o of OGEN) {
+    dctx.lineWidth = Math.max(2, o.r * 0.09);
+    if (Math.sin(t * o.tempo + o.knip) > 0.985) {
+      // een knipperend oog: even alleen een streep
+      dctx.beginPath();
+      dctx.moveTo(o.x - o.r, o.y);
+      dctx.lineTo(o.x + o.r, o.y);
+      dctx.stroke();
+      continue;
+    }
+    dctx.beginPath();
+    dctx.ellipse(o.x, o.y, o.r, o.r * 0.62, 0, 0, Math.PI * 2);
+    dctx.stroke();
+    const hoek = Math.atan2(ly - o.y, lx - o.x);
+    dctx.beginPath();
+    dctx.arc(o.x + Math.cos(hoek) * o.r * 0.34,
+             o.y + Math.sin(hoek) * o.r * 0.21,
+             o.r * 0.28, 0, Math.PI * 2);
+    dctx.fill();
+  }
+
+  /* groen → de klokken */
+  dctx.strokeStyle = MAGENTA;
+  for (const k of KLOKKEN) {
+    dctx.lineWidth = Math.max(2.5, k.r * 0.07);
+    dctx.beginPath();
+    dctx.arc(k.x, k.y, k.r, 0, Math.PI * 2);
+    dctx.stroke();
+    const m = k.minuut + t * k.tempo;
+    const u = k.uur + t * k.tempo / 12;
+    dctx.beginPath();
+    dctx.moveTo(k.x, k.y);
+    dctx.lineTo(k.x + Math.cos(m) * k.r * 0.82, k.y + Math.sin(m) * k.r * 0.82);
+    dctx.moveTo(k.x, k.y);
+    dctx.lineTo(k.x + Math.cos(u) * k.r * 0.5, k.y + Math.sin(u) * k.r * 0.5);
+    dctx.stroke();
+  }
+
+  /* blauw → de schuwen. Ze vluchten voor elk licht (ook als je ze niet
+     ziet) en kruipen daarna langzaam terug naar huis. */
+  dctx.fillStyle = GEEL;
+  const vluchtR = stand >= 0 ? (lampStraal() * 1.9) / zoom : 0;
+  for (const s of SCHUWEN) {
+    const dx = s.x - lx;
+    const dy = s.y - ly;
+    const d = Math.hypot(dx, dy) || 1;
+    if (vluchtR > 0 && d < vluchtR) {
+      const kracht = ((vluchtR - d) / vluchtR) * 900;
+      s.vx += (dx / d) * kracht * dt;
+      s.vy += (dy / d) * kracht * dt;
+    }
+    s.vx += (s.hx - s.x) * 0.35 * dt;
+    s.vy += (s.hy - s.y) * 0.35 * dt;
+    s.vx *= Math.exp(-2.2 * dt);
+    s.vy *= Math.exp(-2.2 * dt);
+    s.x += s.vx * dt;
+    s.y += s.vy * dt;
+    dctx.beginPath();
+    dctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+    dctx.fill();
+  }
+
+  /* het zwarte gat, het ademt */
+  dctx.fillStyle = '#000';
+  dctx.beginPath();
+  dctx.arc(WERELD.w / 2, WERELD.h / 2, 90 + 7 * Math.sin(t * 0.35), 0, Math.PI * 2);
+  dctx.fill();
+}
+
+requestAnimationFrame(function stap(ms) {
+  tekenWereld(ms / 1000);
+  requestAnimationFrame(stap);
+});
+
+/* ------------------------------- de camera ------------------------------- */
+
+let cx = WERELD.w / 2;             // wereldpunt in het midden van het scherm
+let cy = WERELD.h / 2;
+let zoom = 1;
+const ZOOM_MIN = 0.22;
+const ZOOM_MAX = 3.5;
+
+/* De camera wordt elk frame bij het tekenen toegepast; hier hoeven we
+   hem alleen binnen de wereld te houden. */
+function toonWereld() {
+  cx = Math.max(0, Math.min(WERELD.w, cx));
+  cy = Math.max(0, Math.min(WERELD.h, cy));
+}
+
+/* Zoomen om een schermpunt heen: wat onder je cursor of tussen je vingers
+   ligt, blijft daar liggen. */
+function zoomNaar(factor, mx, my) {
+  const wx = cx + (mx - innerWidth / 2) / zoom;
+  const wy = cy + (my - innerHeight / 2) / zoom;
+  zoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, zoom * factor));
+  cx = wx - (mx - innerWidth / 2) / zoom;
+  cy = wy - (my - innerHeight / 2) / zoom;
+  toonWereld();
+}
+
+toonWereld();
+window.addEventListener('resize', () => { pasDoekAan(); toonWereld(); schijn(); });
+
+/* ------------------------------ de besturing -----------------------------
+
+   Desktop: muis beweegt de lamp, slepen of scrollen schuift de wereld,
+   pinch op trackpad (ctrl+scroll) of +/− zoomt, pijltjes schuiven ook.
+
+   Mobiel, zoals je vingers het al kennen:
+     tik           — lamp een stand verder, op de plek waar je tikt
+     vegen         — de wereld schuiven (met uitrol); het licht blijft
+                     staan waar het scheen
+     vasthouden    — na een tel heb je de lamp beet: beweeg, en het
+                     licht gaat met je vinger mee
+     twee vingers  — knijpen zoomt, samen bewegen schuift
+
+   Tikken gaat via pointerup, niet via click: iOS laat click op
+   window nog wel eens vallen. */
+
+const vingers = new Map();         // actieve pointers (knop ingedrukt / vinger op scherm)
+let sleep = 0;                     // afgelegde sleepafstand, om tik van veeg te scheiden
+let modus = null;                  // null (nog onbeslist) | 'lamp' | 'schuif' | 'knijp'
+let greep = 0;                     // timer die van vasthouden een greep op de lamp maakt
+let vaartX = 0, vaartY = 0;        // uitrol van de wereld na loslaten, in schermpx/s
+
+const GREEP_MS = 300;              // zo lang is vasthouden
+const TIK_PX = 10;                 // tot hier beweegt een tik
+
+window.addEventListener('pointerdown', (e) => {
+  if (!binnen || drempel.contains(e.target)) return;
+  if (e.pointerType === 'mouse' && e.button !== 0) return;
+  vaartX = 0;                      // een vinger op het scherm stopt de uitrol
+  vaartY = 0;
+  const v = { x: e.clientX, y: e.clientY, t: e.timeStamp };
+  vingers.set(e.pointerId, v);
+  if (vingers.size === 1) {
+    sleep = 0;
+    modus = null;
+    if (e.pointerType !== 'mouse') {
+      greep = setTimeout(() => {
+        if (modus !== null) return;
+        modus = 'lamp';
+        px = v.x;
+        py = v.y;
+        if (stand >= 0) schijn();
+      }, GREEP_MS);
+    }
+  } else {
+    clearTimeout(greep);
+    modus = 'knijp';
+  }
+});
+
+window.addEventListener('pointermove', (e) => {
+  if (e.pointerType === 'mouse') {
+    px = e.clientX;
+    py = e.clientY;
+    if (stand >= 0) schijn();
+  }
+  const v = vingers.get(e.pointerId);
+  if (!v || !binnen) return;
+
+  if (modus === 'knijp') {
+    if (vingers.size !== 2) return;
+    // knijpen: zoomen om het midden tussen de vingers, en meebewegen
+    const [a, b] = [...vingers.values()];
+    const oudeAfstand = Math.hypot(a.x - b.x, a.y - b.y);
+    const oudeMx = (a.x + b.x) / 2;
+    const oudeMy = (a.y + b.y) / 2;
+    v.x = e.clientX;
+    v.y = e.clientY;
+    const nieuweAfstand = Math.hypot(a.x - b.x, a.y - b.y);
+    const mx = (a.x + b.x) / 2;
+    const my = (a.y + b.y) / 2;
+    cx -= (mx - oudeMx) / zoom;
+    cy -= (my - oudeMy) / zoom;
+    if (oudeAfstand > 0) zoomNaar(nieuweAfstand / oudeAfstand, mx, my);
+  } else if (modus === 'lamp') {
+    // de lamp zit aan je vinger
+    v.x = e.clientX;
+    v.y = e.clientY;
+    px = e.clientX;
+    py = e.clientY;
+    if (stand >= 0) schijn();
+  } else {
+    const dx = e.clientX - v.x;
+    const dy = e.clientY - v.y;
+    const dt = (e.timeStamp - v.t) / 1000;
+    v.x = e.clientX;
+    v.y = e.clientY;
+    v.t = e.timeStamp;
+    sleep += Math.abs(dx) + Math.abs(dy);
+    if (modus === null) {
+      if (sleep <= TIK_PX) return;  // nog geen veeg
+      clearTimeout(greep);
+      modus = 'schuif';
+    }
+    cx -= dx / zoom;
+    cy -= dy / zoom;
+    toonWereld();
+    if (e.pointerType !== 'mouse' && dt > 0) {
+      // vaart bijhouden voor de uitrol, wat gladgestreken
+      vaartX = 0.75 * vaartX + 0.25 * (dx / dt);
+      vaartY = 0.75 * vaartY + 0.25 * (dy / dt);
+    }
+  }
+});
+
+window.addEventListener('pointerup', (e) => {
+  const v = vingers.get(e.pointerId);
+  vingers.delete(e.pointerId);
+  if (!v || !binnen) return;
+  if (vingers.size === 0) {
+    clearTimeout(greep);
+    if (modus === null && sleep <= TIK_PX) {
+      // een tik: de lamp een stand verder, op de plek van de tik
+      px = e.clientX;
+      py = e.clientY;
+      stand = stand >= STANDEN.length - 1 ? -1 : stand + 1;
+      schijn();
+    }
+    // geen uitrol na een tik of een greep, of als de veeg al stilstond
+    if (modus !== 'schuif' || e.timeStamp - v.t > 80) {
+      vaartX = 0;
+      vaartY = 0;
+    }
+    modus = null;
+  } else if (modus === 'knijp' && vingers.size === 1) {
+    // één vinger blijft over: die schuift verder
+    const rest = vingers.values().next().value;
+    rest.t = e.timeStamp;
+    modus = 'schuif';
+  }
+});
+
+window.addEventListener('pointercancel', (e) => {
+  vingers.delete(e.pointerId);
+  if (vingers.size === 0) {
+    clearTimeout(greep);
+    modus = null;
+  }
+});
+
+window.addEventListener('wheel', (e) => {
+  if (!binnen) return;
+  e.preventDefault();
+  if (e.ctrlKey) {
+    zoomNaar(Math.exp(-e.deltaY * 0.01), e.clientX, e.clientY);
+  } else {
+    cx += e.deltaX / zoom;
+    cy += e.deltaY / zoom;
+    toonWereld();
+  }
+}, { passive: false });
+
+window.addEventListener('keydown', (e) => {
+  if (!binnen) return;
+  const stap = 90 / zoom;
+  if (e.key === 'ArrowLeft') cx -= stap;
+  else if (e.key === 'ArrowRight') cx += stap;
+  else if (e.key === 'ArrowUp') cy -= stap;
+  else if (e.key === 'ArrowDown') cy += stap;
+  else if (e.key === '+' || e.key === '=') { zoomNaar(1.18, innerWidth / 2, innerHeight / 2); return; }
+  else if (e.key === '-') { zoomNaar(1 / 1.18, innerWidth / 2, innerHeight / 2); return; }
+  else return;
+  e.preventDefault();
+  toonWereld();
+});
+
+/* De straal van de lichtvlek. Op een telefoon is de korte schermkant
+   zo smal dat een deel ervan bijna niets is, maar de lange kant nemen
+   toont juist te veel — dan is het zoeken eraf. Het gemiddelde van
+   beide zit er netjes tussenin (~een kwart van de breedte in portret). */
+function lampStraal() {
+  const kort = Math.min(innerWidth, innerHeight);
+  return kort < 600 ? (innerWidth + innerHeight) * 0.08 : kort * 0.16;
+}
+
+/* Twee lagen licht: een kleine hete kern en een ruime, zwakke gloed
+   eromheen. De vele tussenstappen benaderen het kwadratische verval van
+   echt licht — dat oogt zachter en voorkomt harde randen en banding. */
+function schijn() {
+  if (stand < 0) {
+    lamp.classList.remove('aan');
+    return;
+  }
+  const s = STANDEN[stand];
+  const r = lampStraal();
+  const plek = `at ${px}px ${py}px`;
+  lamp.style.background =
+    `radial-gradient(circle ${r}px ${plek},` +
+    ` rgba(${s.kern}, 0.9) 0%,` +
+    ` rgba(${s.kern}, 0.62) 22%,` +
+    ` rgba(${s.rand}, 0.34) 44%,` +
+    ` rgba(${s.rand}, 0.14) 66%,` +
+    ` rgba(${s.rand}, 0.04) 84%,` +
+    ` rgba(0, 0, 0, 0) 100%),` +
+    `radial-gradient(circle ${r * 2.6}px ${plek},` +
+    ` rgba(${s.rand}, 0.1) 0%,` +
+    ` rgba(${s.rand}, 0.05) 45%,` +
+    ` rgba(${s.rand}, 0.015) 72%,` +
+    ` rgba(0, 0, 0, 0) 100%)`;
+  lamp.classList.add('aan');
+}
+
+/* -------------------------------- het geluid ----------------------------- */
+
+let ctx = null;
+
+function startGeluid() {
+  /* Vraag de browser dit als media te behandelen: dan speelt het door
+     met de stilschakelaar om en op de achtergrond waar dat mag. */
+  if (navigator.audioSession) navigator.audioSession.type = 'playback';
+
+  ctx = new (window.AudioContext || window.webkitAudioContext)();
+  if (ctx.state === 'suspended') ctx.resume();
+
+  /* Vooral iOS zet de context stil bij tabwissel of vergrendelen en
+     niet vanzelf weer aan; wek hem bij elk teken van leven. */
+  const wek = () => { if (ctx.state !== 'running') ctx.resume().catch(() => {}); };
+  ctx.onstatechange = wek;
+  document.addEventListener('visibilitychange', wek);
+  window.addEventListener('focus', wek);
+  window.addEventListener('pointerdown', wek);
+
+  /* Master met limiter, en een heel trage opkomst: het geluid is er niet
+     ineens, het blijkt er te zijn. */
+  const eind = ctx.createDynamicsCompressor();
+  eind.threshold.value = -18;
+  eind.ratio.value = 8;
+  eind.connect(ctx.destination);
+
+  const master = ctx.createGain();
+  master.gain.setValueAtTime(0.0001, ctx.currentTime);
+  master.gain.setTargetAtTime(0.5, ctx.currentTime + 0.5, 4.5);
+  master.connect(eind);
+
+  /* Galm zonder galmbestand: twee kruislings gevoede delays met een
+     lowpass in de lus. Alles wat hierin gaat, sterft donker en lang uit. */
+  const ruimte = maakRuimte(master);
+
+  drone(master);
+  adem(master);
+  planFlard(ruimte);
+}
+
+/* Laag 1 — de drone. Twee paren sinussen die elkaar nét niet raken (trage
+   zwevingen), plus een kwint die een fractie te hoog ligt. Een heel trage
+   LFO laat het geheel onmerkbaar op drift slaan. */
+function drone(dest) {
+  const g = ctx.createGain();
+  g.gain.value = 1;
+  g.connect(dest);
+
+  const drift = ctx.createOscillator();
+  drift.frequency.value = 0.017;
+  const driftDiepte = ctx.createGain();
+  driftDiepte.gain.value = 9; // cents
+  drift.connect(driftDiepte);
+  drift.start();
+
+  [[49, 0.22], [49.38, 0.22], [98, 0.1], [98.71, 0.1], [148.6, 0.045]]
+    .forEach(([freq, vol]) => {
+      const o = ctx.createOscillator();
+      o.type = 'sine';
+      o.frequency.value = freq;
+      driftDiepte.connect(o.detune);
+      const og = ctx.createGain();
+      og.gain.value = vol;
+      o.connect(og).connect(g);
+      o.start();
+    });
+}
+
+/* Laag 2 — adem. Gefilterde ruis, heel zacht, als een ruimte die te groot
+   is voor wie erin staat. Het filter zwerft langzaam heen en weer. */
+function adem(dest) {
+  const duur = 4;
+  const buf = ctx.createBuffer(1, ctx.sampleRate * duur, ctx.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+
+  const bron = ctx.createBufferSource();
+  bron.buffer = buf;
+  bron.loop = true;
+
+  const band = ctx.createBiquadFilter();
+  band.type = 'bandpass';
+  band.frequency.value = 700;
+  band.Q.value = 7;
+
+  const zwerf = ctx.createOscillator();
+  zwerf.frequency.value = 0.011;
+  const zwerfDiepte = ctx.createGain();
+  zwerfDiepte.gain.value = 380;
+  zwerf.connect(zwerfDiepte).connect(band.frequency);
+  zwerf.start();
+
+  const g = ctx.createGain();
+  g.gain.value = 0.03;
+  bron.connect(band).connect(g).connect(dest);
+  bron.start();
+}
+
+/* Laag 3 — flarden. Op onregelmatige momenten zwelt ergens een toon aan,
+   seconden lang, en houdt dan abrupt op — de galm maakt het af. De
+   toonhoogtes komen uit geen enkele toonladder. */
+function planFlard(ruimte) {
+  const wacht = 8 + Math.random() * 16; // seconden
+  setTimeout(() => {
+    if (ctx) flard(ruimte);
+    planFlard(ruimte);
+  }, wacht * 1000);
+}
+
+function flard(ruimte) {
+  const t = ctx.currentTime;
+  const zwel = 2.5 + Math.random() * 4;
+  const freq = 240 * Math.pow(2, Math.random() * 2.3); // 240–1180 Hz, ongebonden
+
+  const o = ctx.createOscillator();
+  o.type = 'sine';
+  o.frequency.setValueAtTime(freq, t);
+  o.frequency.linearRampToValueAtTime(freq * (0.985 + Math.random() * 0.03), t + zwel);
+
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.055, t + zwel);
+  g.gain.setValueAtTime(0.0001, t + zwel); // abrupt weg
+
+  const pan = ctx.createStereoPanner();
+  pan.pan.value = Math.random() * 1.6 - 0.8;
+
+  o.connect(g).connect(pan).connect(ruimte);
+  o.start(t);
+  o.stop(t + zwel + 0.1);
+}
+
+/* De ruimte: twee delays die elkaar voeden, met een donker filter in de
+   lus zodat elke herhaling doffer wordt. */
+function maakRuimte(dest) {
+  const inlaat = ctx.createGain();
+  inlaat.gain.value = 1;
+
+  const d1 = ctx.createDelay(2);
+  d1.delayTime.value = 0.41;
+  const d2 = ctx.createDelay(2);
+  d2.delayTime.value = 0.63;
+
+  const terug1 = ctx.createGain();
+  terug1.gain.value = 0.5;
+  const terug2 = ctx.createGain();
+  terug2.gain.value = 0.5;
+
+  const dof = ctx.createBiquadFilter();
+  dof.type = 'lowpass';
+  dof.frequency.value = 1600;
+
+  inlaat.connect(dest);          // droog
+  inlaat.connect(dof);
+  dof.connect(d1);
+  dof.connect(d2);
+  d1.connect(terug1).connect(d2);
+  d2.connect(terug2).connect(d1);
+  d1.connect(dest);
+  d2.connect(dest);
+
+  return inlaat;
+}
+</script>
+</body>
+</html>

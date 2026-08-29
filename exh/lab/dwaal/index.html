@@ -1,0 +1,840 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="robots" content="noindex, nofollow">
+  <title>dwaal</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Een donkere plek om in rond te dwalen. Ergens zijn drie dingen die je kunt vinden. Je hoort ze eerder dan je ze ziet.">
+  <meta name="author" content="Rick van der Wolk">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      background: #0b0a12;
+      overflow: hidden;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: none;
+      cursor: crosshair;
+    }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+<canvas id="dwaal"></canvas>
+<script>
+'use strict';
+
+/* ---------------------------------------------------------------------------
+   dwaal — een donkere vlakte zonder uitleg.
+
+   Je bent een klein licht. Houd ingedrukt en je zweeft die kant op.
+   Ergens in het donker zijn drie dingen. Je hoort ze eerder dan je ze
+   ziet: elk ding heeft een eigen geluid dat zachtjes uit de goede richting
+   komt. En wie goed kijkt, ziet dat het stof ergens naartoe drijft.
+
+   Wie alle drie echt ontdekt heeft, vindt daarna nog iets vierde.
+--------------------------------------------------------------------------- */
+
+const canvas = document.getElementById('dwaal');
+const ctx = canvas.getContext('2d');
+const TAU = Math.PI * 2;
+
+const WERELD = { w: 4600, h: 3200 };
+
+let W = 0, H = 0, dpr = 1, S = 1;
+let vignet = null, korrel = null;
+
+function hermeet() {
+  dpr = Math.min(2, window.devicePixelRatio || 1);
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+  S = Math.max(W / 1500, H / 1000);   // hoeveel wereld je ziet: nooit te veel
+  maakVignet();
+}
+window.addEventListener('resize', hermeet);
+
+function maakVignet() {
+  vignet = document.createElement('canvas');
+  vignet.width = W; vignet.height = H;
+  const v = vignet.getContext('2d');
+  const g = v.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.32, W / 2, H / 2, Math.max(W, H) * 0.72);
+  g.addColorStop(0, 'rgba(0,0,0,0)');
+  g.addColorStop(1, 'rgba(4,3,8,0.6)');
+  v.fillStyle = g; v.fillRect(0, 0, W, H);
+}
+
+function maakKorrel() {
+  korrel = document.createElement('canvas');
+  korrel.width = 160; korrel.height = 160;
+  const k = korrel.getContext('2d');
+  const beeld = k.createImageData(160, 160);
+  for (let i = 0; i < beeld.data.length; i += 4) {
+    const g = 120 + Math.random() * 60;
+    beeld.data[i] = beeld.data[i + 1] = beeld.data[i + 2] = g;
+    beeld.data[i + 3] = 12;
+  }
+  k.putImageData(beeld, 0, 0);
+}
+maakKorrel();
+hermeet();
+
+/* Vaste toevalsbron zodat de vlakte er elke keer hetzelfde uitziet:
+   dit is een plek, geen generator. */
+function mulberry32(zaad) {
+  return function () {
+    zaad |= 0; zaad = zaad + 0x6D2B79F5 | 0;
+    let t = Math.imul(zaad ^ zaad >>> 15, 1 | zaad);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+const rnd = mulberry32(2026);
+
+/* De grond: heel veel bijna onzichtbare spikkels, en wat plukken mist. */
+const spikkels = [];
+for (let i = 0; i < 1500; i++) {
+  spikkels.push({
+    x: rnd() * WERELD.w, y: rnd() * WERELD.h,
+    r: 0.6 + rnd() * 1.5, zaad: rnd() * 100, koel: rnd() < 0.4,
+  });
+}
+const mist = [];
+for (let i = 0; i < 9; i++) {
+  mist.push({ x: rnd() * WERELD.w, y: rnd() * WERELD.h, r: 380 + rnd() * 400, zaad: rnd() * 100 });
+}
+/* Stenen: doen niets, maar je weet erdoor waar je bent. */
+const stenen = [
+  { x: 1250, y: 720, r: 52 }, { x: 2050, y: 2350, r: 64 }, { x: 3050, y: 1350, r: 44 },
+  { x: 1500, y: 1600, r: 38 }, { x: 4050, y: 1900, r: 58 },
+];
+
+/* --------------------------------- speler -------------------------------- */
+
+const speler = { x: 2300, y: 1600, vx: 0, vy: 0, snelheid: 0 };
+const staart = [];
+const wijzer = { x: 0, y: 0, vast: false };
+const toetsen = {};
+let cam = null;
+
+/* -------------------------------- de dingen ------------------------------ */
+
+const hart = {
+  x: 820, y: 2450, fase: 0, laatsteKlop: -9, boostTot: -9, rustTot: 0, ontdekt: false,
+};
+const rimpel = { r: 0, kracht: 0 };
+
+const scheur = {
+  x: 3350, y: 2600, open: 0, ontdekt: false, vonkKlok: 0, punten: [],
+};
+{ /* Een grillige naad, één keer uitgezet. */
+  const hoek = -0.55, lengte = 250;
+  for (let i = 0; i <= 7; i++) {
+    const langs = (i / 7 - 0.5) * lengte;
+    scheur.punten.push({
+      x: scheur.x + Math.cos(hoek) * langs + (rnd() - 0.5) * 26,
+      y: scheur.y + Math.sin(hoek) * langs + (rnd() - 0.5) * 26,
+    });
+  }
+}
+
+const zwerm = {
+  anker: { x: 3900, y: 700 }, status: 'thuis',
+  nieuwsgier: 0, dichtbijTijd: 0, volgTot: 0, ontdekt: false,
+  midden: { x: 3900, y: 700 },
+};
+const vogels = [];
+for (let i = 0; i < 36; i++) {
+  vogels.push({
+    x: zwerm.anker.x + (rnd() - 0.5) * 260,
+    y: zwerm.anker.y + (rnd() - 0.5) * 260,
+    vx: 0, vy: 0, zaad: rnd() * 100,
+  });
+}
+
+/* Het vierde ding. Verschijnt pas als de andere drie echt ontdekt zijn. */
+const metgezel = { status: 'geen', x: WERELD.w / 2, y: WERELD.h / 2, sinds: 0 };
+
+/* Stof: het enige wat je de weg wijst. Het drijft heel zachtjes richting
+   het dichtstbijzijnde ding dat je nog niet ontdekt hebt. */
+const stof = [];
+for (let i = 0; i < 150; i++) {
+  stof.push({
+    x: rnd() * WERELD.w, y: rnd() * WERELD.h,
+    vx: 0, vy: 0, warm: false, zaad: rnd() * 100,
+  });
+}
+
+function afstand(ax, ay, bx, by) { const dx = bx - ax, dy = by - ay; return Math.hypot(dx, dy); }
+function klem(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+/* Dingen doemen pas op als je dichtbij genoeg bent: eerst hoor je ze. */
+function zicht(d, straal) { return klem((straal - d) / (straal * 0.45), 0, 1); }
+
+/* ---------------------------------- geluid ------------------------------- */
+
+/* Ambiance (ruiswind + lage bourdon), een zweefgeluidje dat met je snelheid
+   meegaat, en per ding een eigen klank die uit de goede richting komt
+   (stereo). Alles ter plekke gesynthetiseerd; start pas na de eerste
+   aanraking en komt langzaam op. */
+let actx = null, hoofd = null, galm = null;
+let zweefVol = null;
+let paneelHart = null, paneelScheur = null, paneelZwerm = null;
+let scheurGains = [];
+
+function ruisBuffer(seconden, bruin) {
+  const n = Math.floor(actx.sampleRate * seconden);
+  const buf = actx.createBuffer(1, n, actx.sampleRate);
+  const d = buf.getChannelData(0);
+  let vorig = 0;
+  for (let i = 0; i < n; i++) {
+    const wit = Math.random() * 2 - 1;
+    if (bruin) { vorig = (vorig + wit * 0.02) * 0.998; d[i] = vorig * 3.5; }
+    else d[i] = wit;
+  }
+  return buf;
+}
+
+function maakPaneel() {
+  /* Ingang + stereopanner; oude browsers zonder panner doen gewoon mono. */
+  const ingang = actx.createGain();
+  let pan = null;
+  if (actx.createStereoPanner) {
+    pan = actx.createStereoPanner();
+    ingang.connect(pan); pan.connect(hoofd);
+  } else ingang.connect(hoofd);
+  return { ingang, pan };
+}
+
+function uit(knoop, natheid) {
+  knoop.connect(hoofd);
+  const s = actx.createGain(); s.gain.value = natheid;
+  knoop.connect(s); s.connect(galm);
+}
+
+function startGeluid() {
+  if (actx) { actx.resume(); return; }
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return;
+  actx = new AC();
+  actx.resume();
+
+  hoofd = actx.createGain();
+  hoofd.gain.value = 0;
+  hoofd.gain.linearRampToValueAtTime(0.85, actx.currentTime + 6);
+  hoofd.connect(actx.destination);
+
+  /* Galm: één gedeelde ruimte. */
+  galm = actx.createGain();
+  const vertraging = actx.createDelay(0.7); vertraging.delayTime.value = 0.34;
+  const terug = actx.createGain(); terug.gain.value = 0.34;
+  const dof = actx.createBiquadFilter(); dof.type = 'lowpass'; dof.frequency.value = 1300;
+  const nat = actx.createGain(); nat.gain.value = 0.24;
+  galm.connect(vertraging); vertraging.connect(dof); dof.connect(terug);
+  terug.connect(vertraging); dof.connect(nat); nat.connect(hoofd);
+
+  /* Wind die nauwelijks wind is. */
+  const wind = actx.createBufferSource();
+  wind.buffer = ruisBuffer(3, true); wind.loop = true;
+  const windFilter = actx.createBiquadFilter();
+  windFilter.type = 'lowpass'; windFilter.frequency.value = 180;
+  const windVol = actx.createGain(); windVol.gain.value = 0.05;
+  const adem = actx.createOscillator(); adem.frequency.value = 0.045;
+  const ademDiep = actx.createGain(); ademDiep.gain.value = 0.022;
+  adem.connect(ademDiep); ademDiep.connect(windVol.gain);
+  wind.connect(windFilter); windFilter.connect(windVol); windVol.connect(hoofd);
+  wind.start(); adem.start();
+
+  /* Bourdon: G en D, ver onderin. */
+  for (const [f, v] of [[49, 0.016], [73.4, 0.009]]) {
+    const o = actx.createOscillator(); o.type = 'sine'; o.frequency.value = f;
+    const g = actx.createGain(); g.gain.value = v;
+    o.connect(g); g.connect(hoofd); o.start();
+  }
+
+  /* Zweven: zachte ruis die met je snelheid meegroeit. */
+  const zweef = actx.createBufferSource();
+  zweef.buffer = ruisBuffer(2, false); zweef.loop = true;
+  const zweefFilter = actx.createBiquadFilter();
+  zweefFilter.type = 'lowpass'; zweefFilter.frequency.value = 420;
+  zweefVol = actx.createGain(); zweefVol.gain.value = 0;
+  zweef.connect(zweefFilter); zweefFilter.connect(zweefVol); zweefVol.connect(hoofd);
+  zweef.start();
+
+  paneelHart = maakPaneel();
+  paneelScheur = maakPaneel();
+  paneelZwerm = maakPaneel();
+
+  /* De scheur neuriet altijd — hoorbaar wordt hij pas van dichtbij.
+     Drie lage tonen die tegen elkaar aan zweven, plus een warm akkoord
+     dat er alleen is als hij openstaat. */
+  scheurGains = [];
+  for (const [f, basis, openDeel] of [
+    [98, 0.05, 0], [98.6, 0.035, 0], [147.3, 0.02, 0],
+    [196, 0, 0.03], [246.9, 0, 0.024], [329.6, 0, 0.018],
+  ]) {
+    const o = actx.createOscillator(); o.type = 'sine'; o.frequency.value = f;
+    const g = actx.createGain(); g.gain.value = 0;
+    o.connect(g); g.connect(paneelScheur.ingang); o.start();
+    scheurGains.push({ g, basis, openDeel });
+  }
+}
+
+/* Hartslag: twee doffe bonzen. */
+function klop(vol) {
+  if (!actx || vol < 0.004) return;
+  const t0 = actx.currentTime + 0.02;
+  for (const [wanneer, deel] of [[0, 1], [0.2, 0.62]]) {
+    const o = actx.createOscillator(); o.type = 'sine';
+    o.frequency.setValueAtTime(58, t0 + wanneer);
+    o.frequency.exponentialRampToValueAtTime(38, t0 + wanneer + 0.16);
+    const g = actx.createGain();
+    g.gain.setValueAtTime(0, t0 + wanneer);
+    g.gain.linearRampToValueAtTime(0.15 * vol * deel, t0 + wanneer + 0.014);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + wanneer + 0.26);
+    o.connect(g); g.connect(paneelHart.ingang);
+    const s = actx.createGain(); s.gain.value = 0.3; g.connect(s); s.connect(galm);
+    o.start(t0 + wanneer); o.stop(t0 + wanneer + 0.35);
+  }
+}
+
+/* Zwerm: een enkel hoog plinkje. */
+const PLINKTONEN = [1174.7, 1318.5, 1568, 1760, 2093];
+function plink(vol) {
+  if (!actx || vol < 0.004) return;
+  const t0 = actx.currentTime;
+  const o = actx.createOscillator(); o.type = 'triangle';
+  o.frequency.value = PLINKTONEN[Math.floor(Math.random() * PLINKTONEN.length)];
+  const g = actx.createGain();
+  g.gain.setValueAtTime(0.02 * vol, t0);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.22);
+  o.connect(g); g.connect(paneelZwerm.ingang);
+  const s = actx.createGain(); s.gain.value = 0.4; g.connect(s); s.connect(galm);
+  o.start(t0); o.stop(t0 + 0.3);
+}
+
+/* Ontdekkingsklokje: elk ding heeft zijn eigen toon; samen een akkoord. */
+function bel(f, vertraag) {
+  if (!actx) return;
+  const t0 = actx.currentTime + 0.03 + (vertraag || 0);
+  for (const [deel, v, tau] of [[1, 0.05, 2.4], [2.01, 0.017, 1.2], [2.99, 0.007, 0.6]]) {
+    const o = actx.createOscillator(); o.type = 'sine'; o.frequency.value = f * deel;
+    const g = actx.createGain();
+    g.gain.setValueAtTime(0, t0);
+    g.gain.linearRampToValueAtTime(v, t0 + 0.015);
+    g.gain.setTargetAtTime(0, t0 + 0.03, tau);
+    uit(g, 0.5); o.connect(g);
+    o.start(t0); o.stop(t0 + 7);
+  }
+}
+
+function akkoord() { bel(196, 0); bel(246.9, 0.13); bel(293.7, 0.26); bel(392, 0.42); }
+
+/* Panning: het geluid komt uit de richting waar het ding echt is. */
+function stuurPaneel(paneel, ding) {
+  if (!paneel || !paneel.pan) return;
+  const doel = klem((ding.x - speler.x) / 1000, -0.85, 0.85);
+  paneel.pan.pan.setTargetAtTime(doel, actx.currentTime, 0.12);
+}
+
+/* ---------------------------------- invoer ------------------------------- */
+
+canvas.addEventListener('pointerdown', (e) => {
+  startGeluid();
+  wijzer.vast = true; wijzer.x = e.clientX; wijzer.y = e.clientY;
+});
+canvas.addEventListener('pointermove', (e) => { wijzer.x = e.clientX; wijzer.y = e.clientY; });
+window.addEventListener('pointerup', () => { wijzer.vast = false; });
+window.addEventListener('pointercancel', () => { wijzer.vast = false; });
+window.addEventListener('keydown', (e) => {
+  if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'a', 'd', 'w', 's'].includes(e.key)) {
+    toetsen[e.key] = true; startGeluid();
+  }
+});
+window.addEventListener('keyup', (e) => { delete toetsen[e.key]; });
+document.addEventListener('visibilitychange', () => {
+  if (!actx) return;
+  if (document.hidden) actx.suspend(); else actx.resume();
+});
+
+/* --------------------------------- ontdekken ----------------------------- */
+
+function ontdek(ding, toon) {
+  if (ding.ontdekt) return;
+  ding.ontdekt = true;
+  bel(toon, 0);
+  if (hart.ontdekt && scheur.ontdekt && zwerm.ontdekt && metgezel.status === 'geen') {
+    metgezel.status = 'wacht';   // ergens in het midden begint iets te gloeien
+  }
+}
+
+/* --------------------------------- bijwerken ----------------------------- */
+
+function bijwerken(dt, t) {
+  /* Zweven richting de wijzer; loslaten is uitglijden. */
+  let ax = 0, ay = 0;
+  if (wijzer.vast) {
+    const wx = wijzer.x / S + cam.x, wy = wijzer.y / S + cam.y;
+    const d = afstand(speler.x, speler.y, wx, wy);
+    if (d > 8) { ax = (wx - speler.x) / d; ay = (wy - speler.y) / d; }
+  }
+  if (toetsen.ArrowLeft || toetsen.a) ax -= 1;
+  if (toetsen.ArrowRight || toetsen.d) ax += 1;
+  if (toetsen.ArrowUp || toetsen.w) ay -= 1;
+  if (toetsen.ArrowDown || toetsen.s) ay += 1;
+  const al = Math.hypot(ax, ay);
+  if (al > 0) { speler.vx += ax / al * 430 * dt; speler.vy += ay / al * 430 * dt; }
+  const wrijving = Math.exp(-dt * 1.15);
+  speler.vx *= wrijving; speler.vy *= wrijving;
+  speler.snelheid = Math.hypot(speler.vx, speler.vy);
+  if (speler.snelheid > 310) {
+    speler.vx *= 310 / speler.snelheid; speler.vy *= 310 / speler.snelheid;
+    speler.snelheid = 310;
+  }
+  speler.x += speler.vx * dt; speler.y += speler.vy * dt;
+
+  /* De rand duwt zacht terug: de wereld houdt ergens op, maar zonder muur. */
+  const marge = 130;
+  if (speler.x < marge) speler.vx += (marge - speler.x) * dt * 7;
+  if (speler.x > WERELD.w - marge) speler.vx -= (speler.x - (WERELD.w - marge)) * dt * 7;
+  if (speler.y < marge) speler.vy += (marge - speler.y) * dt * 7;
+  if (speler.y > WERELD.h - marge) speler.vy -= (speler.y - (WERELD.h - marge)) * dt * 7;
+
+  staart.push({ x: speler.x, y: speler.y });
+  if (staart.length > 28) staart.shift();
+
+  /* Camera. */
+  const vw = W / S, vh = H / S;
+  const doelX = klem(speler.x - vw / 2, 0, WERELD.w - vw);
+  const doelY = klem(speler.y - vh / 2, 0, WERELD.h - vh);
+  cam.x += (doelX - cam.x) * Math.min(1, dt * 3);
+  cam.y += (doelY - cam.y) * Math.min(1, dt * 3);
+
+  /* Zweefgeluid volgt de snelheid. */
+  if (actx && zweefVol) {
+    const doel = Math.pow(Math.min(1, speler.snelheid / 320), 1.5) * 0.05;
+    zweefVol.gain.setTargetAtTime(doel, actx.currentTime, 0.15);
+  }
+
+  bijwerkenHart(dt, t);
+  bijwerkenScheur(dt, t);
+  bijwerkenZwerm(dt, t);
+  bijwerkenMetgezel(dt, t);
+  bijwerkenStof(dt, t);
+}
+
+function bijwerkenHart(dt, t) {
+  const d = afstand(speler.x, speler.y, hart.x, hart.y);
+  /* De klop gaat altijd door; jij komt alleen binnen gehoorsafstand. */
+  const tempo = t < hart.boostTot ? 1.25 : 0.72;
+  hart.fase += dt * tempo;
+  if (hart.fase >= 1) {
+    hart.fase -= 1;
+    hart.laatsteKlop = t;
+    klop(Math.pow(klem(1 - d / 1000, 0, 1), 1.6));
+    if (actx) stuurPaneel(paneelHart, hart);
+  }
+  /* Aanraken: de steen schrikt wakker en stuurt een golf door alles. */
+  if (d < 150 && t > hart.rustTot) {
+    rimpel.r = 10; rimpel.kracht = 1;
+    hart.boostTot = t + 5;
+    hart.rustTot = t + 8;
+    ontdek(hart, 196);
+  }
+  if (rimpel.kracht > 0) {
+    rimpel.r += dt * 620;
+    rimpel.kracht *= Math.exp(-dt * 0.22);
+    if (rimpel.r > 5600) rimpel.kracht = 0;
+  }
+}
+
+function bijwerkenScheur(dt, t) {
+  const d = afstand(speler.x, speler.y, scheur.x, scheur.y);
+  /* Hij gaat open als je ervoor staat, en sluit langzaam als je weggaat. */
+  const doel = d < 140 ? 1 : 0;
+  const vaart = doel > scheur.open ? 1.6 : 0.35;
+  scheur.open += (doel - scheur.open) * Math.min(1, dt * vaart);
+  if (scheur.open > 0.6) ontdek(scheur, 246.9);
+  /* Zolang hij openstaat, ontsnappen er warme vonkjes de wereld in. */
+  if (scheur.open > 0.5) {
+    scheur.vonkKlok -= dt;
+    if (scheur.vonkKlok <= 0) {
+      scheur.vonkKlok = 0.18;
+      const p = scheur.punten[1 + Math.floor(Math.random() * 6)];
+      const s = stof[Math.floor(Math.random() * stof.length)];
+      s.x = p.x; s.y = p.y; s.warm = true;
+      s.vx = (Math.random() - 0.5) * 60; s.vy = (Math.random() - 0.5) * 60;
+    }
+  }
+  /* Het neuriën: dichtbij luider, open luider, en altijd uit de goede hoek. */
+  if (actx && scheurGains.length) {
+    const prox = Math.pow(klem(1 - d / 1100, 0, 1), 1.5);
+    for (const sg of scheurGains) {
+      const doelVol = prox * (sg.basis * (0.4 + 0.6 * scheur.open) + sg.openDeel * scheur.open * scheur.open);
+      sg.g.gain.setTargetAtTime(doelVol, actx.currentTime, 0.2);
+    }
+    stuurPaneel(paneelScheur, scheur);
+  }
+}
+
+function bijwerkenZwerm(dt, t) {
+  /* Zwaartepunt en gemiddelde snelheid van de zwerm. */
+  let mx = 0, my = 0, mvx = 0, mvy = 0;
+  for (const v of vogels) { mx += v.x; my += v.y; mvx += v.vx; mvy += v.vy; }
+  mx /= vogels.length; my /= vogels.length; mvx /= vogels.length; mvy /= vogels.length;
+  zwerm.midden.x = mx; zwerm.midden.y = my;
+
+  const dSpeler = afstand(speler.x, speler.y, mx, my);
+  const stil = speler.snelheid < 70;
+
+  /* Schrikken: wie te hard aan komt razen, jaagt ze uiteen. */
+  let geschrokken = false;
+  if (speler.snelheid > 215 && dSpeler < 380) {
+    geschrokken = true;
+    zwerm.status = 'thuis'; zwerm.nieuwsgier = 0; zwerm.dichtbijTijd = 0;
+    for (let i = 0; i < 6; i++) plink(Math.pow(klem(1 - dSpeler / 900, 0, 1), 1.3));
+  }
+
+  /* Nieuwsgierigheid groeit alleen bij wie stil durft te blijven. */
+  if (zwerm.status === 'thuis') {
+    if (dSpeler < 650 && stil) zwerm.nieuwsgier += dt;
+    else zwerm.nieuwsgier = Math.max(0, zwerm.nieuwsgier - dt * 2);
+    if (zwerm.nieuwsgier > 2.5) zwerm.status = 'nieuwsgierig';
+  } else if (zwerm.status === 'nieuwsgierig') {
+    if (dSpeler > 900) { zwerm.status = 'thuis'; zwerm.nieuwsgier = 0; }
+    if (dSpeler < 150) zwerm.dichtbijTijd += dt;
+    else zwerm.dichtbijTijd = Math.max(0, zwerm.dichtbijTijd - dt);
+    if (zwerm.dichtbijTijd > 3) {
+      zwerm.status = 'volgt'; zwerm.volgTot = t + 50;
+      ontdek(zwerm, 293.7);
+    }
+  } else if (zwerm.status === 'volgt' && t > zwerm.volgTot) {
+    zwerm.status = 'thuis'; zwerm.nieuwsgier = 0; zwerm.dichtbijTijd = 0;
+  }
+
+  const doelwit = zwerm.status === 'thuis' ? zwerm.anker : speler;
+  const maxVaart = zwerm.status === 'thuis' ? 120 : 190;
+
+  for (const v of vogels) {
+    /* Samenhang: naar het doelwit, maar losjes. */
+    const dd = afstand(v.x, v.y, doelwit.x, doelwit.y) || 1;
+    v.vx += (doelwit.x - v.x) / dd * 95 * dt;
+    v.vy += (doelwit.y - v.y) / dd * 95 * dt;
+    /* Meestromen met de rest. */
+    v.vx += (mvx - v.vx) * dt * 0.8;
+    v.vy += (mvy - v.vy) * dt * 0.8;
+    /* Eigen wil. */
+    v.vx += Math.sin(t * 1.3 + v.zaad) * 30 * dt;
+    v.vy += Math.cos(t * 1.1 + v.zaad * 2) * 30 * dt;
+    /* Niet te dicht op elkaar. */
+    for (const b of vogels) {
+      if (b === v) continue;
+      const dx = v.x - b.x, dy = v.y - b.y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < 1156 && d2 > 0.01) {
+        const d = Math.sqrt(d2);
+        v.vx += dx / d * 60 * dt; v.vy += dy / d * 60 * dt;
+      }
+    }
+    /* Wegvluchten voor een raast-voorbij-speler. */
+    if (geschrokken) {
+      const dx = v.x - speler.x, dy = v.y - speler.y;
+      const d = Math.hypot(dx, dy) || 1;
+      v.vx += dx / d * 480 * dt * 8; v.vy += dy / d * 480 * dt * 8;
+    }
+    const vaart = Math.hypot(v.vx, v.vy);
+    if (vaart > maxVaart) { v.vx *= maxVaart / vaart; v.vy *= maxVaart / vaart; }
+    v.x += v.vx * dt; v.y += v.vy * dt;
+  }
+
+  /* Af en toe een plinkje; drukker naarmate ze meer met je bezig zijn. */
+  const prox = Math.pow(klem(1 - dSpeler / 900, 0, 1), 1.4);
+  const tarief = zwerm.status === 'nieuwsgierig' ? 1.6 : zwerm.status === 'volgt' ? 1.0 : 0.45;
+  if (Math.random() < tarief * dt) plink(prox);
+  if (actx) stuurPaneel(paneelZwerm, zwerm.midden);
+}
+
+function bijwerkenMetgezel(dt, t) {
+  if (metgezel.status === 'wacht') {
+    const d = afstand(speler.x, speler.y, metgezel.x, metgezel.y);
+    if (d < 130) { metgezel.status = 'mee'; metgezel.sinds = t; akkoord(); }
+  } else if (metgezel.status === 'mee') {
+    /* Volgt op een paar passen, met een eigen zwabbertje. */
+    const doel = staart.length > 8 ? staart[staart.length - 8] : speler;
+    metgezel.x += (doel.x + Math.sin(t * 1.7) * 14 - metgezel.x) * Math.min(1, dt * 2.2);
+    metgezel.y += (doel.y + Math.cos(t * 1.3) * 14 - metgezel.y) * Math.min(1, dt * 2.2);
+  }
+}
+
+function bijwerkenStof(dt, t) {
+  /* Waar drijft het stof heen? Naar het dichtstbijzijnde onontdekte ding;
+     daarna naar het midden zolang daar iets wacht; anders een trage kolk. */
+  let doel = null;
+  let dichtst = Infinity;
+  for (const ding of [hart, scheur, zwerm.anker]) {
+    const klaar = ding === zwerm.anker ? zwerm.ontdekt : ding.ontdekt;
+    if (klaar) continue;
+    const d = afstand(speler.x, speler.y, ding.x, ding.y);
+    if (d < dichtst) { dichtst = d; doel = ding; }
+  }
+  if (!doel && metgezel.status === 'wacht') doel = metgezel;
+
+  const vw = W / S, vh = H / S;
+  for (const s of stof) {
+    let dx, dy;
+    if (doel) {
+      dx = doel.x - s.x; dy = doel.y - s.y;
+    } else {
+      /* Kolk om het midden van de wereld. */
+      dx = -(s.y - WERELD.h / 2); dy = s.x - WERELD.w / 2;
+    }
+    const d = Math.hypot(dx, dy) || 1;
+    const trek = 14;
+    s.vx += (dx / d * trek + Math.sin(t * 0.4 + s.zaad) * 6 - s.vx) * dt * 0.7;
+    s.vy += (dy / d * trek + Math.cos(t * 0.5 + s.zaad * 2) * 6 - s.vy) * dt * 0.7;
+    /* De golf van de hartsteen duwt het stof even opzij. */
+    if (rimpel.kracht > 0.05) {
+      const rh = afstand(s.x, s.y, hart.x, hart.y);
+      if (Math.abs(rh - rimpel.r) < 110) {
+        s.vx += (s.x - hart.x) / (rh || 1) * 55 * dt * rimpel.kracht * 10;
+        s.vy += (s.y - hart.y) / (rh || 1) * 55 * dt * rimpel.kracht * 10;
+      }
+    }
+    s.x += s.vx * dt; s.y += s.vy * dt;
+    s.warm = s.warm && Math.random() > dt * 0.12;   // warme vonkjes koelen af
+
+    /* Buiten beeld? Aan de andere kant weer naar binnen — de dichtheid
+       blijft zo overal gelijk zonder tienduizenden deeltjes. */
+    const x0 = cam.x - 250, y0 = cam.y - 250;
+    const bw = vw + 500, bh = vh + 500;
+    if (s.x < x0) s.x += bw; else if (s.x > x0 + bw) s.x -= bw;
+    if (s.y < y0) s.y += bh; else if (s.y > y0 + bh) s.y -= bh;
+  }
+}
+
+/* ---------------------------------- tekenen ------------------------------ */
+
+function inBeeld(x, y, ruim) {
+  return x > cam.x - ruim && x < cam.x + W / S + ruim && y > cam.y - ruim && y < cam.y + H / S + ruim;
+}
+
+function tekenVlakte(t) {
+  /* Mistplukken: nauwelijks lichter dan het donker zelf. */
+  for (const m of mist) {
+    const x = m.x + Math.sin(t * 0.03 + m.zaad) * 160;
+    const y = m.y + Math.cos(t * 0.02 + m.zaad * 2) * 120;
+    if (!inBeeld(x, y, m.r)) continue;
+    const g = ctx.createRadialGradient(x, y, 0, x, y, m.r);
+    g.addColorStop(0, 'rgba(26,24,40,0.5)');
+    g.addColorStop(1, 'rgba(26,24,40,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(x, y, m.r, 0, TAU); ctx.fill();
+  }
+
+  /* Spikkels; de golf van de hartsteen licht ze even op als hij passeert. */
+  for (const s of spikkels) {
+    if (!inBeeld(s.x, s.y, 40)) continue;
+    let a = 0.09 + 0.05 * (0.5 + 0.5 * Math.sin(t * 0.6 + s.zaad * 4));
+    if (rimpel.kracht > 0.02) {
+      const d = afstand(s.x, s.y, hart.x, hart.y);
+      const band = Math.abs(d - rimpel.r);
+      if (band < 150) a += rimpel.kracht * 0.5 * (1 - band / 150);
+    }
+    ctx.fillStyle = s.koel ? `rgba(170,180,225,${a})` : `rgba(225,205,170,${a})`;
+    ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, TAU); ctx.fill();
+  }
+
+  /* Stenen. */
+  for (const st of stenen) {
+    if (!inBeeld(st.x, st.y, 100)) continue;
+    ctx.fillStyle = '#07060c';
+    ctx.beginPath(); ctx.ellipse(st.x, st.y, st.r, st.r * 1.25, 0, 0, TAU); ctx.fill();
+    ctx.strokeStyle = 'rgba(150,160,205,0.09)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.ellipse(st.x, st.y, st.r, st.r * 1.25, 0, -2.4, -0.9); ctx.stroke();
+  }
+
+  /* De wereld loopt donker af naar de randen. */
+  for (const [x0, y0, x1, y1] of [
+    [0, 0, 500, 0], [WERELD.w, 0, WERELD.w - 500, 0],
+  ]) {
+    const g = ctx.createLinearGradient(x0, 0, x1, 0);
+    g.addColorStop(0, 'rgba(3,2,7,0.75)'); g.addColorStop(1, 'rgba(3,2,7,0)');
+    ctx.fillStyle = g; ctx.fillRect(Math.min(x0, x1), 0, 500, WERELD.h);
+  }
+  for (const [y0, y1] of [[0, 500], [WERELD.h, WERELD.h - 500]]) {
+    const g = ctx.createLinearGradient(0, y0, 0, y1);
+    g.addColorStop(0, 'rgba(3,2,7,0.75)'); g.addColorStop(1, 'rgba(3,2,7,0)');
+    ctx.fillStyle = g; ctx.fillRect(0, Math.min(y0, y1), WERELD.w, 500);
+  }
+}
+
+function tekenHart(t) {
+  const d = afstand(speler.x, speler.y, hart.x, hart.y);
+  const a = zicht(d, hart.ontdekt ? 780 : 550);
+  if (a <= 0) return;
+  /* Gloed volgt de dubbele klop. */
+  let gloed = Math.exp(-(t - hart.laatsteKlop) * 3.5);
+  const tt2 = t - hart.laatsteKlop - 0.2;
+  if (tt2 > 0) gloed += 0.6 * Math.exp(-tt2 * 4.5);
+  gloed = Math.min(1.4, gloed);
+  ctx.globalCompositeOperation = 'lighter';
+  const g = ctx.createRadialGradient(hart.x, hart.y, 4, hart.x, hart.y, 50 + gloed * 75);
+  g.addColorStop(0, `rgba(255,115,90,${0.3 * gloed * a})`);
+  g.addColorStop(1, 'rgba(255,115,90,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(hart.x, hart.y, 50 + gloed * 75, 0, TAU); ctx.fill();
+  /* De golf zelf: een brede zachte ring. */
+  if (rimpel.kracht > 0.02) {
+    ctx.strokeStyle = `rgba(255,150,110,${rimpel.kracht * 0.1})`;
+    ctx.lineWidth = 46;
+    ctx.beginPath(); ctx.arc(hart.x, hart.y, rimpel.r, 0, TAU); ctx.stroke();
+    ctx.strokeStyle = `rgba(255,190,150,${rimpel.kracht * 0.14})`;
+    ctx.lineWidth = 10;
+    ctx.beginPath(); ctx.arc(hart.x, hart.y, rimpel.r, 0, TAU); ctx.stroke();
+  }
+  ctx.globalCompositeOperation = 'source-over';
+  /* De steen: donkerder dan zijn omgeving, met een rode ader. */
+  ctx.fillStyle = '#0d090c';
+  ctx.beginPath(); ctx.ellipse(hart.x, hart.y, 46, 40, 0.3, 0, TAU); ctx.fill();
+  ctx.strokeStyle = `rgba(220,95,80,${(0.1 + 0.25 * gloed) * a})`;
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.moveTo(hart.x - 30, hart.y + 12);
+  ctx.quadraticCurveTo(hart.x - 6, hart.y - 4, hart.x + 4, hart.y - 26);
+  ctx.stroke();
+}
+
+function tekenScheur(t) {
+  const d = afstand(speler.x, speler.y, scheur.x, scheur.y);
+  const a = Math.max(zicht(d, 500 + scheur.open * 500), scheur.open * 0.5);
+  if (a <= 0) return;
+  ctx.globalCompositeOperation = 'lighter';
+  /* Lichtplas als hij openstaat. */
+  if (scheur.open > 0.02) {
+    const g = ctx.createRadialGradient(scheur.x, scheur.y, 10, scheur.x, scheur.y, 280);
+    g.addColorStop(0, `rgba(255,205,130,${0.22 * scheur.open})`);
+    g.addColorStop(1, 'rgba(255,205,130,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(scheur.x, scheur.y, 280, 0, TAU); ctx.fill();
+  }
+  /* De naad zelf: drie keer overheen met steeds smaller en feller licht. */
+  const flakker = 1 + Math.sin(t * 9.3) * 0.06 + Math.sin(t * 23.7) * 0.04;
+  for (const [breedte, kleur, kracht] of [
+    [12, '255,170,100', 0.10], [5, '255,205,140', 0.3], [1.6, '255,240,205', 0.85],
+  ]) {
+    ctx.strokeStyle = `rgba(${kleur},${kracht * (0.25 + 0.75 * scheur.open) * a * flakker})`;
+    ctx.lineWidth = breedte * (0.3 + scheur.open * 1.4);
+    ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(scheur.punten[0].x, scheur.punten[0].y);
+    for (const p of scheur.punten) ctx.lineTo(p.x, p.y);
+    ctx.stroke();
+  }
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+function tekenZwerm(t) {
+  ctx.globalCompositeOperation = 'lighter';
+  for (const v of vogels) {
+    const d = afstand(speler.x, speler.y, v.x, v.y);
+    const a = zicht(d, 850);
+    if (a <= 0) continue;
+    const knip = 0.55 + 0.45 * Math.sin(t * 2.2 + v.zaad * 7);
+    ctx.fillStyle = `rgba(185,255,215,${0.5 * a * knip})`;
+    ctx.beginPath(); ctx.arc(v.x, v.y, 1.7, 0, TAU); ctx.fill();
+    ctx.fillStyle = `rgba(185,255,215,${0.08 * a * knip})`;
+    ctx.beginPath(); ctx.arc(v.x, v.y, 7, 0, TAU); ctx.fill();
+  }
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+function tekenMetgezel(t) {
+  if (metgezel.status === 'geen') return;
+  const d = afstand(speler.x, speler.y, metgezel.x, metgezel.y);
+  const a = metgezel.status === 'mee' ? 1 : zicht(d, 700);
+  if (a <= 0) return;
+  const puls = 0.7 + 0.3 * Math.sin(t * 1.9);
+  ctx.globalCompositeOperation = 'lighter';
+  const g = ctx.createRadialGradient(metgezel.x, metgezel.y, 1, metgezel.x, metgezel.y, 42);
+  g.addColorStop(0, `rgba(160,225,255,${0.4 * puls * a})`);
+  g.addColorStop(1, 'rgba(160,225,255,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(metgezel.x, metgezel.y, 42, 0, TAU); ctx.fill();
+  ctx.fillStyle = `rgba(235,250,255,${0.9 * a})`;
+  ctx.beginPath(); ctx.arc(metgezel.x, metgezel.y, 5, 0, TAU); ctx.fill();
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+function tekenStof() {
+  ctx.globalCompositeOperation = 'lighter';
+  for (const s of stof) {
+    ctx.fillStyle = s.warm ? 'rgba(255,200,130,0.32)' : 'rgba(215,210,225,0.11)';
+    ctx.beginPath(); ctx.arc(s.x, s.y, s.warm ? 1.9 : 1.3, 0, TAU); ctx.fill();
+  }
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+function tekenSpeler(t) {
+  ctx.globalCompositeOperation = 'lighter';
+  for (let i = 0; i < staart.length; i++) {
+    const p = staart[i];
+    const a = (i / staart.length) * 0.2;
+    ctx.fillStyle = `rgba(255,205,150,${a})`;
+    ctx.beginPath(); ctx.arc(p.x, p.y, 1.5 + i * 0.16, 0, TAU); ctx.fill();
+  }
+  const g = ctx.createRadialGradient(speler.x, speler.y, 2, speler.x, speler.y, 90);
+  g.addColorStop(0, 'rgba(255,220,170,0.28)');
+  g.addColorStop(1, 'rgba(255,220,170,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(speler.x, speler.y, 90, 0, TAU); ctx.fill();
+  ctx.fillStyle = 'rgba(255,246,230,0.95)';
+  ctx.beginPath();
+  ctx.arc(speler.x + speler.vx * 0.014, speler.y + speler.vy * 0.014, 8, 0, TAU);
+  ctx.fill();
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+/* ----------------------------------- lus --------------------------------- */
+
+let vorige = performance.now();
+
+function beeld(nu) {
+  const dt = Math.min(0.05, (nu - vorige) / 1000);
+  vorige = nu;
+  const t = nu / 1000;
+
+  if (!cam) {
+    cam = {
+      x: klem(speler.x - (W / S) / 2, 0, WERELD.w - W / S),
+      y: klem(speler.y - (H / S) / 2, 0, WERELD.h - H / S),
+    };
+  }
+
+  bijwerken(dt, t);
+
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = '#0b0a12'; ctx.fillRect(0, 0, W, H);
+
+  ctx.setTransform(dpr * S, 0, 0, dpr * S, -cam.x * S * dpr, -cam.y * S * dpr);
+  tekenVlakte(t);
+  tekenScheur(t);
+  tekenHart(t);
+  tekenZwerm(t);
+  tekenMetgezel(t);
+  tekenStof();
+  tekenSpeler(t);
+
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.drawImage(vignet, 0, 0);
+  ctx.globalAlpha = 0.5;
+  ctx.drawImage(korrel, Math.floor(Math.random() * 80) - 80, Math.floor(Math.random() * 80) - 80, W + 160, H + 160);
+  ctx.globalAlpha = 1;
+
+  requestAnimationFrame(beeld);
+}
+requestAnimationFrame(beeld);
+</script>
+</body>
+</html>

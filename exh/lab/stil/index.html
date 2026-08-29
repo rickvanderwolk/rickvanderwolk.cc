@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="robots" content="noindex, nofollow">
+  <title>stil</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Een bladzijde die alleen verschijnt zolang jij stil bent. Bewegen jaagt de woorden weg; wie blijft, leest vanzelf verder. En helemaal onderaan staat iets dat pas komt na lang, onafgebroken stil zijn.">
+  <meta name="author" content="Rick van der Wolk">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      background: #f5f2ea;
+      overflow: hidden;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: none;
+      cursor: default;
+      font-family: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
+    }
+    #blad {
+      position: fixed; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      padding: 24px;
+    }
+    #gedicht {
+      max-width: 36em;
+      color: #2e2a24;
+      font-size: clamp(16px, 2.5vmin, 25px);
+      line-height: 1.85;
+      text-align: center;
+    }
+    .regel { display: block; }
+    .leeg { height: 1.1em; }
+    .woord {
+      display: inline-block;
+      opacity: 0;
+      filter: blur(3px);
+      transform: translateY(6px);
+      transition: opacity 2.4s ease, filter 2.4s ease, transform 2.4s ease;
+      will-change: opacity, filter;
+      white-space: pre;
+    }
+    .woord.zichtbaar { opacity: 1; filter: blur(0); transform: translateY(0); }
+    #gedicht.schuw .woord.zichtbaar {
+      opacity: 0.05;
+      filter: blur(1.5px);
+      transition-duration: 1.1s;
+    }
+    .slot { font-style: italic; }
+    #waas { position: fixed; inset: 0; pointer-events: none; }
+  </style>
+</head>
+<body>
+<div id="blad"><div id="gedicht"></div></div>
+<canvas id="waas"></canvas>
+<script>
+'use strict';
+
+/* ---------------------------------------------------------------------------
+   stil — een bladzijde die alleen bestaat zolang jij stil bent.
+
+   Er staat hier een tekst, maar hij verdraagt geen beweging. Beweeg je
+   muis, scroll, tik — en de woorden houden hun adem in tot je weer stil
+   bent. Wie rustig blijft, leest vanzelf verder. Er is geen haast en er
+   is niets te halen. Helemaal onderaan staat één regel die alleen
+   verschijnt na lang, onafgebroken stil zijn. En wie daarna nóg blijft,
+   ziet het papier heel langzaam warm worden, als kaarslicht.
+--------------------------------------------------------------------------- */
+
+const GEDICHT = [
+  ['je hoeft niets te doen'],
+  ['dit is een plek die verschijnt', 'zolang jij verdwijnt'],
+  ['beweeg, en alles houdt zijn adem in', 'blijf, en het komt voorzichtig terug'],
+  ['zo gaat het met bijna alles:', 'met sneeuw, met vogels, met geluk'],
+  ['wie zoekt, maakt wind', 'wie wacht, wordt gevonden'],
+];
+const SLOT = '(je was er al)';
+const NOTEN = [261.6, 293.7, 329.6, 349.2, 392];
+
+/* ------------------------------- de bladzijde ---------------------------- */
+
+const gedichtEl = document.getElementById('gedicht');
+const woorden = [];          // { el, drempel, eindeStrofe, strofe }
+let drempel = 2.2;           // seconden verzamelde stilte voor het eerste woord
+
+GEDICHT.forEach((strofe, si) => {
+  if (si > 0) {
+    const leeg = document.createElement('div');
+    leeg.className = 'leeg';
+    gedichtEl.appendChild(leeg);
+    drempel += 1.7;          // tussen strofen valt een langere stilte
+  }
+  strofe.forEach((regel) => {
+    const r = document.createElement('span');
+    r.className = 'regel';
+    regel.split(' ').forEach((w) => {
+      const el = document.createElement('span');
+      el.className = 'woord';
+      el.textContent = w + ' ';
+      r.appendChild(el);
+      drempel += 0.5;
+      woorden.push({ el, drempel, eindeStrofe: false, strofe: si });
+    });
+    gedichtEl.appendChild(r);
+  });
+  woorden[woorden.length - 1].eindeStrofe = true;
+});
+
+/* De slotregel staat er al, maar onthult zich pas na lang onafgebroken
+   stil zijn — en dan in één trage ademtocht in plaats van woord voor woord. */
+const slotWoorden = [];
+{
+  const leeg = document.createElement('div');
+  leeg.className = 'leeg';
+  gedichtEl.appendChild(leeg);
+  const r = document.createElement('span');
+  r.className = 'regel';
+  SLOT.split(' ').forEach((w) => {
+    const el = document.createElement('span');
+    el.className = 'woord slot';
+    el.textContent = w + ' ';
+    r.appendChild(el);
+    slotWoorden.push(el);
+  });
+  gedichtEl.appendChild(r);
+}
+
+/* ---------------------------------- korrel ------------------------------- */
+
+const waas = document.getElementById('waas');
+const wctx = waas.getContext('2d');
+let W = 0, H = 0;
+
+function maakKorrel() {
+  const k = document.createElement('canvas');
+  k.width = 160; k.height = 160;
+  const kc = k.getContext('2d');
+  const beeld = kc.createImageData(160, 160);
+  for (let i = 0; i < beeld.data.length; i += 4) {
+    const g = 110 + Math.random() * 70;
+    beeld.data[i] = beeld.data[i + 1] = beeld.data[i + 2] = g;
+    beeld.data[i + 3] = 11;
+  }
+  kc.putImageData(beeld, 0, 0);
+  return k;
+}
+const korrel = maakKorrel();
+
+function hermeet() {
+  W = window.innerWidth; H = window.innerHeight;
+  waas.width = W; waas.height = H;
+  wctx.clearRect(0, 0, W, H);
+  wctx.globalAlpha = 0.5;
+  wctx.fillStyle = wctx.createPattern(korrel, 'repeat');
+  wctx.fillRect(0, 0, W, H);
+  wctx.globalAlpha = 1;
+  const g = wctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.4, W / 2, H / 2, Math.max(W, H) * 0.8);
+  g.addColorStop(0, 'rgba(90,75,50,0)');
+  g.addColorStop(1, 'rgba(90,75,50,0.12)');
+  wctx.fillStyle = g;
+  wctx.fillRect(0, 0, W, H);
+}
+window.addEventListener('resize', hermeet);
+hermeet();
+
+/* ---------------------------------- geluid ------------------------------- */
+
+/* Bijna niets. Een kamertoon die er nauwelijks is, een zacht geritsel dat
+   met je onrust meegroeit (bewegen hóór je hier), een piepklein tikje per
+   woord en een belletje aan het eind van elke strofe. */
+let actx = null, hoofd = null, galm = null, ruisVol = null;
+
+function uit(knoop, natheid) {
+  knoop.connect(hoofd);
+  const s = actx.createGain(); s.gain.value = natheid;
+  knoop.connect(s); s.connect(galm);
+}
+
+function startGeluid() {
+  if (actx) { actx.resume(); return; }
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return;
+  actx = new AC();
+  actx.resume();
+
+  hoofd = actx.createGain();
+  hoofd.gain.value = 0;
+  hoofd.gain.linearRampToValueAtTime(0.8, actx.currentTime + 5);
+  hoofd.connect(actx.destination);
+
+  galm = actx.createGain();
+  const vertraging = actx.createDelay(0.7); vertraging.delayTime.value = 0.33;
+  const terug = actx.createGain(); terug.gain.value = 0.3;
+  const dof = actx.createBiquadFilter(); dof.type = 'lowpass'; dof.frequency.value = 1400;
+  const nat = actx.createGain(); nat.gain.value = 0.2;
+  galm.connect(vertraging); vertraging.connect(dof); dof.connect(terug);
+  terug.connect(vertraging); dof.connect(nat); nat.connect(hoofd);
+
+  /* Kamertoon: bruine ruis, heel laag en heel zacht. */
+  const n = Math.floor(actx.sampleRate * 3);
+  const buf = actx.createBuffer(1, n, actx.sampleRate);
+  const d = buf.getChannelData(0);
+  let vorig = 0;
+  for (let i = 0; i < n; i++) {
+    vorig = (vorig + (Math.random() * 2 - 1) * 0.02) * 0.998;
+    d[i] = vorig * 3.5;
+  }
+  const kamer = actx.createBufferSource(); kamer.buffer = buf; kamer.loop = true;
+  const kamerFilter = actx.createBiquadFilter();
+  kamerFilter.type = 'lowpass'; kamerFilter.frequency.value = 130;
+  const kamerVol = actx.createGain(); kamerVol.gain.value = 0.014;
+  kamer.connect(kamerFilter); kamerFilter.connect(kamerVol); kamerVol.connect(hoofd);
+  kamer.start();
+
+  /* Geritsel: witte ruis die alleen klinkt als jij beweegt. */
+  const n2 = Math.floor(actx.sampleRate * 2);
+  const buf2 = actx.createBuffer(1, n2, actx.sampleRate);
+  const d2 = buf2.getChannelData(0);
+  for (let i = 0; i < n2; i++) d2[i] = Math.random() * 2 - 1;
+  const ruis = actx.createBufferSource(); ruis.buffer = buf2; ruis.loop = true;
+  const ruisFilter = actx.createBiquadFilter();
+  ruisFilter.type = 'bandpass'; ruisFilter.frequency.value = 2300; ruisFilter.Q.value = 0.8;
+  ruisVol = actx.createGain(); ruisVol.gain.value = 0;
+  ruis.connect(ruisFilter); ruisFilter.connect(ruisVol); ruisVol.connect(hoofd);
+  ruis.start();
+}
+
+function tik() {
+  if (!actx) return;
+  const t0 = actx.currentTime;
+  const o = actx.createOscillator(); o.type = 'sine';
+  o.frequency.setValueAtTime(1180, t0);
+  o.frequency.exponentialRampToValueAtTime(860, t0 + 0.04);
+  const g = actx.createGain();
+  g.gain.setValueAtTime(0.007, t0);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.06);
+  o.connect(g); uit(g, 0.4);
+  o.start(t0); o.stop(t0 + 0.1);
+}
+
+function bel(f, vertraag) {
+  if (!actx) return;
+  const t0 = actx.currentTime + 0.03 + (vertraag || 0);
+  for (const [deel, v, tau] of [[1, 0.035, 2.4], [2.01, 0.012, 1.2], [2.99, 0.005, 0.6]]) {
+    const o = actx.createOscillator(); o.type = 'sine'; o.frequency.value = f * deel;
+    const g = actx.createGain();
+    g.gain.setValueAtTime(0, t0);
+    g.gain.linearRampToValueAtTime(v, t0 + 0.015);
+    g.gain.setTargetAtTime(0, t0 + 0.03, tau);
+    o.connect(g); uit(g, 0.5);
+    o.start(t0); o.stop(t0 + 7);
+  }
+}
+
+function akkoord() { bel(261.6, 0); bel(329.6, 0.16); bel(392, 0.34); }
+
+document.addEventListener('visibilitychange', () => {
+  if (!actx) return;
+  if (document.hidden) actx.suspend(); else actx.resume();
+});
+
+/* ---------------------------------- onrust ------------------------------- */
+
+let onrust = 0;
+let vorigeWX = null, vorigeWY = null;
+
+function stoor(x) { onrust = Math.min(1.2, onrust + x); }
+
+window.addEventListener('pointermove', (e) => {
+  if (vorigeWX !== null) {
+    const d = Math.hypot(e.clientX - vorigeWX, e.clientY - vorigeWY);
+    if (d > 1.5) stoor(Math.min(0.5, d * 0.02));
+  }
+  vorigeWX = e.clientX; vorigeWY = e.clientY;
+});
+window.addEventListener('pointerdown', (e) => {
+  startGeluid();
+  stoor(0.3);
+  vorigeWX = e.clientX; vorigeWY = e.clientY;
+});
+window.addEventListener('wheel', () => { startGeluid(); stoor(0.5); }, { passive: true });
+window.addEventListener('keydown', () => { startGeluid(); stoor(0.4); });
+window.addEventListener('contextmenu', (e) => e.preventDefault());
+
+/* ----------------------------------- lus --------------------------------- */
+
+let stilte = 0;          // verzamelde stilte: hiermee lees je verder
+let onafgebroken = 0;    // aaneengesloten stilte: hiermee verdien je het slot
+let volgende = 0;
+let schuw = false;
+let klaar = false;
+let slotOnthuld = false;
+let warmte = 0;
+let vorige = performance.now();
+
+function beeld(nu) {
+  const dt = Math.min(0.1, (nu - vorige) / 1000);
+  vorige = nu;
+  const t = nu / 1000;
+
+  onrust *= Math.exp(-dt * 2.0);
+  const rustig = onrust < 0.03;
+  if (rustig) { stilte += dt; onafgebroken += dt; }
+  else onafgebroken = 0;
+
+  /* Bij onrust duiken alle woorden weg; bij rust komen ze traag terug. */
+  if (!schuw && onrust > 0.08) { schuw = true; gedichtEl.classList.add('schuw'); }
+  if (schuw && onrust < 0.02) { schuw = false; gedichtEl.classList.remove('schuw'); }
+
+  /* Het volgende woord, als er genoeg stilte verzameld is. */
+  if (rustig && volgende < woorden.length && stilte >= woorden[volgende].drempel) {
+    const w = woorden[volgende++];
+    w.el.classList.add('zichtbaar');
+    tik();
+    if (w.eindeStrofe) bel(NOTEN[w.strofe % NOTEN.length], 0);
+    if (volgende === woorden.length) klaar = true;
+  }
+
+  /* Het slot vraagt geen verzamelde maar onafgebroken stilte. */
+  if (klaar && !slotOnthuld && onafgebroken > 42) {
+    slotOnthuld = true;
+    for (const el of slotWoorden) {
+      el.style.transitionDuration = '6s';
+      el.classList.add('zichtbaar');
+    }
+    akkoord();
+  }
+
+  /* Wie daarna blijft: het papier wordt onmerkbaar warm. */
+  if (slotOnthuld && rustig) warmte = Math.min(1, warmte + dt / 240);
+
+  const adem = Math.sin(t * 0.26) * 0.7;
+  const tint = 46 - warmte * 7;
+  const sat = 30 + warmte * 10;
+  const licht = 94.2 - warmte * 2.4 + adem;
+  document.body.style.background = `hsl(${tint}, ${sat}%, ${licht}%)`;
+
+  if (actx && ruisVol) {
+    ruisVol.gain.setTargetAtTime(Math.min(0.02, onrust * 0.02), actx.currentTime, 0.08);
+  }
+
+  requestAnimationFrame(beeld);
+}
+requestAnimationFrame(beeld);
+</script>
+</body>
+</html>

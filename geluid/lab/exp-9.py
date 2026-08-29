@@ -32,7 +32,7 @@ import numpy as np
 import sounddevice as sd
 
 SR = 44100
-LAT, LON = 51.794210, 5.649180   # zelfde punt als sunlight-clock en shadow-clock
+LAT, LON = 51.79, 5.65      # ~Ravenstein — zet hier je eigen plek neer
 RADIUS_NM = 30              # straal in zeemijl waarbinnen je toestellen hoort
 POLL = 20.0                 # seconden tussen twee opvragingen
 MAX_VOICES = 12             # hoogstens zoveel toestellen tegelijk (dichtstbij wint)

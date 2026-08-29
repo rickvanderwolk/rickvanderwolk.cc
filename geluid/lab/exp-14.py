@@ -42,7 +42,7 @@ import numpy as np
 import sounddevice as sd
 
 SR = 44100
-LAT, LON = 51.794210, 5.649180   # bij de Maas; zelfde punt als sunlight-clock
+LAT, LON = 51.79, 5.65      # ~Ravenstein, aan de Maas — bepaalt welke rivier
 POLL = 3 * 3600.0           # seconden tussen twee opvragingen van de kromme
 KALIBRATIE = 24 * 3600.0    # seconden tussen twee jaaroverzichten
 GLIDE = 60.0                # seconden om een nieuwe waarde in te laten glijden

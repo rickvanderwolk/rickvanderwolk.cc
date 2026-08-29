@@ -1,7 +1,8 @@
 const clockElement = document.querySelector('#clock h1');
 
-const latitude = 51.794210;
-const longitude = 5.649180;
+// ~Ravenstein, aan de Maas — bepaalt de zonnestand en dus de schaduw
+const latitude = 51.79;
+const longitude = 5.65;
 
 // De pagina is de grond, van bovenaf gezien met het noorden boven. De cijfers
 // zweven er net boven; die hoogte bepaalt hoe ver hun schaduw valt.

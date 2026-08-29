@@ -1,6 +1,10 @@
 const clockElement = document.getElementById('clock');
 const chartElement = document.getElementById('chart');
 
+// ~Ravenstein, aan de Maas — bepaalt zonsopgang en zonsondergang
+const latitude = 51.79;
+const longitude = 5.65;
+
 const chart = initialiseChart(chartElement);
 
 let now = null;
@@ -19,7 +23,7 @@ function update () {
     if (now !== previousNow) {
         previousNow = now;
 
-        sunTimes = SunCalc.getTimes(new Date(), 51.794210, 5.649180);
+        sunTimes = SunCalc.getTimes(new Date(), latitude, longitude);
         sunrise = Math.round(sunTimes.sunrise.getTime() / 1000);
         sunset = Math.round(sunTimes.sunset.getTime() / 1000);
         

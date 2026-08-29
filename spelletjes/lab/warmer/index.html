@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<title>Warmer</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="description" content="Er zit één pixel verstopt. De kleur van je klik is de enige aanwijzing.">
+<meta name="author" content="Rick van der Wolk">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    background: #0b0b0c;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+    touch-action: none; cursor: crosshair;
+  }
+  canvas { display: block; position: fixed; inset: 0; }
+  .ui {
+    position: fixed; z-index: 2; pointer-events: none;
+    font-size: 12px; letter-spacing: .16em; color: rgba(255,255,255,.55);
+    text-shadow: 0 1px 3px rgba(0,0,0,.6);
+  }
+  #left  { left: 20px; top: 18px; }
+  #right { right: 20px; top: 18px; }
+  #note {
+    left: 0; right: 0; bottom: 26px; text-align: center; line-height: 2;
+    color: rgba(255,255,255,.7);
+  }
+</style>
+</head>
+<body>
+  <canvas id="c"></canvas>
+  <div class="ui" id="left">klikken 0</div>
+  <div class="ui" id="right"></div>
+  <div class="ui" id="note">ergens zit één pixel. klik om te peilen.</div>
+
+<script>
+// Warmer — one hidden point, feedback only through the colour a click leaves behind.
+const cv = document.getElementById('c');
+const ctx = cv.getContext('2d');
+const elLeft = document.getElementById('left');
+const elRight = document.getElementById('right');
+const elNote = document.getElementById('note');
+
+const KEY = 'warmer.record';
+const HIT = 12;                       // how close counts as found, in css pixels
+
+let best = parseInt(localStorage.getItem(KEY) || '', 10) || null;
+let W = 0, H = 0;
+let target = { x: 0, y: 0 };          // fractions, so a resize keeps the round honest
+let guesses = [];                     // { x, y, heat } with x/y as fractions
+let found = false;
+let bg = { h: 220, s: 12, l: 5 };
+let aim = { h: 220, s: 12, l: 5 };
+
+const rand = () => 0.06 + Math.random() * 0.88;
+
+function resize() {
+  const dpr = Math.min(devicePixelRatio || 1, 2);
+  W = innerWidth; H = innerHeight;
+  cv.width = Math.round(W * dpr);
+  cv.height = Math.round(H * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+addEventListener('resize', resize);
+resize();
+
+function heatAt(x, y) {
+  const d = Math.hypot(x - target.x * W, y - target.y * H);
+  const t = 1 - Math.min(d / Math.hypot(W, H), 1);
+  return t * t;                       // squared, so the last stretch says the most
+}
+
+function colorFor(heat, lift) {
+  return {
+    h: 215 - 207 * heat,
+    s: 50 + 32 * heat,
+    l: 8 + 34 * heat + (lift || 0),
+  };
+}
+
+const css = c => 'hsl(' + c.h.toFixed(1) + ',' + c.s.toFixed(1) + '%,' + c.l.toFixed(1) + '%)';
+
+function newRound() {
+  target = { x: rand(), y: rand() };
+  guesses = [];
+  found = false;
+  aim = { h: 220, s: 12, l: 5 };
+  elNote.textContent = 'ergens zit één pixel. klik om te peilen.';
+  ui();
+}
+
+function ui() {
+  elLeft.textContent = 'klikken ' + guesses.length;
+  elRight.textContent = best === null ? '' : 'record ' + best;
+}
+
+function guess(x, y) {
+  if (found) { newRound(); return; }
+
+  const heat = heatAt(x, y);
+  guesses.push({ x: x / W, y: y / H, heat });
+  aim = colorFor(heat);
+  ui();
+
+  const d = Math.hypot(x - target.x * W, y - target.y * H);
+  if (d <= HIT) {
+    found = true;
+    if (best === null || guesses.length < best) {
+      best = guesses.length;
+      localStorage.setItem(KEY, String(best));
+    }
+    elNote.innerHTML = 'gevonden in ' + guesses.length + (guesses.length === 1 ? ' klik' : ' klikken')
+      + '<br>klik voor een nieuwe pixel';
+    ui();
+  }
+}
+
+addEventListener('pointerdown', e => { e.preventDefault(); guess(e.clientX, e.clientY); });
+
+function frame() {
+  // Ease towards the newest reading, so the room changes temperature rather than flicking.
+  bg.h += (aim.h - bg.h) * 0.08;
+  bg.s += (aim.s - bg.s) * 0.08;
+  bg.l += (aim.l - bg.l) * 0.08;
+
+  ctx.fillStyle = css(bg);
+  ctx.fillRect(0, 0, W, H);
+
+  for (const g of guesses) {
+    const c = colorFor(g.heat, 16);
+    ctx.beginPath();
+    ctx.arc(g.x * W, g.y * H, 5, 0, Math.PI * 2);
+    ctx.fillStyle = css(c);
+    ctx.fill();
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(0,0,0,.35)';
+    ctx.stroke();
+  }
+
+  if (found) {
+    ctx.beginPath();
+    ctx.arc(target.x * W, target.y * H, 14, 0, Math.PI * 2);
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = 'rgba(255,255,255,.85)';
+    ctx.stroke();
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(target.x * W - 1, target.y * H - 1, 2, 2);
+  }
+
+  requestAnimationFrame(frame);
+}
+
+newRound();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

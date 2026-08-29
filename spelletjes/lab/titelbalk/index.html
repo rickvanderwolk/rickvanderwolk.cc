@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<title>Titelbalk</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Een spel dat zich volledig in de tabtitel afspeelt.">
+<meta name="author" content="Rick van der Wolk">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    background: #0b0b0c; color: #3f3f44;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 18px; text-align: center; padding: 24px;
+    font-size: 13px; letter-spacing: .16em; line-height: 2;
+    user-select: none; -webkit-user-select: none; touch-action: manipulation;
+  }
+  .up { color: #9ece6a; }
+  .legend { color: #2e2e33; }
+  .warn { display: none; color: #e0af68; }
+  @media (hover: none) { .warn { display: block; } }
+</style>
+</head>
+<body>
+  <div class="up">↑ het spel staat in de tabtitel</div>
+  <div class="legend">▄ jij &nbsp;·&nbsp; ▲ obstakel &nbsp;·&nbsp; ▀ je springt</div>
+  <div class="legend">spatie of klik = springen &nbsp;·&nbsp; en opnieuw na game over</div>
+  <div class="warn">op een telefoon zie je geen tabtitel — dit is een desktopspel.</div>
+
+<script>
+// Titelbalk — the entire playfield is document.title. The page stays empty on purpose.
+const W = 10;      // cells in the field
+const P = 1;       // the player's cell
+const FAST = 110, SLOW = 260;
+
+let obstacles, score, air, gap, interval, alive, timer;
+
+function reset() {
+  obstacles = [];
+  score = 0;
+  air = 0;
+  gap = 3;
+  interval = SLOW;
+  alive = true;
+  draw();
+  schedule();
+}
+
+function schedule() {
+  clearTimeout(timer);
+  timer = setTimeout(tick, interval);
+}
+
+function tick() {
+  // Playing in a background tab is impossible, so wait it out instead of dying.
+  if (document.hidden) { schedule(); return; }
+
+  for (let i = 0; i < obstacles.length; i++) obstacles[i]--;
+  const passed = obstacles.filter(x => x === P - 1).length;   // counted exactly once
+  if (passed) {
+    score += passed;
+    interval = Math.max(FAST, interval - passed * 6);
+  }
+  obstacles = obstacles.filter(x => x >= 0);
+
+  if (gap > 0) gap--;
+  else if (Math.random() < 0.5) { obstacles.push(W - 1); gap = 3 + Math.floor(Math.random() * 3); }
+
+  if (air > 0) air--;
+
+  if (air === 0 && obstacles.includes(P)) {
+    alive = false;
+    document.title = 'game over · ' + score;
+    return;
+  }
+
+  draw();
+  schedule();
+}
+
+function draw() {
+  const cells = new Array(W).fill('·');
+  for (const x of obstacles) cells[x] = '▲';
+  cells[P] = air > 0 ? '▀' : '▄';
+  document.title = String(score).padStart(2, '0') + ' |' + cells.join('') + '|';
+}
+
+function jump() {
+  if (!alive) { reset(); return; }
+  if (air === 0) { air = 3; draw(); }
+}
+
+addEventListener('keydown', e => {
+  if (e.code !== 'Space' && e.code !== 'ArrowUp') return;
+  e.preventDefault();
+  if (!e.repeat) jump();
+});
+addEventListener('pointerdown', jump);
+
+reset();
+</script>
+</body>
+</html>

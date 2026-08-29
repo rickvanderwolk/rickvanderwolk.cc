@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<title>Wachten</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Doe niets. Zo lang mogelijk.">
+<meta name="author" content="Rick van der Wolk">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    background: #0b0b0c; color: #e8e8e6;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 14px; text-align: center; user-select: none; -webkit-user-select: none;
+  }
+  #head { font-size: 12px; letter-spacing: .28em; color: #55555a; }
+  #t {
+    font-size: clamp(64px, 17vw, 170px); font-weight: 500;
+    font-variant-numeric: tabular-nums; letter-spacing: -.02em; line-height: 1;
+  }
+  #sub { font-size: 13px; letter-spacing: .14em; color: #7aa2f7; min-height: 1.4em; }
+  #meta {
+    position: fixed; bottom: 24px; left: 0; right: 0;
+    font-size: 12px; letter-spacing: .14em; color: #45454a;
+  }
+</style>
+</head>
+<body>
+  <div id="head">DOE NIETS</div>
+  <div id="t">0,0</div>
+  <div id="sub"></div>
+  <div id="meta"></div>
+
+<script>
+// Wachten — the only move is not to move. Any input resets the clock.
+const elTime = document.getElementById('t');
+const elSub  = document.getElementById('sub');
+const elMeta = document.getElementById('meta');
+
+const KEY = 'wachten.record';
+let best = parseFloat(localStorage.getItem(KEY) || '0') || 0;
+let start = performance.now();
+let saved = 0;
+let flashUntil = 0, flashText = '';
+let lastX = null, lastY = null;
+
+// Milestones, so a long wait has something to arrive at.
+const MARKS = [
+  [10, 'tien seconden'],
+  [30, 'een halve minuut'],
+  [60, 'een minuut'],
+  [120, 'twee minuten'],
+  [300, 'vijf minuten'],
+  [600, 'tien minuten'],
+  [1800, 'een half uur'],
+  [3600, 'een uur'],
+];
+
+const nl = s => s.toFixed(1).replace('.', ',');
+
+function reset(why) {
+  start = performance.now();
+  flashText = why;
+  flashUntil = start + 1900;
+}
+
+addEventListener('mousemove', e => {
+  // The first mousemove can fire without the mouse actually having moved.
+  if (lastX === null) { lastX = e.clientX; lastY = e.clientY; return; }
+  if (e.clientX === lastX && e.clientY === lastY) return;
+  lastX = e.clientX; lastY = e.clientY;
+  reset('je bewoog de muis');
+});
+addEventListener('mousedown', () => reset('je klikte'));
+addEventListener('keydown', () => reset('je typte'));
+addEventListener('wheel', () => reset('je scrollde'), { passive: true });
+addEventListener('touchstart', () => reset('je raakte het scherm aan'), { passive: true });
+addEventListener('blur', () => reset('je keek weg'));
+document.addEventListener('visibilitychange', () => { if (document.hidden) reset('je keek weg'); });
+
+function frame(now) {
+  const s = (now - start) / 1000;
+
+  if (s > best) {
+    best = s;
+    if (now - saved > 1000) { localStorage.setItem(KEY, best.toFixed(1)); saved = now; }
+  }
+
+  elTime.textContent = nl(s);
+
+  let mark = '';
+  for (const [sec, label] of MARKS) if (s >= sec) mark = label;
+  elSub.textContent = now < flashUntil ? flashText : mark;
+  elSub.style.color = now < flashUntil ? '#7aa2f7' : '#55555a';
+
+  elMeta.textContent = 'record  ' + nl(best) + ' s';
+
+  // The room warms up around you, over five minutes, too slowly to notice.
+  const w = Math.min(s / 300, 1);
+  document.body.style.background = 'hsl(28, ' + (w * 13).toFixed(2) + '%, ' + (4.3 + w * 4.2).toFixed(2) + '%)';
+
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<title>Scrollbalk</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Pong waarbij je peddel de echte scrollbalk is.">
+<meta name="author" content="Rick van der Wolk">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html {
+    background: #0b0b0c;
+    overflow-y: scroll;
+    overflow-anchor: none;
+    scroll-behavior: auto;
+    scrollbar-width: auto;
+    scrollbar-color: #e0af68 #17171a;
+  }
+  /* Force a classic, always-visible scrollbar — it is the paddle, after all. */
+  html::-webkit-scrollbar { width: 16px; background: #17171a; }
+  html::-webkit-scrollbar-track { background: #17171a; }
+  html::-webkit-scrollbar-thumb { background: #e0af68; border: 3px solid #17171a; border-radius: 8px; }
+  html::-webkit-scrollbar-button { display: none; height: 0; width: 0; }
+  body { background: #0b0b0c; font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+  #spacer { width: 1px; }
+  canvas { display: block; position: fixed; inset: 0; z-index: 1; }
+  .ui {
+    position: fixed; z-index: 2; pointer-events: none;
+    font-size: 12px; letter-spacing: .16em; color: #45454a;
+  }
+  #score { left: 20px; top: 18px; color: #e0af68; }
+  #meta  { left: 20px; top: 40px; }
+  #msg {
+    left: 0; right: 0; top: 50%; transform: translateY(-50%);
+    text-align: center; line-height: 2.2; font-size: 13px; letter-spacing: .14em; color: #87878b;
+  }
+  #msg b { color: #e8e8e6; font-weight: 500; display: block; font-size: 17px; margin-bottom: 6px; }
+  #msg .dim { color: #45454a; }
+</style>
+</head>
+<body>
+  <div id="spacer"></div>
+  <canvas id="c"></canvas>
+  <div class="ui" id="score">0</div>
+  <div class="ui" id="meta"></div>
+  <div class="ui" id="msg"></div>
+
+<script>
+// Scrollbalk — pong against the right edge, where the paddle is the browser's own
+// scrollbar thumb. Scroll to move it. Every few hits the page gets taller, so the
+// thumb — your paddle — gets shorter.
+const cv = document.getElementById('c');
+const ctx = cv.getContext('2d');
+const spacer = document.getElementById('spacer');
+const elScore = document.getElementById('score');
+const elMeta = document.getElementById('meta');
+const elMsg = document.getElementById('msg');
+
+const KEY = 'scrollbalk.record';
+const START_LEVEL = 4, MAX_LEVEL = 12, R = 8;
+
+let best = parseInt(localStorage.getItem(KEY) || '', 10) || 0;
+let W = 0, H = 0;
+let level = START_LEVEL;
+let score = 0, speed = 5;
+let state = 'intro';                 // intro | play | over
+const ball = { x: 0, y: 0, vx: 0, vy: 0 };
+
+if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+
+function layout() {
+  const rect = cv.getBoundingClientRect();
+  W = rect.width; H = rect.height;
+  const dpr = Math.min(devicePixelRatio || 1, 2);
+  cv.width = Math.round(W * dpr);
+  cv.height = Math.round(H * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+function setLevel(l) {
+  const de = document.documentElement;
+  const before = Math.max(de.scrollHeight - de.clientHeight, 1);
+  const f = scrollY / before;
+  level = l;
+  spacer.style.height = (de.clientHeight * level) + 'px';
+  const after = Math.max(de.scrollHeight - de.clientHeight, 1);
+  scrollTo(0, f * after);            // keep the paddle where the player left it
+  elMeta.textContent = 'pagina ' + level + '× · peddel ' + Math.round(100 / level) + '%';
+}
+
+// Where the native scrollbar thumb sits, in viewport pixels.
+function paddle() {
+  const de = document.documentElement;
+  const track = de.clientHeight;
+  const max = Math.max(de.scrollHeight - de.clientHeight, 1);
+  const len = Math.max(track * (de.clientHeight / de.scrollHeight), 28);
+  return { top: (scrollY / max) * (track - len), len: len };
+}
+
+function message(html) { elMsg.innerHTML = html; }
+
+function intro() {
+  state = 'intro';
+  setLevel(START_LEVEL);
+  scrollTo(0, (document.documentElement.scrollHeight - document.documentElement.clientHeight) / 2);
+  ball.x = W * 0.35; ball.y = H * 0.5; ball.vx = 0; ball.vy = 0;
+  score = 0; speed = 5;
+  elScore.textContent = '0';
+  message('<b>scrollbalk</b>scroll om je peddel te bewegen — dat is de scrollbalk rechts.<br>'
+        + '<span class="dim">klik om te serveren</span>');
+}
+
+function serve() {
+  const a = (Math.random() - 0.5) * 0.6;
+  ball.x = W * 0.35; ball.y = H * 0.5;
+  ball.vx = Math.cos(a) * speed;
+  ball.vy = Math.sin(a) * speed;
+  state = 'play';
+  message('');
+}
+
+function over() {
+  state = 'over';
+  if (score > best) { best = score; localStorage.setItem(KEY, String(best)); }
+  message('<b>mis</b>' + score + ' ' + (score === 1 ? 'stuit' : 'stuiten') + ' · record ' + best + '<br>'
+        + '<span class="dim">klik voor opnieuw</span>');
+}
+
+function hit() {
+  const p = paddle();
+  const tol = 5;
+  if (ball.y < p.top - tol || ball.y > p.top + p.len + tol) { over(); return; }
+
+  ball.x = W - R;
+  score++;
+  elScore.textContent = String(score);
+  speed = Math.min(speed + 0.35, 14);
+
+  const rel = Math.max(-1, Math.min(1, (ball.y - (p.top + p.len / 2)) / (p.len / 2)));
+  const ang = rel * (Math.PI / 3);
+  ball.vx = -Math.cos(ang) * speed;
+  ball.vy = Math.sin(ang) * speed;
+
+  if (score % 3 === 0 && level < MAX_LEVEL) setLevel(level + 1);
+}
+
+function update(dt) {
+  ball.x += ball.vx * dt;
+  ball.y += ball.vy * dt;
+
+  if (ball.y - R < 0) { ball.y = R; ball.vy = Math.abs(ball.vy); }
+  if (ball.y + R > H) { ball.y = H - R; ball.vy = -Math.abs(ball.vy); }
+  if (ball.x - R < 0) { ball.x = R; ball.vx = Math.abs(ball.vx); }
+  if (ball.x + R >= W) hit();
+}
+
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#0b0b0c';
+  ctx.fillRect(0, 0, W, H);
+
+  // The paddle's shadow on the playfield, so the game stays fair on systems that
+  // hide their scrollbars.
+  const p = paddle();
+  ctx.fillStyle = 'rgba(224,175,104,.16)';
+  ctx.fillRect(W - 3, p.top, 3, p.len);
+
+  ctx.beginPath();
+  ctx.arc(ball.x, ball.y, R, 0, Math.PI * 2);
+  ctx.fillStyle = '#e0af68';
+  ctx.fill();
+}
+
+let prev = 0;
+function frame(now) {
+  const dt = prev ? Math.min((now - prev) / 16.667, 3) : 1;
+  prev = now;
+  if (state === 'play') update(dt);
+  draw();
+  requestAnimationFrame(frame);
+}
+
+addEventListener('pointerdown', () => {
+  if (state === 'play') return;
+  if (state === 'over') { score = 0; speed = 5; elScore.textContent = '0'; setLevel(START_LEVEL); }
+  serve();
+});
+
+addEventListener('resize', () => { layout(); setLevel(level); });
+
+layout();
+intro();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

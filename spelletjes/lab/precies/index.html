@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<title>Precies</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="description" content="Houd exact tien seconden ingedrukt. Zonder teller.">
+<meta name="author" content="Rick van der Wolk">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    background: #0b0b0c; color: #e8e8e6;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 14px; text-align: center; padding: 24px;
+    user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+    touch-action: none; cursor: default;
+  }
+  #head { font-size: 12px; letter-spacing: .28em; color: #55555a; }
+  .lead { font-size: 13px; line-height: 1.9; color: #6b6b6e; max-width: 40ch; }
+  #result {
+    font-size: clamp(54px, 14vw, 140px); font-weight: 500;
+    font-variant-numeric: tabular-nums; letter-spacing: -.02em; line-height: 1;
+    color: #e8e8e6;
+  }
+  #diff { font-size: 14px; letter-spacing: .1em; color: #7dcfff; min-height: 1.4em; }
+  #history { font-size: 12px; letter-spacing: .08em; color: #45454a; line-height: 1.9; min-height: 5em; }
+  #meta { position: fixed; bottom: 24px; left: 0; right: 0; font-size: 12px; letter-spacing: .14em; color: #45454a; }
+  /* Nothing moves, blinks or counts while you hold. That is the whole game. */
+  #dot { width: 9px; height: 9px; border-radius: 50%; background: #7dcfff; opacity: 0; }
+  body.holding > *:not(#dot) { opacity: 0; }
+  body.holding #dot { opacity: 1; }
+</style>
+</head>
+<body>
+  <div id="head">TIEN SECONDEN</div>
+  <p class="lead">houd de muisknop (of je vinger, of de spatiebalk) ingedrukt en laat precies na tien seconden los.</p>
+  <div id="result">—</div>
+  <div id="diff">geen teller, geen aftellen, geen hulp.</div>
+  <div id="history"></div>
+  <div id="dot"></div>
+  <div id="meta"></div>
+
+<script>
+// Precies — hold for exactly ten seconds. No feedback until you let go.
+const TARGET = 10;
+const MAX_HOLD = 30000;
+
+const elResult  = document.getElementById('result');
+const elDiff    = document.getElementById('diff');
+const elHistory = document.getElementById('history');
+const elMeta    = document.getElementById('meta');
+
+const KEY = 'precies.record';
+let best = parseFloat(localStorage.getItem(KEY) || '') || null;
+let history = [];
+let holding = false, t0 = 0, abort = null;
+
+const nl = s => s.toFixed(3).replace('.', ',');
+
+function meta() {
+  elMeta.textContent = best === null ? '' : 'beste afwijking  ' + Math.round(best) + ' ms';
+}
+
+function start() {
+  if (holding) return;
+  holding = true;
+  t0 = performance.now();
+  document.body.classList.add('holding');
+  abort = setTimeout(() => stop(null, 'te lang. opnieuw.'), MAX_HOLD);
+}
+
+function stop(now, why) {
+  if (!holding) return;
+  holding = false;
+  clearTimeout(abort);
+  document.body.classList.remove('holding');
+
+  if (now === null) {
+    elResult.textContent = '—';
+    elDiff.textContent = why;
+    elDiff.style.color = '#f7768e';
+    return;
+  }
+
+  const s = (now - t0) / 1000;
+  const off = s - TARGET;
+  const ms = Math.abs(Math.round(off * 1000));
+
+  elResult.textContent = nl(s);
+  if (ms === 0) {
+    elDiff.textContent = 'exact.';
+    elDiff.style.color = '#9ece6a';
+  } else {
+    elDiff.textContent = ms + ' ms ' + (off < 0 ? 'te vroeg' : 'te laat');
+    elDiff.style.color = ms < 100 ? '#9ece6a' : ms < 500 ? '#e0af68' : '#7dcfff';
+  }
+
+  if (best === null || ms < best) { best = ms; localStorage.setItem(KEY, String(ms)); }
+
+  history.unshift(nl(s) + ' s   ' + (off < 0 ? '−' : '+') + ms + ' ms');
+  history = history.slice(0, 5);
+  elHistory.innerHTML = history.join('<br>');
+  meta();
+}
+
+addEventListener('pointerdown', e => { e.preventDefault(); start(); });
+addEventListener('pointerup', () => stop(performance.now()));
+addEventListener('pointercancel', () => stop(null, 'losgelaten. opnieuw.'));
+addEventListener('blur', () => stop(null, 'je keek weg. opnieuw.'));
+addEventListener('contextmenu', e => e.preventDefault());
+
+addEventListener('keydown', e => {
+  if (e.code !== 'Space' || e.repeat) return;
+  e.preventDefault();
+  start();
+});
+addEventListener('keyup', e => {
+  if (e.code !== 'Space') return;
+  e.preventDefault();
+  stop(performance.now());
+});
+
+meta();
+</script>
+</body>
+</html>

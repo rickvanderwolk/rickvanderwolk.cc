@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<title>Weg</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Punten verdien je alleen als je niet kijkt.">
+<meta name="author" content="Rick van der Wolk">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    background: #0b0b0c; color: #e8e8e6;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 16px; text-align: center; padding: 24px; user-select: none; -webkit-user-select: none;
+  }
+  #head { font-size: 12px; letter-spacing: .28em; color: #55555a; }
+  .lead { font-size: 13px; line-height: 1.9; color: #6b6b6e; max-width: 42ch; }
+  #total {
+    font-size: clamp(58px, 15vw, 150px); font-weight: 500;
+    font-variant-numeric: tabular-nums; letter-spacing: -.02em; line-height: 1;
+  }
+  #msg { font-size: 13px; letter-spacing: .06em; color: #9d7cd8; min-height: 2.8em; max-width: 42ch; line-height: 1.7; }
+  #meta {
+    position: fixed; bottom: 24px; left: 0; right: 0;
+    font-size: 12px; letter-spacing: .14em; color: #45454a;
+  }
+</style>
+</head>
+<body>
+  <div id="head">GA WEG</div>
+  <p class="lead">je punten lopen alleen op terwijl dit tabblad onzichtbaar is. elke keer ligt er een andere, onzichtbare grens. kom je te laat terug, dan ben je alles kwijt.</p>
+  <div id="total">0,0</div>
+  <div id="msg">wissel van tabblad om te beginnen.</div>
+  <div id="meta"></div>
+
+<script>
+// Weg — push your luck by not looking. Nothing here is visible while you play.
+const elTotal = document.getElementById('total');
+const elMsg   = document.getElementById('msg');
+const elMeta  = document.getElementById('meta');
+
+const KEY = 'weg.record';
+let best = parseFloat(localStorage.getItem(KEY) || '0') || 0;
+let total = 0;
+let away = document.hidden || !document.hasFocus();
+let awayStart = 0;   // 0 = no round in progress
+let limit = 0;
+
+const nl = s => s.toFixed(1).replace('.', ',');
+const newLimit = () => 5 + Math.random() * 35;
+
+function render(msg, color) {
+  elTotal.textContent = nl(total);
+  if (msg !== undefined) { elMsg.textContent = msg; elMsg.style.color = color || '#9d7cd8'; }
+  elMeta.textContent = 'record  ' + nl(best) + ' punten';
+}
+
+function leave() {
+  awayStart = Date.now();
+  limit = newLimit();
+}
+
+function back() {
+  if (!awayStart) return;              // page simply opened in the background
+  const s = (Date.now() - awayStart) / 1000;
+  awayStart = 0;
+
+  if (s <= limit) {
+    total += s;
+    if (total > best) { best = total; localStorage.setItem(KEY, best.toFixed(1)); }
+    const room = limit - s;
+    const note = room < 2 ? 'dat scheelde niets.' : '';
+    render('+' + nl(s) + ' — de grens lag op ' + nl(limit) + ' s. ' + note, '#9ece6a');
+  } else {
+    total = 0;
+    render('te laat. je was ' + nl(s) + ' s weg, de grens lag op ' + nl(limit) + ' s. terug naar nul.', '#f7768e');
+  }
+}
+
+function sync() {
+  const nowAway = document.hidden || !document.hasFocus();
+  if (nowAway === away) return;
+  away = nowAway;
+  away ? leave() : back();
+}
+
+document.addEventListener('visibilitychange', sync);
+addEventListener('blur', sync);
+addEventListener('focus', sync);
+
+render();
+</script>
+</body>
+</html>

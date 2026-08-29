@@ -1,0 +1,1207 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<title>6a92c8da</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="description" content="Neem een geluidje op en zet het in een lus van zestien stappen. Alles blijft op je telefoon.">
+<meta name="author" content="Rick van der Wolk">
+<meta name="theme-color" content="#0b0b0c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  :root {
+    --bg: #0b0b0c; --fg: #e8e8e6; --dim: #6a6a74; --dimmer: #34343c;
+    --cell: #1c1c21; --beat: #292930; --now: #3f3f4a; --nowline: #75758a;
+    --rec: #ff6b6b; --c: #7dcfff;
+  }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg); color: var(--fg);
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    display: flex; flex-direction: column;
+    user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+    overscroll-behavior: none;
+  }
+  button, input { font: inherit; color: inherit; background: none; border: 0; touch-action: manipulation; }
+  button { cursor: pointer; transition: opacity 90ms linear; }
+  button:active { opacity: .5; }
+  .cell:active { transform: scale(.9); }
+
+  header { padding: 18px 14px 10px; text-align: center; flex: none; position: relative; }
+  #head { font-size: 11px; letter-spacing: .32em; color: var(--dim); }
+  .lead { font-size: 13px; line-height: 1.75; color: #6b6b6e; margin-top: 10px; }
+  .deskonly { display: none; }
+  #help {
+    position: absolute; top: 10px; right: 8px; width: 34px; height: 34px;
+    font-size: 13px; color: var(--dimmer);
+  }
+
+  #tracks { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 6px 20px 0; }
+
+  .track { margin-bottom: 22px; }
+  .track.muted .waveclip, .track.muted .steps, .track.muted .handle { opacity: .22; }
+  .track.recording .waveclip { background: #1c0f11; }
+
+  .thead { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+  .rec {
+    width: 52px; height: 52px; flex: none; border-radius: 50%;
+    border: 1px solid var(--dimmer); color: var(--dim); font-size: 17px; line-height: 1;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .rec.waiting { border-color: var(--fg); color: var(--fg); animation: wait .9s ease-in-out infinite; }
+  @keyframes wait { 0%, 100% { opacity: .3; } 50% { opacity: 1; } }
+  .track.waiting .waveclip::after {
+    content: ''; position: absolute; top: 0; bottom: 0; width: 30%;
+    background: linear-gradient(90deg, transparent, #3d3d48, transparent);
+    animation: sweep 1s linear infinite;
+  }
+  @keyframes sweep { from { left: -30%; } to { left: 100%; } }
+  .rec.armed { border-color: var(--rec); color: var(--rec); animation: pulse .7s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: .35; } }
+
+  .wavewrap { flex: 1; height: 52px; position: relative; }
+  .waveclip { position: absolute; inset: 0; border-radius: 4px; background: #141418; overflow: hidden; }
+  .waveclip canvas { display: block; width: 100%; height: 100%; }
+  .hint {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    font-size: 12px; letter-spacing: .1em; color: var(--dim); pointer-events: none;
+  }
+  .hint.rec { color: var(--rec); }
+
+  /* Sleepgrepen om zelf links/rechts bij te knippen. */
+  .handle { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--c); touch-action: none; z-index: 2; }
+  .handle::after { content: ''; position: absolute; top: -6px; bottom: -6px; left: -15px; right: -15px; }
+  .handle::before {
+    content: ''; position: absolute; top: 50%; left: -6px;
+    width: 13px; height: 13px; margin-top: -6px; border-radius: 50%;
+    background: var(--c); box-shadow: 0 0 0 3px var(--bg);
+  }
+
+  .tbtn { width: 40px; height: 52px; flex: none; border-radius: 4px; font-size: 14px; letter-spacing: .06em; color: var(--dim); }
+  .tbtn.warn { width: 58px; font-size: 11px; color: var(--rec); border: 1px solid var(--rec); }
+  .tbtn.on { color: var(--bg); background: var(--dim); }
+  .tbtn.solo { color: var(--bg); background: var(--c); }
+
+  .steps { display: flex; gap: 9px; }
+  .group { flex: 1; display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+  .cell {
+    height: 46px; border-radius: 4px; background: var(--cell); border: 1px solid transparent;
+    transition: background-color 90ms linear, transform 80ms ease;
+  }
+  .cell.beat { background: var(--beat); }
+  .cell.on { background: var(--c); }
+  .cell.now { background: var(--now); border-color: var(--nowline); }
+  .cell.on.now { background: #fff; border-color: #fff; }
+
+  .dense .track { margin-bottom: 14px; }
+  .dense .thead { gap: 9px; margin-bottom: 7px; }
+  .dense .rec { width: 44px; height: 44px; font-size: 15px; }
+  .dense .wavewrap { height: 44px; }
+  .dense .tbtn { width: 36px; height: 44px; }
+  .dense .cell { height: 34px; }
+
+  #add {
+    display: block; margin: 2px auto 10px; padding: 10px 18px;
+    font-size: 12px; letter-spacing: .16em; color: var(--dim);
+    border: 1px solid var(--dimmer); border-radius: 4px;
+  }
+  #reset {
+    display: block; margin: 0 auto 26px; padding: 9px 16px;
+    font-size: 11px; letter-spacing: .16em; color: var(--dimmer);
+    border: 1px solid transparent; border-radius: 4px;
+  }
+  #reset.warn { color: var(--rec); border-color: var(--rec); }
+  #add.full { color: var(--dimmer); border-color: transparent; opacity: 1; }
+
+  footer {
+    flex: none; display: flex; align-items: center; gap: 14px;
+    padding: 12px 16px;
+    border-top: 1px solid #141416; background: #0d0d0f;
+  }
+  #play {
+    width: 62px; height: 62px; flex: none; border-radius: 50%;
+    border: 1px solid var(--dimmer); font-size: 19px; line-height: 1;
+    display: flex; align-items: center; justify-content: center;
+  }
+  #play.on { border-color: var(--fg); color: var(--fg); }
+  #tempo { flex: 1; display: flex; flex-direction: column; gap: 6px; }
+  #bpmv { font-size: 12px; letter-spacing: .18em; color: var(--dim); }
+  #bpm { -webkit-appearance: none; appearance: none; width: 100%; height: 22px; background: none; }
+  #bpm::-webkit-slider-runnable-track { height: 2px; background: var(--dimmer); }
+  #bpm::-moz-range-track { height: 2px; background: var(--dimmer); }
+  #bpm::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 22px; height: 22px; border-radius: 50%;
+    background: var(--fg); margin-top: -10px;
+  }
+  #bpm::-moz-range-thumb { width: 22px; height: 22px; border: 0; border-radius: 50%; background: var(--fg); }
+
+  #meta {
+    flex: none; text-align: center; font-size: 10px; letter-spacing: .12em; color: #2f2f34;
+    padding: 0 14px calc(10px + env(safe-area-inset-bottom)); background: #0d0d0f;
+  }
+  #devices { display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+  #micnote { font-size: 11px; letter-spacing: .1em; color: #4a4a52; }
+  .sel { position: relative; max-width: 48%; border: 1px solid var(--dimmer); border-radius: 4px; }
+  .sel::after { content: '\25BE'; position: absolute; right: 7px; top: 50%; margin-top: -7px; color: var(--dim); pointer-events: none; }
+  .sel select {
+    -webkit-appearance: none; appearance: none; font: inherit; font-size: 12px; letter-spacing: .08em;
+    color: var(--dim); background: none; border: 0; border-radius: 0; padding: 8px 20px 8px 10px;
+    max-width: 100%; text-overflow: ellipsis; white-space: nowrap; overflow: hidden;
+  }
+  .sel[hidden] { display: none; }
+
+  @media (min-width: 620px) {
+    #tracks, header { max-width: 640px; width: 100%; margin: 0 auto; }
+    footer { justify-content: center; }
+    #tempo { max-width: 460px; }
+    .cell { height: 42px; }
+    .deskonly { display: inline; }
+  }
+</style>
+</head>
+<body>
+  <header>
+    <div id="head">6a92c8da</div>
+    <button id="help" aria-label="uitleg">?</button>
+    <p class="lead">tik <span style="color:#ff6b6b">&#9679;</span> en maak een geluid zodra hij rood is.<br>tik mee terwijl hij loopt, of tik de vakjes aan.<br>randen slepen = knippen. rij ingedrukt = wissen.<br>m = dempen, m ingedrukt = alleen deze.<br><span class="deskonly">spatie start en stopt.</span></p>
+  </header>
+
+  <div id="tracks"></div>
+
+  <footer>
+    <button id="play" aria-label="afspelen">&#9654;</button>
+    <div id="tempo">
+      <span id="bpmv">100 BPM</span>
+      <input id="bpm" type="range" min="50" max="200" step="1" value="100" aria-label="tempo">
+    </div>
+  </footer>
+  <div id="meta">
+    <div id="devices">
+      <span class="sel" id="micwrap"><select id="mic" aria-label="microfoon"></select></span>
+      <span id="micnote"></span>
+      <span class="sel" id="outwrap" hidden><select id="out" aria-label="uitgang"></select></span>
+    </div>
+    alles blijft lokaal op dit apparaat
+  </div>
+
+<script>
+// 6a92c8da — een 16-stappen loop met zelfopgenomen geluidjes.
+// Samples in IndexedDB, patroon ernaast. Niets verlaat dit apparaat.
+
+const STEPS = 16;
+const MAX_TRACKS = 16;
+const MAX_REC_MS = 4000;
+const MIN_REC_MS = 120;
+const MIN_LEN = 0.02;
+
+/* ---------- opslag ---------- */
+
+const dbp = new Promise((res, rej) => {
+  const r = indexedDB.open("6a92c8da", 1);
+  r.onupgradeneeded = () => {
+    const d = r.result;
+    if (!d.objectStoreNames.contains('samples')) d.createObjectStore('samples');
+    if (!d.objectStoreNames.contains('state')) d.createObjectStore('state');
+  };
+  r.onsuccess = () => res(r.result);
+  r.onerror = () => rej(r.error);
+});
+
+async function tx(store, mode, fn) {
+  const db = await dbp;
+  return new Promise((res, rej) => {
+    const t = db.transaction(store, mode);
+    const req = fn(t.objectStore(store));
+    t.oncomplete = () => res(req ? req.result : undefined);
+    t.onerror = () => rej(t.error);
+  });
+}
+const putSample = (id, blob) => tx('samples', 'readwrite', s => s.put(blob, id));
+const getSample = id => tx('samples', 'readonly', s => s.get(id));
+const delSample = id => tx('samples', 'readwrite', s => s.delete(id));
+const putState  = st => tx('state', 'readwrite', s => s.put(st, 'project'));
+const getState  = () => tx('state', 'readonly', s => s.get('project'));
+
+let saveTimer = null;
+function save() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => putState(JSON.parse(JSON.stringify(state))).catch(() => {}), 250);
+}
+
+/* ---------- audio ---------- */
+
+// Stille fouten kosten de meeste tijd. Alles wat klapt komt onderin te staan.
+function toon(msg) {
+  const el = document.getElementById('micnote');
+  if (el) el.textContent = String(msg).slice(0, 220);
+}
+// getUserMedia weigert met InvalidStateError als het document niet 'volledig
+// actief' is: onveilige herkomst, in een iframe, of een verstopte pagina.
+// Welke van de drie het is, kun je beter aflezen dan raden.
+function omgeving() {
+  const webkit = /^((?!chrome|android|crios|fxios).)*safari/i.test(navigator.userAgent);
+  return [
+    location.protocol,
+    window.isSecureContext ? 'secureContext' : 'NIET-secure',
+    // Safari eist echte https voor de microfoon, ook op localhost. Daar is
+    // isSecureContext wél true, dus die vlag alleen zegt niets.
+    (webkit && location.protocol !== 'https:') ? 'SAFARI-EIST-HTTPS' : '',
+    window.top === window.self ? '' : 'IN-FRAME',
+    navigator.standalone ? 'homescreen' : '',
+    document.visibilityState !== 'visible' ? document.visibilityState : '',
+    typeof MediaRecorder === 'undefined' ? 'geen-MediaRecorder' : ''
+  ].filter(Boolean).join(' \u00b7 ');
+}
+
+window.addEventListener('error', e => toon('fout@' + stap + ': ' + (e.message || e.type)));
+window.addEventListener('unhandledrejection', e =>
+  toon('fout@' + stap + ': ' + ((e.reason && (e.reason.name || e.reason.message)) || e.reason)));
+
+const AC = window.AudioContext || window.webkitAudioContext;
+let ac = new AC({ latencyHint: 'interactive' });
+let stap = 'start';
+try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {}
+
+// id -> { buf, len, peak, peaks, auto: {s, e} }
+const samples = new Map();
+
+// iOS sluit de AudioContext na een onderbreking (telefoontje, lang op de
+// achtergrond). Op een gesloten context gooit resume() InvalidStateError en
+// werkt daarna niets meer: geen opname, geen weergave. Dan een nieuwe maken.
+function unlock() {
+  stap = 'unlock';
+  if (ac.state === 'closed') {
+    try { ac = new AC({ latencyHint: 'interactive' }); } catch (e) { toon('nieuw: ' + e.name); return; }
+    samples.clear();
+    Promise.all(state.tracks.map(t => loadSample(t.id))).then(render);
+    return;
+  }
+  if (ac.state !== 'running') {
+    try {
+      const p = ac.resume();
+      if (p && p.catch) p.catch(e => toon('resume: ' + (e.name || e.message)));
+    } catch (e) { toon('resume: ' + (e.name || e.message)); }
+  }
+}
+
+function decode(arrayBuffer) {
+  return new Promise((res, rej) => {
+    const p = ac.decodeAudioData(arrayBuffer, res, rej);
+    if (p && p.then) p.then(res, rej);
+  });
+}
+
+// Zoek het luidste moment en loop van daaruit terug tot de laatste echte
+// stilte. Een klikje of ademje vóór het geluid valt zo buiten de knip;
+// "eerste sample boven een drempel" pakte juist dat klikje.
+// MediaRecorder levert soms een stereobestand waarin alleen links geluid
+// staat. Dat klinkt dan eenzijdig; een echte monobuffer gaat naar beide kanten.
+function toMono(buf) {
+  if (buf.numberOfChannels === 1) return buf;
+  const n = buf.length, chans = [], energy = [];
+  for (let c = 0; c < buf.numberOfChannels; c++) {
+    const d = buf.getChannelData(c);
+    let e = 0;
+    for (let i = 0; i < n; i += 16) e += d[i] * d[i];
+    chans.push(d); energy.push(e);
+  }
+  const loud = energy.indexOf(Math.max.apply(null, energy));
+  const soft = Math.min.apply(null, energy.filter((_, c) => c !== loud));
+  const out = ac.createBuffer(1, n, buf.sampleRate);
+  const o = out.getChannelData(0);
+  if (soft < energy[loud] * 0.01) {
+    o.set(chans[loud]); // stille kant: middelen zou het volume halveren
+  } else {
+    for (let i = 0; i < n; i++) {
+      let sum = 0;
+      for (let c = 0; c < chans.length; c++) sum += chans[c][i];
+      o[i] = sum / chans.length;
+    }
+  }
+  return out;
+}
+
+function analyse(input) {
+  const buf = toMono(input);
+  const d = buf.getChannelData(0), sr = buf.sampleRate;
+  const hop = Math.max(1, Math.round(sr * 0.001));   // 1 ms
+  const win = Math.max(hop, Math.round(sr * 0.005)); // 5 ms
+  const frames = Math.max(1, Math.floor((d.length - win) / hop) + 1);
+
+  let peak = 0;
+  for (let i = 0; i < d.length; i++) { const a = Math.abs(d[i]); if (a > peak) peak = a; }
+
+  const env = new Float32Array(frames);
+  let peakEnv = 0, pk = 0;
+  for (let f = 0; f < frames; f++) {
+    let sum = 0;
+    const a = f * hop, b = Math.min(d.length, a + win);
+    for (let j = a; j < b; j++) sum += d[j] * d[j];
+    const r = Math.sqrt(sum / Math.max(1, b - a));
+    env[f] = r;
+    if (r > peakEnv) { peakEnv = r; pk = f; }
+  }
+
+  // Ruisvloer als 20e percentiel: schaalt mee met een rumoerige kamer.
+  const sorted = Float32Array.from(env).sort();
+  const floor = sorted[Math.floor(frames * 0.2)] || 0;
+
+  const quietIn = Math.max(peakEnv * 0.06, floor * 1.6);
+  const quietOut = Math.max(peakEnv * 0.03, floor * 1.6);
+  const RUN_IN = 15, RUN_OUT = 40; // ms stilte die telt als scheiding
+
+  let onset = 0, run = 0;
+  for (let f = pk; f >= 0; f--) {
+    if (env[f] < quietIn) { if (++run >= RUN_IN) { onset = f + run; break; } }
+    else run = 0;
+  }
+  let tail = frames - 1; run = 0;
+  for (let f = pk; f < frames; f++) {
+    if (env[f] < quietOut) { if (++run >= RUN_OUT) { tail = f - run; break; } }
+    else run = 0;
+  }
+
+  const len = buf.duration;
+  let s = Math.max(0, onset * hop / sr - 0.003);
+  let e = Math.min(len, (tail * hop + win) / sr + 0.02);
+  if (e - s < MIN_LEN) { s = 0; e = len; }
+
+  const n = 96, peaks = new Array(n).fill(0), span = d.length / n;
+  for (let i = 0; i < n; i++) {
+    let m = 0;
+    const a = Math.floor(i * span), b = Math.floor((i + 1) * span);
+    for (let j = a; j < b; j++) { const v = Math.abs(d[j]); if (v > m) m = v; }
+    peaks[i] = peak > 0 ? m / peak : 0;
+  }
+
+  return { buf, len, peak, peaks, auto: { s, e } };
+}
+
+async function loadSample(id) {
+  const blob = await getSample(id);
+  if (!blob) return null;
+  try {
+    stap = 'decode';
+    const s = analyse(await decode(await blob.arrayBuffer()));
+    samples.set(id, s);
+    return s;
+  } catch (e) { return null; }
+}
+
+// Handmatige knip wint van de automatische; volume schaalt mee met wat
+// er binnen de knip staat, anders normaliseert een weggeknipte tik.
+function region(track) {
+  const s = samples.get(track.id);
+  if (!s) return null;
+  const tr = track.trim || s.auto;
+  const st = Math.max(0, Math.min(tr.s, s.len - MIN_LEN));
+  const en = Math.max(st + MIN_LEN, Math.min(tr.e, s.len));
+  const n = s.peaks.length;
+  const a = Math.max(0, Math.floor(st / s.len * n));
+  const b = Math.min(n, Math.ceil(en / s.len * n));
+  let m = 0;
+  for (let i = a; i < b; i++) if (s.peaks[i] > m) m = s.peaks[i];
+  const p = m * s.peak;
+  // Halve normalisatie: zacht opgenomen blijft zachter, hard blijft harder,
+  // maar niets valt weg. Zo is "nog eens opnemen" je volumeknop.
+  return { offset: st, dur: en - st, gain: p > 0.001 ? Math.min(6, Math.pow(0.9 / p, 0.6)) : 1 };
+}
+
+function trigger(track, when) {
+  const r = region(track);
+  if (!r) return;
+  const src = ac.createBufferSource();
+  src.buffer = samples.get(track.id).buf;
+  const g = ac.createGain();
+  g.gain.value = r.gain;
+  src.connect(g).connect(ac.destination);
+  src.start(when, r.offset, r.dur);
+}
+
+/* ---------- sequencer ---------- */
+
+let state = { bpm: 100, micName: null, outId: null, tracks: [] };
+let playing = false, step = 0, nextTime = 0, ticker = null, drawQ = [], nowStep = -1;
+
+const stepDur = () => 60 / state.bpm / 4;
+
+function start() {
+  const wasOpen = !!stream;
+  if (wasOpen) { softRelease(); releaseSoon(); } // microfoon blijft warm
+  unlock();
+  playing = true;
+  step = 0; drawQ = [];
+  nextTime = ac.currentTime + (wasOpen ? 0.45 : 0.08);
+  ticker = setInterval(schedule, 25);
+  schedule();
+  requestAnimationFrame(frame);
+  elPlay.classList.add('on');
+  elPlay.innerHTML = '&#9632;';
+}
+
+function stop() {
+  playing = false;
+  clearInterval(ticker);
+  drawQ = [];
+  paintNow(-1);
+  elPlay.classList.remove('on');
+  elPlay.innerHTML = '&#9654;';
+}
+
+// Vooruit plannen op de audioklok; setInterval alleen als wekker.
+function schedule() {
+  const horizon = ac.currentTime + 0.12;
+  while (nextTime < horizon) {
+    for (const t of state.tracks) {
+      if (!silenced(t) && t.steps[step]) trigger(t, nextTime);
+    }
+    drawQ.push({ step, time: nextTime });
+    nextTime += stepDur();
+    step = (step + 1) % STEPS;
+  }
+}
+
+// Waar zit de loop nu? nextTime/step wijzen naar de eerstvolgende nog niet
+// geplande stap, dus tel daarvandaan terug. De uitgang loopt een fractie
+// achter op de audioklok; zonder die correctie landt elke tik te laat.
+function nearestStep() {
+  if (!playing) return -1;
+  const d = stepDur();
+  const lat = ac.outputLatency || ac.baseLatency || 0;
+  const k = Math.round((ac.currentTime - lat - nextTime) / d);
+  return ((step + k) % STEPS + STEPS) % STEPS;
+}
+
+function frame() {
+  if (!playing) return;
+  while (drawQ.length && drawQ[0].time <= ac.currentTime) nowStep = drawQ.shift().step;
+  paintNow(nowStep);
+  requestAnimationFrame(frame);
+}
+
+/* ---------- opnemen ---------- */
+
+let stream = null, rec = null, idleTimer = null, lastOpenMs = 0, micId = null;
+let devices = [];
+
+async function getStream() {
+  // iOS kan een openstaande microfoon onder je vandaan trekken (routewissel,
+  // telefoontje, app naar de achtergrond). Het spoor blijft dan bestaan maar
+  // is 'ended', en daar weigert MediaRecorder op met InvalidStateError.
+  if (stream) {
+    const t = stream.getAudioTracks()[0];
+    if (t && t.readyState === 'live') { clearTimeout(idleTimer); return stream; }
+    releaseStream();
+  }
+  const base = { echoCancellation: false, noiseSuppression: false, autoGainControl: false };
+  // Alleen een id meesturen als jouw keuze nu ook echt bestaat. Een { exact }
+  // die niet klopt mislukt eerst en kost dan een hele tweede getUserMedia.
+  const id = micId;
+  const t0 = Date.now();
+  stap = 'gum';
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    throw new Error('geen mediaDevices (https nodig?)');
+  }
+  // Bij het laden en na elke opname zetten we de audiosessie op 'playback',
+  // want daar klinken AirPods goed. Maar in die stand weigert WebKit
+  // getUserMedia met InvalidStateError. Dus eerst omzetten naar opnemen.
+  try { if (navigator.audioSession) navigator.audioSession.type = 'play-and-record'; } catch (e) {}
+  // Een verzoek dat nooit antwoordt laat de knop voor altijd hangen.
+  const metKlok = q => Promise.race([
+    navigator.mediaDevices.getUserMedia({ audio: q }),
+    new Promise((_, bad) => setTimeout(() => bad(new Error('microfoon reageert niet')), 10000))
+  ]);
+  try {
+    stream = await metKlok(id ? Object.assign({ deviceId: { exact: id } }, base) : base);
+  } catch (e) {
+    // Sommige iOS-versies struikelen over de losse audio-opties. Val terug op
+    // de kaalst mogelijke vraag voordat we het opgeven.
+    try {
+      stream = await metKlok(id ? base : true);
+    } catch (e2) {
+      try { if (navigator.audioSession) navigator.audioSession.type = 'play-and-record'; } catch (x) {}
+      try {
+        stream = await metKlok(true);
+      } catch (e3) {
+        throw e3.name === 'InvalidStateError' ? e3 : e;
+      }
+    }
+  }
+  stap = 'spoor';
+  const spoor = stream.getAudioTracks()[0];
+  if (spoor) spoor.addEventListener('ended', () => releaseStream());
+  lastOpenMs = Date.now() - t0;
+  refreshDevices(true); // namen zijn nu zichtbaar, dus deze lijst telt
+  setTimeout(() => refreshDevices(true), 600); // iOS is soms traag met publiceren
+  return stream;
+}
+
+// Een open microfoon houdt iOS in gespreksstand, dus AirPods klinken dan als
+// een telefoontje. Maar meteen sluiten maakt elke volgende opname traag.
+// Daarom: openhouden tussen opnames door, loslaten zodra je gaat afspelen.
+function releaseStream() {
+  clearTimeout(idleTimer);
+  if (stream) {
+    for (const t of stream.getTracks()) t.stop();
+    stream = null;
+  }
+  try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {}
+}
+// Alleen de sessie terugzetten, de microfoon laten leven. Scheelt bij de
+// volgende opname de hele Bluetooth-onderhandeling; de volledige sluiting
+// gebeurt daarna vanzelf via de rusttijd.
+function softRelease() {
+  try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {}
+}
+
+function releaseSoon() {
+  clearTimeout(idleTimer);
+  idleTimer = setTimeout(releaseStream, 60000);
+}
+document.addEventListener('visibilitychange', () => { if (document.hidden) releaseStream(); });
+
+function pickMime() {
+  if (typeof MediaRecorder === 'undefined' || !MediaRecorder.isTypeSupported) return '';
+  for (const m of ['audio/webm', 'audio/mp4', 'audio/ogg']) {
+    if (MediaRecorder.isTypeSupported(m)) return m;
+  }
+  return '';
+}
+
+// Live meeschrijven in de golfvorm: je ziet je eigen geluid binnenkomen,
+// dus je hoeft niet te raden of de opname al loopt.
+function startMeter(els, srcStream) {
+  let live = true, raf = 0, node = null;
+  try {
+    node = ac.createMediaStreamSource(srcStream);
+    const an = ac.createAnalyser();
+    an.fftSize = 512;
+    node.connect(an); // bewust niet naar de speakers
+    const cv = els.cv, c = cv.getContext('2d');
+    const w = cv.clientWidth, h = cv.clientHeight, dpr = window.devicePixelRatio || 1;
+    cv.width = w * dpr; cv.height = h * dpr;
+    c.scale(dpr, dpr);
+    c.clearRect(0, 0, w, h);
+    const buf = new Uint8Array(an.fftSize);
+    const t0 = Date.now();
+    const tick = () => {
+      if (!live) return;
+      an.getByteTimeDomainData(buf);
+      let sum = 0;
+      for (let i = 0; i < buf.length; i++) { const v = (buf[i] - 128) / 128; sum += v * v; }
+      const rms = Math.sqrt(sum / buf.length);
+      const x = Math.min(1, (Date.now() - t0) / MAX_REC_MS) * w;
+      const bh = Math.max(2, Math.min(1, rms * 3) * h * 0.9);
+      c.fillStyle = '#ff6b6b';
+      c.fillRect(Math.max(0, x - 2), (h - bh) / 2, 2, bh);
+      raf = requestAnimationFrame(tick);
+    };
+    tick();
+  } catch (e) {}
+  return () => {
+    live = false;
+    cancelAnimationFrame(raf);
+    if (node) { try { node.disconnect(); } catch (e) {} }
+  };
+}
+
+async function startRec(track, els, herkansing) {
+  if (rec) return;
+  unlock();
+  const resume = playing;
+  if (playing) stop();
+  rec = { track, els, cancelled: false, mr: null, stopMeter: null, limit: null, giveUp: null };
+  els.rec.classList.add('waiting');
+  els.root.classList.add('waiting');
+  els.hint.textContent = stream ? '' : 'microfoon openen…';
+
+  let s;
+  try { s = await getStream(); }
+  catch (e) {
+    endRec(); releaseStream();
+    const naam = e.name || e.message || 'geen microfoon';
+
+    if (naam === 'InvalidStateError') {
+      // Oorzaak 1: Safari geeft de microfoon alleen op echte https. Op
+      // localhost is isSecureContext wél true, dus die vlag verraadt het niet.
+      const webkit = /^((?!chrome|android|crios|fxios).)*safari/i.test(navigator.userAgent);
+      if (webkit && location.protocol !== 'https:') {
+        els.hint.textContent = 'https nodig';
+        toon('Safari geeft de microfoon alleen via https \u00b7 nu: ' + location.origin);
+        return;
+      }
+      els.hint.textContent = 'microfoon geweigerd';
+      toon('InvalidStateError \u00b7 audio=' + ac.state +
+        ' \u00b7 sessie=' + ((navigator.audioSession && navigator.audioSession.type) || 'n.v.t.') +
+        ' \u00b7 ' + omgeving());
+      return;
+    }
+
+    els.hint.textContent = naam;
+    toon('mic@' + stap + ': ' + naam + ' \u00b7 ' + omgeving());
+    return;
+  }
+  if (!rec || rec.cancelled) { endRec(); releaseSoon(); render(); return; }
+
+  const mime = pickMime();
+  const chunks = [];
+  const t0 = Date.now();
+  let klaar = false;
+
+  // Eén uitgang, hoe de opname ook eindigt: netjes, vastgelopen of afgekapt.
+  async function afronden() {
+    if (klaar) return;
+    klaar = true;
+    endRec();
+    releaseSoon();
+    const blob = new Blob(chunks, { type: mime || 'audio/webm' });
+    if (blob.size > 0 && Date.now() - t0 >= MIN_REC_MS) {
+      stap = 'opslaan';
+      await putSample(track.id, blob);
+      samples.delete(track.id);
+      track.trim = null;
+      await loadSample(track.id);
+      save();
+    }
+    render();
+    refreshDevices(!!stream);
+    if (resume) start();
+  }
+
+  let mr;
+  try {
+    stap = 'recorder';
+    mr = new MediaRecorder(s, mime ? { mimeType: mime } : undefined);
+    mr.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
+    mr.onstop = afronden;
+    mr.onerror = () => { toon('opnamefout'); afronden(); };
+    stap = 'mr.start';
+    mr.start();
+  } catch (e) {
+    // Meestal InvalidStateError door een stream die niet meer leeft. Verse
+    // microfoon halen en het stilletjes één keer opnieuw proberen.
+    endRec(); releaseStream();
+    if (!herkansing) return startRec(track, els, true);
+    els.hint.textContent = e.name || 'lukt niet';
+    toon('recorder@' + stap + ': ' + (e.name || e.message));
+    return;
+  }
+
+  rec.mr = mr;
+  stap = 'meter';
+  rec.stopMeter = startMeter(els, s);
+  els.rec.classList.remove('waiting');
+  els.root.classList.remove('waiting');
+  els.rec.classList.add('armed');
+  els.rec.innerHTML = '&#9632;';
+  els.root.classList.add('recording');
+  els.hint.textContent = '';
+  rec.limit = setTimeout(stopRec, MAX_REC_MS);
+  rec.afronden = afronden;
+}
+
+function stopRec() {
+  if (!rec) return;
+  const r = rec;
+  if (!r.mr) { r.cancelled = true; endRec(); return; } // hing nog te openen
+  clearTimeout(r.limit);
+  if (r.mr.state !== 'recording') { r.afronden(); return; }
+  try { r.mr.stop(); } catch (e) { toon('stop: ' + (e.name || e.message)); }
+  // MediaRecorder op iOS vuurt onstop niet altijd; dan zelf afronden.
+  r.giveUp = setTimeout(() => { toon('opname afgebroken'); r.afronden(); }, 3000);
+}
+
+function endRec() {
+  if (!rec) return;
+  const r = rec;
+  rec = null;
+  clearTimeout(r.limit);
+  clearTimeout(r.giveUp);
+  if (r.stopMeter) r.stopMeter();
+  r.els.rec.classList.remove('armed', 'waiting');
+  r.els.rec.innerHTML = '&#9679;';
+  r.els.root.classList.remove('recording', 'waiting');
+  r.els.hint.classList.remove('rec');
+}
+
+/* ---------- apparaten ---------- */
+
+const elMic = document.getElementById('mic');
+const elMicWrap = document.getElementById('micwrap');
+const elMicNote = document.getElementById('micnote');
+const elOut = document.getElementById('out');
+const elOutWrap = document.getElementById('outwrap');
+// Alleen Chrome-achtigen kunnen de uitgang kiezen; Safari en iOS niet.
+const canPickOut = typeof AudioContext !== 'undefined' && 'setSinkId' in AudioContext.prototype;
+
+// Apparaat-ids veranderen per sessie, namen niet. Dus bewaren we de naam en
+// zoeken we het id er elke keer opnieuw bij. Alleen de uitgang heeft echt een
+// id nodig, want setSinkId werkt daarop.
+function fillSelect(sel, devs, chosen, leeg, key) {
+  sel.innerHTML = '';
+  const auto = document.createElement('option');
+  auto.value = '';
+  auto.textContent = devs.length ? 'automatisch' : leeg;
+  sel.appendChild(auto);
+  for (const d of devs) {
+    const o = document.createElement('option');
+    o.value = d[key];
+    o.textContent = d.label;
+    sel.appendChild(o);
+  }
+  sel.value = devs.some(d => d[key] === chosen) ? chosen : '';
+}
+
+async function refreshDevices(live) {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+  let devs = [];
+  try { devs = await navigator.mediaDevices.enumerateDevices(); } catch (e) { return; }
+  // Safari geeft namen alleen prijs zolang de microfoon leeft, en levert met
+  // gesloten microfoon soms een kortere lijst. Zo'n korte lijst mag een goede
+  // niet overschrijven, anders verdwijnt je keuze zomaar.
+  const named = devs.filter(d => d.label);
+  if (named.length && (live || named.length >= devices.length)) devices = named;
+  const ins = devices.filter(d => d.kind === 'audioinput');
+
+  // Naam terugvertalen naar het id van nu. Is het apparaat er even niet (AirPods
+  // uit), dan blijft je voorkeur staan en pakken we zolang de standaard.
+  const gekozen = ins.find(d => d.label === state.micName);
+  micId = gekozen ? gekozen.deviceId : null;
+
+  elMicWrap.hidden = ins.length < 2;
+  if (ins.length >= 2) fillSelect(elMic, ins, state.micName, 'microfoon', 'label');
+
+  const actief = stream && stream.getAudioTracks()[0];
+  const naam = (actief && actief.label) || (gekozen && gekozen.label) ||
+    (ins.length === 1 && ins[0].label) || 'standaard';
+  const staat = ac.state === 'running' ? '' : ' [' + ac.state + ']';
+  const duur = lastOpenMs ? ' \u00b7 ' + (lastOpenMs / 1000).toFixed(1).replace('.', ',') + 's' : '';
+  elMicNote.textContent = 'mic: ' + naam + duur + staat;
+
+  const outs = canPickOut ? devices.filter(d => d.kind === 'audiooutput') : [];
+  elOutWrap.hidden = outs.length < 2;
+  if (!elOutWrap.hidden) fillSelect(elOut, outs, state.outId, 'uitgang', 'deviceId');
+}
+
+async function applyOut() {
+  if (!canPickOut) return;
+  try { await ac.setSinkId(state.outId || ''); } catch (e) {}
+}
+
+elMic.addEventListener('change', () => {
+  state.micName = elMic.value || null;
+  releaseStream(); // volgende opname pakt het nieuwe apparaat
+  save();
+  refreshDevices(!!stream);
+});
+elOut.addEventListener('change', () => {
+  state.outId = elOut.value || null;
+  applyOut();
+  save();
+});
+if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+  navigator.mediaDevices.addEventListener('devicechange', () => refreshDevices(true));
+}
+
+/* ---------- weergave ---------- */
+
+const elHelp = document.getElementById('help');
+const elLead = document.querySelector('.lead');
+// De uitleg staat er voor de eerste keer; zodra je iets hebt gemaakt is het
+// scherm belangrijker dan de handleiding. Met ? haal je 'm terug.
+let helpOpen = null;
+elHelp.addEventListener('click', () => {
+  helpOpen = elLead.hidden;
+  elLead.hidden = !helpOpen;
+});
+
+const elTracks = document.getElementById('tracks');
+const elPlay = document.getElementById('play');
+const elBpm = document.getElementById('bpm');
+const elBpmv = document.getElementById('bpmv');
+let cells = [], rows = [], redraws = [], armedDel = null, soloId = null;
+
+// Eén laag solo zetten zwijgt de rest; zonder solo geldt gewoon dempen.
+const silenced = t => soloId ? t.id !== soloId : t.muted;
+
+function paintSilenced() {
+  state.tracks.forEach((t, i) => {
+    const r = rows[i];
+    if (!r) return;
+    r.root.classList.toggle('muted', silenced(t));
+    r.mute.textContent = soloId === t.id ? 's' : 'm';
+    r.mute.classList.toggle('solo', soloId === t.id);
+    r.mute.classList.toggle('on', t.muted && soloId !== t.id);
+  });
+}
+
+// Lang indrukken, waarbij de tik die erop volgt niet meer meetelt.
+function onLongPress(el, ms, fn) {
+  let timer = null, at = null, fired = false;
+  el.addEventListener('pointerdown', e => {
+    fired = false;
+    at = { x: e.clientX, y: e.clientY };
+    clearTimeout(timer);
+    timer = setTimeout(() => { fired = true; fn(); }, ms);
+  });
+  const cancel = () => { clearTimeout(timer); at = null; };
+  el.addEventListener('pointerup', cancel);
+  el.addEventListener('pointercancel', cancel);
+  el.addEventListener('pointermove', e => {
+    if (!at) return;
+    if (Math.abs(e.clientX - at.x) > 8 || Math.abs(e.clientY - at.y) > 8) cancel();
+  });
+  return () => fired;
+}
+
+function disarmDel() {
+  if (!armedDel) return;
+  clearTimeout(armedDel.timer);
+  armedDel.el.classList.remove('warn');
+  armedDel.el.innerHTML = armedDel.label;
+  armedDel = null;
+}
+
+// Weggooien vraagt om een tweede tik; het opschrift zegt wat er dan gebeurt.
+function armAction(el, warn) {
+  const label = el.innerHTML;
+  disarmDel();
+  el.classList.add('warn');
+  el.textContent = warn;
+  armedDel = { el, label, timer: setTimeout(disarmDel, 3000) };
+}
+document.addEventListener('pointerdown', e => {
+  if (armedDel && e.target !== armedDel.el) disarmDel();
+}, true);
+
+// Elke laag zijn eigen kleur: zo hoort een golfvorm zichtbaar bij zijn rij.
+// Zestien tinten met de hand kiezen gaat mis, dus reken ze uit in OKLCH:
+// daar staat helderheid los van tint, zodat geen laag harder schreeuwt dan
+// de rest. De gulden hoek legt buren ver uit elkaar op de kleurencirkel.
+function oklch(L, C, deg) {
+  const h = deg * Math.PI / 180;
+  const a = C * Math.cos(h), bb = C * Math.sin(h);
+  const l_ = L + 0.3963377774 * a + 0.2158037573 * bb;
+  const m_ = L - 0.1055613458 * a - 0.0638541728 * bb;
+  const s_ = L - 0.0894841775 * a - 1.2914855480 * bb;
+  const l = l_ * l_ * l_, m = m_ * m_ * m_, q = s_ * s_ * s_;
+  return '#' + [
+     4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * q,
+    -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * q,
+    -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * q
+  ].map(c => {
+    const v = c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(Math.max(0, c), 1 / 2.4) - 0.055;
+    return Math.round(Math.max(0, Math.min(1, v)) * 255).toString(16).padStart(2, '0');
+  }).join('');
+}
+// Zestien tinten passen niet op één cirkel zonder dat 1 en 9 op elkaar
+// gaan lijken. Dus twee families: acht lichte, daarna acht verzadigde.
+const COLORS = Array.from({ length: MAX_TRACKS }, (_, i) =>
+  oklch(i < 8 ? 0.84 : 0.70, i < 8 ? 0.12 : 0.165, (230 + i * 137.508) % 360));
+
+const uid = () => 't' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+
+function newTrack() {
+  return { id: uid(), steps: new Array(STEPS).fill(false), muted: false, trim: null };
+}
+
+// Hele opname blijft zichtbaar; wat buiten de knip valt staat gedimd,
+// zodat je een weggeknipt stukje ook weer terug kunt slepen.
+function drawWave(cv, s, tr, col) {
+  const w = cv.clientWidth, h = cv.clientHeight, dpr = window.devicePixelRatio || 1;
+  if (!w || !h) return;
+  cv.width = w * dpr; cv.height = h * dpr;
+  const c = cv.getContext('2d');
+  c.scale(dpr, dpr);
+  c.clearRect(0, 0, w, h);
+  const n = s.peaks.length, bw = w / n;
+  for (let i = 0; i < n; i++) {
+    const mid = (i + 0.5) / n * s.len;
+    c.fillStyle = (mid >= tr.s && mid <= tr.e) ? col : '#3a3a42';
+    const bh = Math.max(1, s.peaks[i] * h * 0.8);
+    c.fillRect(i * bw, (h - bh) / 2, Math.max(1, bw - 1), bh);
+  }
+}
+
+function render() {
+  disarmDel();
+  const heeftIets = state.tracks.length > 1 ||
+    state.tracks.some(t => samples.has(t.id) || t.steps.some(Boolean));
+  if (helpOpen === null) elLead.hidden = heeftIets;
+  elTracks.classList.toggle('dense', state.tracks.length > 8);
+  elTracks.innerHTML = '';
+  cells = [];
+  rows = [];
+  redraws = [];
+
+  state.tracks.forEach((t, ti) => {
+    const root = document.createElement('div');
+    const col = COLORS[ti % COLORS.length];
+    root.className = 'track' + (silenced(t) ? ' muted' : '');
+    root.style.setProperty('--c', col);
+
+    const head = document.createElement('div');
+    head.className = 'thead';
+
+    const recBtn = document.createElement('button');
+    recBtn.className = 'rec';
+    recBtn.innerHTML = '&#9679;';
+    recBtn.setAttribute('aria-label', 'opnemen');
+
+    const wrap = document.createElement('div');
+    wrap.className = 'wavewrap';
+    const clip = document.createElement('div');
+    clip.className = 'waveclip';
+    const cv = document.createElement('canvas');
+    const hint = document.createElement('span');
+    hint.className = 'hint';
+    clip.append(cv, hint);
+    wrap.appendChild(clip);
+
+    const mute = document.createElement('button');
+    mute.className = 'tbtn' + (soloId === t.id ? ' solo' : (t.muted ? ' on' : ''));
+    mute.textContent = soloId === t.id ? 's' : 'm';
+    mute.setAttribute('aria-label', 'dempen');
+
+    const del = document.createElement('button');
+    del.className = 'tbtn';
+    del.innerHTML = '&#215;';
+    del.setAttribute('aria-label', 'verwijderen');
+
+    head.append(recBtn, wrap, mute, del);
+    root.appendChild(head);
+
+    const steps = document.createElement('div');
+    steps.className = 'steps';
+    const rowCells = [];
+
+    for (let g = 0; g < 4; g++) {
+      const grp = document.createElement('div');
+      grp.className = 'group';
+      for (let s = 0; s < 4; s++) {
+        const i = g * 4 + s;
+        const b = document.createElement('button');
+        b.className = 'cell' + (i % 4 === 0 ? ' beat' : '') + (t.steps[i] ? ' on' : '');
+        b.addEventListener('click', () => {
+          if (holdFired()) return; // net gewist met een lange druk
+          unlock();
+          t.steps[i] = !t.steps[i];
+          b.classList.toggle('on', t.steps[i]);
+          if (t.steps[i] && !playing) trigger(t, ac.currentTime);
+          save();
+        });
+        grp.appendChild(b);
+        rowCells.push(b);
+      }
+      steps.appendChild(grp);
+    }
+    // Lang indrukken wist de rij. Geen extra knop, en je moet het menen.
+    const holdFired = onLongPress(steps, 600, () => {
+      if (!t.steps.some(Boolean)) return;
+      t.steps.fill(false);
+      for (const c of rowCells) c.classList.remove('on');
+      save();
+    });
+
+    root.appendChild(steps);
+    elTracks.appendChild(root);
+    cells.push(rowCells);
+    rows.push({ root, mute });
+
+    const smp = samples.get(t.id);
+    if (smp) {
+      const trim = () => t.trim || smp.auto;
+      const hl = document.createElement('div'); hl.className = 'handle l';
+      const hr = document.createElement('div'); hr.className = 'handle r';
+      wrap.append(hl, hr);
+
+      const place = () => {
+        const tr = trim();
+        hl.style.left = (tr.s / smp.len * 100) + '%';
+        hr.style.left = (tr.e / smp.len * 100) + '%';
+      };
+      const paint = () => { drawWave(cv, smp, trim(), col); place(); };
+      requestAnimationFrame(paint);
+      redraws.push(paint);
+
+      const grab = (el, side) => {
+        el.addEventListener('pointerdown', e => {
+          e.preventDefault(); e.stopPropagation();
+          el.setPointerCapture(e.pointerId);
+          const box = wrap.getBoundingClientRect();
+          const move = ev => {
+            const x = Math.max(0, Math.min(1, (ev.clientX - box.left) / box.width));
+            const at = x * smp.len;
+            const cur = trim();
+            const next = { s: cur.s, e: cur.e };
+            if (side === 'l') next.s = Math.min(at, next.e - MIN_LEN);
+            else next.e = Math.max(at, next.s + MIN_LEN);
+            t.trim = next;
+            paint();
+          };
+          const up = () => {
+            el.removeEventListener('pointermove', move);
+            el.removeEventListener('pointerup', up);
+            el.removeEventListener('pointercancel', up);
+            save();
+            unlock();
+            trigger(t, ac.currentTime);
+          };
+          el.addEventListener('pointermove', move);
+          el.addEventListener('pointerup', up);
+          el.addEventListener('pointercancel', up);
+        });
+      };
+      grab(hl, 'l');
+      grab(hr, 'r');
+    } else {
+      hint.textContent = 'tik ●';
+    }
+
+    // Tik om te openen, tik om te stoppen. Op iOS kan het openen van de
+    // microfoon seconden duren (Bluetooth moet van muziek- naar gespreksstand);
+    // met een tik valt dat wachten vóór je uitvoering in plaats van erdoorheen.
+    recBtn.addEventListener('contextmenu', e => e.preventDefault());
+    recBtn.addEventListener('click', () => {
+      if (rec) { if (rec.track === t) stopRec(); return; }
+      startRec(t, { rec: recBtn, hint, cv, root });
+    });
+
+    // Tikken tijdens het afspelen zet de tik op de dichtstbijzijnde stap:
+    // de maat komt uit je handen, de weergave blijft op de audioklok.
+    clip.addEventListener('click', () => {
+      unlock();
+      trigger(t, ac.currentTime);
+      const i = nearestStep();
+      if (i < 0 || t.steps[i]) return;
+      t.steps[i] = true;
+      rowCells[i].classList.add('on');
+      save();
+    });
+
+    const soloFired = onLongPress(mute, 500, () => {
+      soloId = soloId === t.id ? null : t.id;
+      paintSilenced();
+    });
+    mute.addEventListener('click', () => {
+      if (soloFired()) return;
+      if (soloId === t.id) { soloId = null; paintSilenced(); return; }
+      t.muted = !t.muted;
+      save();
+      paintSilenced();
+    });
+
+    // Twee tikken: een laag weggooien mag niet per ongeluk.
+    del.addEventListener('click', () => {
+      if (armedDel && armedDel.el === del) {
+        disarmDel();
+        if (soloId === t.id) soloId = null;
+        state.tracks.splice(ti, 1);
+        samples.delete(t.id);
+        delSample(t.id);
+        save();
+        render();
+        return;
+      }
+      armAction(del, 'weg?');
+    });
+  });
+
+  // Bij de grens de knop laten verdwijnen leest als kapot; liever zeggen
+  // dat het vol is. Acht is het aantal kleuren dat nog uit elkaar te houden is.
+  const add = document.createElement('button');
+  add.id = 'add';
+  if (state.tracks.length < MAX_TRACKS) {
+    add.textContent = '+ laag';
+    add.addEventListener('click', () => {
+      state.tracks.push(newTrack());
+      save();
+      render();
+    });
+  } else {
+    add.className = 'full';
+    add.disabled = true;
+    add.textContent = 'zestien lagen is vol';
+  }
+  elTracks.appendChild(add);
+
+  if (heeftIets) {
+    const reset = document.createElement('button');
+    reset.id = 'reset';
+    reset.textContent = 'opnieuw beginnen';
+    reset.addEventListener('click', () => {
+      if (armedDel && armedDel.el === reset) {
+        disarmDel();
+        if (playing) stop();
+        soloId = null;
+        samples.clear();
+        state.tracks = [newTrack()];
+        tx('samples', 'readwrite', st => st.clear()); // ook eventuele wezen
+        save();
+        render();
+        return;
+      }
+      armAction(reset, 'alles weg?');
+    });
+    elTracks.appendChild(reset);
+  }
+}
+
+let painted = -2;
+function paintNow(n) {
+  if (n === painted) return;
+  painted = n;
+  for (const row of cells) {
+    for (let i = 0; i < row.length; i++) row[i].classList.toggle('now', i === n);
+  }
+}
+
+/* ---------- start ---------- */
+
+const toggle = () => { playing ? stop() : start(); };
+elPlay.addEventListener('click', toggle);
+window.addEventListener('keydown', e => {
+  if (e.code !== 'Space' && e.key !== ' ') return;
+  e.preventDefault(); // anders drukt spatie de knop in die toevallig focus heeft
+  if (!e.repeat) toggle();
+});
+elBpm.addEventListener('input', () => {
+  state.bpm = +elBpm.value;
+  elBpmv.textContent = state.bpm + ' BPM';
+  save();
+});
+document.addEventListener('pointerdown', unlock, { once: true });
+let resizeRaf = 0;
+window.addEventListener('resize', () => {
+  cancelAnimationFrame(resizeRaf);
+  resizeRaf = requestAnimationFrame(() => { if (!rec) for (const f of redraws) f(); });
+});
+
+(async function init() {
+  let st = null;
+  try { st = await getState(); } catch (e) {}
+  if (st && Array.isArray(st.tracks)) {
+    state.bpm = Math.min(200, Math.max(50, +st.bpm || 100));
+    state.micName = st.micName || null;
+    state.outId = st.outId || null;
+    state.tracks = st.tracks.map(t => ({
+      id: String(t.id),
+      steps: Array.from({ length: STEPS }, (_, i) => !!(t.steps && t.steps[i])),
+      muted: !!t.muted,
+      trim: t.trim && isFinite(t.trim.s) && isFinite(t.trim.e) ? { s: +t.trim.s, e: +t.trim.e } : null
+    }));
+  }
+  if (!state.tracks.length) state.tracks = [newTrack()];
+  elBpm.value = state.bpm;
+  elBpmv.textContent = state.bpm + ' BPM';
+  render();
+  refreshDevices();
+  applyOut();
+  await Promise.all(state.tracks.map(t => loadSample(t.id)));
+  render();
+})();
+</script>
+</body>
+</html>

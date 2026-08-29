@@ -4,3 +4,17 @@ cache
 .env
 vendor
 counter.txt
+
+# uit garage-8
+.claude
+venv
+.venv
+__pycache__
+*.pyc
+node_modules
+evolving-hue-lights/config.json
+philips-hue-ambient-visual/hue_config.json
+verzoekjes/token.json
+weer-haiku/today.txt
+weer-haiku/today.json
+weer-haiku/haiku_log.jsonl

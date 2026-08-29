@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Maas — erosie</title>
+<style>
+  html, body { margin:0; padding:0; height:100%; background:#07080a; overflow:hidden; cursor:none; }
+  canvas { display:block; width:100%; height:100%; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script src="../maas.js"></script>
+<script>
+// maas — exp-0: EROSIE
+// ============================================================================
+// Een vlakte met een flauwe helling, verder niets. Daar laat de echte afvoer van
+// de Maas dertig jaar op los wat afvoer in de wereld ook doet: bij hoogwater
+// snijdt water zich in en voert materiaal af, bij laagwater zakt het bezinksel
+// terug en slibben de geulen dicht.
+//
+// Er wordt niets vertaald. Geen kleur die "veel water" betekent, geen vorm die
+// iets voorstelt. Wat je ziet is het dal dat er na dertig jaar ligt, en januari
+// 2011 en juli 2021 hebben er sporen in achtergelaten die er nooit meer uit
+// gaan. Het beeld heeft een geheugen.
+//
+// De insnijding volgt de stream-power-vergelijking E = K * A^m * S, dezelfde die
+// geomorfologen gebruiken: A is hoeveel land op een plek afwatert, S de helling.
+// Daarom lopen geulen samen tot grotere geulen, precies zoals in een echt
+// stroomgebied. K wordt aangedreven door de rivier: kwadratisch, want een
+// hoogwater doet in drie dagen meer dan een droge zomer in drie maanden.
+//
+// Bij het openen zie je die dertig jaar in ongeveer een halve minuut gebeuren.
+// Daarna staat het stil en komt er nog één dag per dag bij, wat je niet zult zien.
+
+// ---- KERN ----
+function maakTerrein(n, seed, ruis, helling) {
+  // deterministische ruis: iedereen die de pagina opent begint op dezelfde vlakte
+  let s = seed >>> 0;
+  const rnd = () => {
+    s = (s + 0x6D2B79F5) >>> 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  const h = new Float32Array(n * n);
+  for (let oct = 0, amp = ruis, cel = 6; oct < 5; oct++, amp *= 0.5, cel *= 2) {
+    const m = Math.ceil(n / cel) + 2, g = new Float32Array(m * m);
+    for (let i = 0; i < m * m; i++) g[i] = rnd();
+    for (let y = 0; y < n; y++) {
+      const gy = y / cel, y0 = gy | 0, fy = gy - y0, wy = fy * fy * (3 - 2 * fy);
+      for (let x = 0; x < n; x++) {
+        const gx = x / cel, x0 = gx | 0, fx = gx - x0, wx = fx * fx * (3 - 2 * fx);
+        const a = g[y0 * m + x0], b = g[y0 * m + x0 + 1];
+        const c = g[(y0 + 1) * m + x0], d = g[(y0 + 1) * m + x0 + 1];
+        const t = a + (b - a) * wx;
+        h[y * n + x] += amp * (t + ((c + (d - c) * wx) - t) * wy);
+      }
+    }
+  }
+  for (let y = 0; y < n; y++)
+    for (let x = 0; x < n; x++)
+      h[y * n + x] += helling * (1 - y / (n - 1));    // afwatering naar de onderrand
+  return h;
+}
+
+function maakErosie(n, seed, o) {
+  o = Object.assign({
+    ruis: 0.12,        // oneffenheid van de vlakte om mee te beginnen
+    helling: 0.60,     // verval van boven naar beneden
+    K: 0.003,          // hoe gulzig hoogwater zich insnijdt
+    m: 0.5,            // exponent op de afwatering (0,5 is de gangbare waarde)
+    bezinking: 0.008,  // hoe hard laagwater de geulen weer dichtslibt
+    blok: 7,           // dagen die in één rekenstap worden samengenomen
+  }, o || {});
+
+  const h = maakTerrein(n, seed, o.ruis, o.helling);
+  const basis = h.slice();
+  const ontvanger = new Int32Array(n * n);
+  const afwatering = new Float32Array(n * n);
+  const steilte = new Float32Array(n * n);
+  const volgorde = new Int32Array(n * n);
+  const tmp = new Float32Array(n * n);
+  const emmers = new Int32Array(4096);
+
+  const DX = [1, -1, 0, 0, 1, 1, -1, -1], DY = [0, 0, 1, -1, 1, -1, 1, -1];
+  const DL = [1, 1, 1, 1, Math.SQRT2, Math.SQRT2, Math.SQRT2, Math.SQRT2];
+
+  // Waar loopt het water heen, en hoeveel land watert er op elke cel af?
+  function stroomveld() {
+    let lo = Infinity, hi = -Infinity;
+    for (let i = 0; i < n * n; i++) { if (h[i] < lo) lo = h[i]; if (h[i] > hi) hi = h[i]; }
+    const schaal = 4095 / Math.max(1e-9, hi - lo);
+
+    for (let y = 0; y < n; y++)
+      for (let x = 0; x < n; x++) {
+        const i = y * n + x;
+        if (y === n - 1) { ontvanger[i] = -1; steilte[i] = 0; continue; }  // uitstroom
+        let best = 0, bi = -1;
+        for (let k = 0; k < 8; k++) {
+          const xx = x + DX[k], yy = y + DY[k];
+          if (xx < 0 || xx >= n || yy < 0 || yy >= n) continue;
+          const s = (h[i] - h[yy * n + xx]) / DL[k];
+          if (s > best) { best = s; bi = yy * n + xx; }
+        }
+        ontvanger[i] = bi; steilte[i] = best;
+      }
+
+    // hoog naar laag sorteren met emmers; een gewone sort met vergelijkfunctie
+    // is hier tien keer zo duur en we hebben de precisie niet nodig
+    emmers.fill(0);
+    for (let i = 0; i < n * n; i++) emmers[4095 - (((h[i] - lo) * schaal) | 0)]++;
+    let som = 0;
+    for (let b = 0; b < 4096; b++) { const c = emmers[b]; emmers[b] = som; som += c; }
+    for (let i = 0; i < n * n; i++) volgorde[emmers[4095 - (((h[i] - lo) * schaal) | 0)]++] = i;
+
+    afwatering.fill(1);
+    for (let j = 0; j < n * n; j++) {
+      const i = volgorde[j], r = ontvanger[i];
+      if (r >= 0) afwatering[r] += afwatering[i];
+    }
+  }
+
+  function erodeer(kracht) {
+    for (let j = 0; j < n * n; j++) {
+      const i = volgorde[j], r = ontvanger[i];
+      if (r < 0 || steilte[i] <= 0) continue;
+      let e = kracht * Math.pow(afwatering[i], o.m) * steilte[i];
+      const ruimte = (h[i] - h[r]) * 0.5;
+      if (e > ruimte) e = ruimte;        // nooit dieper dan waar het water heen gaat
+      if (e > 0) h[i] -= e;
+    }
+  }
+
+  // laagwater: bezinksel zakt terug, de scherpe randen slijten af
+  function bezink(kracht) {
+    tmp.set(h);
+    for (let y = 1; y < n - 1; y++)
+      for (let x = 1; x < n - 1; x++) {
+        const i = y * n + x;
+        h[i] = tmp[i] + kracht * ((tmp[i - 1] + tmp[i + 1] + tmp[i - n] + tmp[i + n]) * 0.25 - tmp[i]);
+      }
+  }
+
+  let werk = 0, stil = 0, teller = 0;
+  return {
+    hoogte: h, basis, n, opties: o,
+    // p = waar de rivier die dag stond, 0 = laagste ooit, 1 = hoogste ooit.
+    // De dagen worden per blok opgeteld: een hoogwater van drie dagen telt zwaar,
+    // ook als het in dezelfde rekenstap valt als vier rustige dagen.
+    dag(p) {
+      werk += p * p;
+      stil += Math.max(0, 1 - p * 2.2);
+      if (++teller >= o.blok) {
+        stroomveld();
+        erodeer(o.K * werk);
+        if (stil > 0) bezink(Math.min(0.24, o.bezinking * stil));
+        werk = 0; stil = 0; teller = 0;
+      }
+    },
+  };
+}
+// ---- EINDE KERN ----
+
+(async function () {
+  const N = 192;
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d');
+  const beeld = ctx.createImageData(N, N);
+  const buffer = document.createElement('canvas');
+  buffer.width = buffer.height = N;
+  const bctx = buffer.getContext('2d');
+
+  function pasAan() {
+    canvas.width = Math.floor(innerWidth * devicePixelRatio);
+    canvas.height = Math.floor(innerHeight * devicePixelRatio);
+  }
+  addEventListener('resize', pasAan); pasAan();
+
+  function teken(h) {
+    // schaduwrelief: geen kleur die iets betekent, alleen licht op een vorm
+    let lo = Infinity, hi = -Infinity;
+    for (let i = 0; i < h.length; i++) { if (h[i] < lo) lo = h[i]; if (h[i] > hi) hi = h[i]; }
+    const bereik = Math.max(1e-6, hi - lo);
+    const d = beeld.data;
+    for (let y = 0; y < N; y++) {
+      for (let x = 0; x < N; x++) {
+        const i = y * N + x;
+        const xl = h[i - (x > 0 ? 1 : 0)], xr = h[i + (x < N - 1 ? 1 : 0)];
+        const yu = h[i - (y > 0 ? N : 0)], yd = h[i + (y < N - 1 ? N : 0)];
+        const nx = (xl - xr) * 120, ny = (yu - yd) * 120;
+        const nl = Math.sqrt(nx * nx + ny * ny + 1);
+        const licht = Math.max(0, (nx * -0.52 + ny * -0.60 + 0.61) / nl);
+        const hoog = (h[i] - lo) / bereik;
+        const t = 0.08 + 0.92 * Math.pow(licht, 1.5);
+        const bodem = 0.25 + 0.75 * hoog;
+        const j = i * 4;
+        d[j]     = 255 * t * (0.34 + 0.58 * bodem);
+        d[j + 1] = 255 * t * (0.35 + 0.56 * bodem);
+        d[j + 2] = 255 * t * (0.38 + 0.48 * bodem);
+        d[j + 3] = 255;
+      }
+    }
+    bctx.putImageData(beeld, 0, 0);
+    const schaal = Math.max(canvas.width / N, canvas.height / N);
+    const w = N * schaal;
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(buffer, (canvas.width - w) / 2, (canvas.height - w) / 2, w, w);
+  }
+
+  const scherm = MAAS.scherm('dertig jaar Maas   ·   d = cijfers   ·   r = opnieuw');
+  let data;
+  try {
+    data = await MAAS.laad();
+  } catch (e) {
+    scherm.zet('de rivier is even onbereikbaar\n' + e.message);
+    return;
+  }
+
+  let erosie, dag, klaar;
+  function begin() {
+    erosie = maakErosie(N, 20110109, {});   // vaste zaadwaarde: iedereen dezelfde vlakte
+    dag = 0; klaar = false;
+  }
+  begin();
+  addEventListener('keydown', (e) => { if (e.key === 'r') begin(); });
+
+  const PER_BEELD = 21;      // dagen per beeldje tijdens het inhalen
+  function lus() {
+    if (!klaar) {
+      const tot = Math.min(data.p.length, dag + PER_BEELD);
+      for (; dag < tot; dag++) erosie.dag(data.p[dag]);
+      if (dag >= data.p.length) klaar = true;
+      teken(erosie.hoogte);
+      const i = Math.min(dag, data.p.length - 1);
+      scherm.zet(`${data.datums[i]}   ${data.q[i].toFixed(0)} m3/s\n`
+        + `${klaar ? 'heden' : 'inhalen'}   ${(100 * dag / data.p.length).toFixed(0)}%\n`
+        + `${data.laag.toFixed(0)}–${data.hoog.toFixed(0)} m3/s over ${data.datums.length} dagen\n`
+        + `rooster ${data.punt[0].toFixed(3)}, ${data.punt[1].toFixed(3)}`);
+    }
+    requestAnimationFrame(lus);
+  }
+  lus();
+})();
+</script>
+</body>
+</html>

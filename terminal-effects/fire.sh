@@ -24,7 +24,7 @@ if ! command -v python3 >/dev/null 2>&1; then
   exit 1
 fi
 
-tmp="$(mktemp -t fire)" || exit 1
+tmp="$(mktemp "${TMPDIR:-/tmp}/fire.XXXXXX")" || exit 1   # -t is niet overal hetzelfde
 trap 'rm -f "$tmp"' EXIT
 
 cat > "$tmp" <<'PY_EOF'

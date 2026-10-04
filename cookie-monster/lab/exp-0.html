@@ -1,0 +1,681 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="robots" content="noindex, nofollow">
+<title>Koekjes</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="description" content="Een spel dat begint met een cookiemelding. Je hebt alle koekjes nodig.">
+<meta name="author" content="Rick van der Wolk">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8D%AA%3C/text%3E%3C/svg%3E">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    background: #0d0d10; color: #e8e8e6;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    display: flex; flex-direction: column;
+    user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+    touch-action: none;
+  }
+  .hidden { display: none !important; }
+
+  /* --- chrome --- */
+  #top {
+    flex: 0 0 auto; display: flex; align-items: center; gap: 14px;
+    padding: 10px 12px; font-size: 11px; letter-spacing: .14em; color: #55555a;
+  }
+  #score { margin-left: auto; }
+  #kebab {
+    background: none; border: 0; color: #55555a; font: inherit; font-size: 15px;
+    cursor: pointer; padding: 0 4px; line-height: 1;
+  }
+  #kebab:hover { color: #e8e8e6; }
+
+  canvas { flex: 1 1 auto; display: block; width: 100%; }
+
+  #hint {
+    position: fixed; left: 0; right: 0; top: 42%; text-align: center;
+    font-size: 12px; letter-spacing: .16em; color: #6b6b70; pointer-events: none;
+    transition: opacity .6s; line-height: 2.2;
+  }
+
+  /* --- koektrommel --- */
+  #jar {
+    flex: 0 0 auto; display: flex; gap: 1px; padding: 1px;
+    background: #17171c; border-top: 1px solid #17171c;
+  }
+  .slot {
+    flex: 1 1 0; min-width: 0; background: #0d0d10; padding: 7px 8px 8px;
+    cursor: pointer; position: relative; overflow: hidden;
+  }
+  .slot.on { background: #14141a; }
+  .slot.off { opacity: .32; }
+  .slot .k { font-size: 9px; letter-spacing: .1em; color: #55555a; }
+  .slot .n {
+    font-size: 11px; letter-spacing: .04em; margin-top: 3px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .slot .c { font-size: 15px; font-variant-numeric: tabular-nums; margin-top: 4px; }
+  .slot .c small { font-size: 10px; color: #45454a; }
+  .slot .bar { height: 2px; background: #1e1e25; margin-top: 6px; }
+  .slot .bar i { display: block; height: 100%; width: 0; }
+  .slot .no { font-size: 9px; letter-spacing: .1em; color: #f7768e; margin-top: 4px; }
+  .slot .sel { position: absolute; left: 0; top: 0; bottom: 0; width: 2px; }
+
+  /* --- de melding: expres een andere wereld dan het spel --- */
+  .sheet {
+    position: fixed; inset: 0; background: rgba(4,4,6,.72);
+    display: flex; align-items: flex-end; justify-content: center; z-index: 20;
+    -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px);
+  }
+  .card {
+    width: 100%; max-width: 620px; max-height: 92vh; overflow-y: auto;
+    background: #fff; color: #1c1c1e; border-radius: 10px 10px 0 0;
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    padding: 22px 22px 18px; box-shadow: 0 -8px 40px rgba(0,0,0,.5);
+  }
+  .card h2 { font-size: 17px; margin-bottom: 9px; }
+  .card p { font-size: 13px; line-height: 1.55; color: #4a4a50; }
+  .card p + p { margin-top: 8px; }
+  .card .fine { font-size: 11px; color: #86868c; }
+  .btn {
+    display: block; width: 100%; margin-top: 14px; padding: 13px;
+    border: 0; border-radius: 7px; background: #1a7f4b; color: #fff;
+    font: inherit; font-size: 15px; font-weight: 600; cursor: pointer;
+  }
+  .btn:hover { background: #17703f; }
+  .btn.grey { background: #ececed; color: #3a3a40; font-weight: 500; font-size: 13px; padding: 10px; }
+  .btn.grey:hover { background: #e2e2e4; }
+  .link {
+    display: block; width: 100%; margin-top: 12px; background: none; border: 0;
+    font: inherit; font-size: 12px; color: #86868c; text-decoration: underline;
+    cursor: pointer; text-align: center;
+  }
+  .link:hover { color: #4a4a50; }
+  .cat { border-top: 1px solid #ececee; padding: 13px 0 11px; }
+  .cat h3 { font-size: 13px; display: flex; align-items: center; gap: 8px; }
+  .cat .desc { font-size: 12px; color: #6a6a70; line-height: 1.5; margin-top: 4px; }
+  .cat ul { list-style: none; margin-top: 8px; }
+  .cat li {
+    font-family: ui-monospace, Menlo, monospace; font-size: 11px; color: #6a6a70;
+    padding: 3px 0; display: flex; gap: 8px;
+  }
+  .cat li b { color: #1c1c1e; font-weight: 600; min-width: 92px; }
+  .cat li span { margin-left: auto; color: #a0a0a6; white-space: nowrap; }
+  .sw { display: flex; align-items: center; gap: 9px; margin-top: 9px; font-size: 12px; color: #4a4a50; }
+  .sw input { appearance: none; width: 34px; height: 20px; border-radius: 10px; background: #d4d4d8; position: relative; cursor: pointer; flex: 0 0 auto; }
+  .sw input:checked { background: #1a7f4b; }
+  .sw input::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: left .12s; }
+  .sw input:checked::after { left: 16px; }
+  .sw input:disabled { background: #b9d8c7; cursor: default; }
+  #spinner { text-align: center; padding: 26px 0 6px; font-size: 13px; color: #6a6a70; }
+
+  /* --- overlays in spelstijl --- */
+  .panel {
+    position: fixed; inset: 0; background: rgba(6,6,9,.9); z-index: 30;
+    display: flex; align-items: center; justify-content: center; padding: 24px;
+  }
+  .panel .inner { max-width: 460px; width: 100%; }
+  .panel h2 { font-size: 12px; letter-spacing: .28em; color: #55555a; font-weight: 500; margin-bottom: 18px; }
+  .panel p { font-size: 13px; line-height: 1.85; color: #9a9aa0; }
+  .panel p + p { margin-top: 12px; }
+  .panel .rows { margin: 18px 0; font-size: 12px; line-height: 2.1; color: #6b6b70; }
+  .panel .rows div { display: flex; gap: 12px; border-bottom: 1px solid #17171c; }
+  .panel .rows span { margin-left: auto; color: #e8e8e6; font-variant-numeric: tabular-nums; }
+  .gbtn {
+    background: none; border: 1px solid #2a2a33; color: #e8e8e6; font: inherit;
+    font-size: 12px; letter-spacing: .12em; padding: 11px 16px; cursor: pointer; margin-top: 8px;
+  }
+  .gbtn:hover { border-color: #55555a; }
+  .gbtn.warn { color: #f7768e; border-color: #3a2a2f; }
+  .gbtn + .gbtn { margin-left: 8px; }
+
+  /* --- vraag tijdens het spel --- */
+  #ask {
+    position: fixed; left: 12px; right: 12px; bottom: 12px; z-index: 15;
+    background: #14141a; border: 1px solid #24242c; padding: 14px 16px;
+    max-width: 520px; margin: 0 auto;
+  }
+  #ask .t { font-size: 12px; letter-spacing: .1em; color: #e8e8e6; }
+  #ask .d { font-size: 12px; line-height: 1.7; color: #6b6b70; margin-top: 7px; }
+</style>
+</head>
+<body>
+
+<div id="top">
+  <div id="lvl">level 1</div>
+  <div id="score">0 geblokkeerd</div>
+  <button id="kebab" title="menu">&#8942;</button>
+</div>
+
+<canvas id="c"></canvas>
+<div id="hint"></div>
+<div id="jar"></div>
+
+<div id="consent" class="sheet hidden"><div class="card" id="card"></div></div>
+<div id="ask" class="hidden"></div>
+<div id="menu" class="panel hidden"></div>
+<div id="report" class="panel hidden"></div>
+
+<script>
+// Koekjes — een cookiemelding die het spel is.
+// Alles wat je afschiet is een koekje. Koekjes groeien alleen aan als je ze hebt
+// geaccepteerd, en ze groeien even langzaam aan als ze in het echt lang blijven staan.
+
+// ---------------------------------------------------------------- koekjes
+// maxAge is de echte bewaartermijn van een echt bestaand cookie. Alles wat het
+// koekje in dit spel is — hoe zeldzaam, hoe sterk — is daaruit afgeleid.
+const COOKIES = [
+  { id:'PHPSESSID',   taste:'Chocolate chip', cat:'noodzakelijk', maxAge:1440,     session:true,
+    real:'Houdt je sessie vast zolang je hier bent.',        effect:'enkel',   fx:'enkel schot',        color:'#c98b4b' },
+  { id:'test_cookie', taste:'Krokantje',      cat:'derden',       maxAge:900,
+    real:'Bestaat alleen om te testen of cookies werken.',   effect:'enkel',   fx:'test of schieten werkt', color:'#e0af68' },
+  { id:'_gid',        taste:'Kaneelkoekje',   cat:'analytisch',   maxAge:86400,
+    real:'Telt je als bezoeker van vandaag.',                effect:'zicht',   fx:'maakt pixels zichtbaar', color:'#7dcfff' },
+  { id:'_fbp',        taste:'Gemberkoekje',   cat:'marketing',    maxAge:7776000,
+    real:'Koppelt je aan advertentiedoelgroepen.',           effect:'spreid',  fx:'spreidschot',        color:'#bb9af7' },
+  { id:'IDE',         taste:'Stroopwafel',    cat:'derden',       maxAge:33696000,
+    real:'Herkent je op elke site van het netwerk.',         effect:'ketting', fx:'kettingreactie',     color:'#f7768e' },
+  { id:'_ga',         taste:'Speculaasje',    cat:'analytisch',   maxAge:63072000,
+    real:'Herkent je over twee jaar nog steeds.',            effect:'zoekend', fx:'zoekend schot',      color:'#9ece6a' },
+];
+for (const c of COOKIES) {
+  c.interval = Math.max(3, Math.round(Math.pow(c.maxAge, 0.25)));            // seconden per koekje
+  c.cap      = Math.min(24, Math.max(3, Math.round(300 / c.interval)));      // hoeveel er in de trommel passen
+  c.power    = Math.min(5, Math.max(1, Math.round(Math.log10(c.maxAge / 86400)) + 2));
+  c.age      = c.session ? 'sessie' : c.maxAge < 3600 ? Math.round(c.maxAge/60) + ' min'
+             : c.maxAge < 172800 ? Math.round(c.maxAge/3600) + ' uur'
+             : c.maxAge < 63072000 ? Math.round(c.maxAge/86400) + ' dagen' : '2 jaar';
+}
+const byId = id => COOKIES.find(c => c.id === id);
+
+const CATS = {
+  noodzakelijk: { title:'Noodzakelijke koekjes', desc:'Zonder deze werkt het spel niet. Je kunt ze niet uitzetten. Dat is precies waarom ze het zwakst zijn.' },
+  analytisch:   { title:'Analytische koekjes',   desc:'Meten wie je bent en wanneer je terugkomt. In het spel: ze laten je zien wat je anders niet ziet.' },
+  marketing:    { title:'Marketingkoekjes',      desc:'Maken van jou een doelgroep. In het spel: breed, luid, raakt alles tegelijk.' },
+  derden:       { title:'Koekjes van derden',    desc:'Van 842 partners, niet van deze site. In het spel: het sterkste dat je kunt krijgen.' },
+};
+
+// ---------------------------------------------------------------- trackers
+const TRACKERS = {
+  banner:  { w:62, h:22, hp:2,  pts:1, label:'cookiebanner' },
+  popup:   { w:74, h:36, hp:5,  pts:2, label:'nieuwsbriefpop-up' },
+  pixel:   { w:10, h:10, hp:1,  pts:3, label:'trackingpixel',     unseen:true },
+  wall:    { w:88, h:44, hp:16, pts:5, label:'cookiewall',        armour:3 },
+  partner: { w:48, h:20, hp:3,  pts:2, label:'advertentiepartner', splits:true },
+};
+
+const LEVELS = [
+  { need:null,         comp:{banner:12},                                 pace:9,  brief:'Alleen banners. Noodzakelijke koekjes zijn genoeg.' },
+  { need:null,         comp:{banner:10, popup:4},                        pace:11, brief:'Meer. Je trommel loopt leeg. Wachten mag.' },
+  { need:'analytisch', comp:{banner:8, popup:4, pixel:6},                 pace:12, brief:'Er staat iets op deze pagina wat je niet ziet.' },
+  { need:'marketing',  comp:{banner:8, popup:5, wall:2},                  pace:13, brief:'Een cookiewall. Kruimels ketsen erop af.' },
+  { need:'derden',     comp:{popup:6, wall:2, partner:6},                 pace:14, brief:'Partners. Sloop er een en er staan er twee.' },
+  { need:null,         comp:{banner:6, popup:6, pixel:6, wall:3, partner:6}, pace:16, brief:'Alles tegelijk. Zoals een gemiddelde nieuwssite.' },
+];
+
+// ---------------------------------------------------------------- staat
+const KEY = 'koekjes.v1';
+const blank = () => ({
+  consentSet: false,
+  consent: { noodzakelijk:true, analytisch:false, marketing:false, derden:false },
+  stock: {}, prog: {}, last: Date.now(),
+  level: 1, best: 0, eaten: 0, visits: 0, history: [],
+});
+let S;
+try { S = Object.assign(blank(), JSON.parse(localStorage.getItem(KEY) || '{}')); }
+catch (e) { S = blank(); }
+const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} };
+
+S.visits++;
+const accepted = cat => !!S.consent[cat];
+
+// Koekjes groeien door terwijl je weg bent — maar alleen de geaccepteerde.
+function accrue(now, offline) {
+  const dt = Math.max(0, (now - S.last) / 1000);
+  S.last = now;
+  if (!S.consentSet) return;
+  for (const c of COOKIES) {
+    if (!accepted(c.cat)) continue;
+    if (c.session && offline) continue;                  // een sessiecookie overleeft je vertrek niet
+    const have = S.stock[c.id] || 0;
+    if (have >= c.cap) { S.prog[c.id] = 0; continue; }
+    const p = (S.prog[c.id] || 0) + dt;
+    const got = Math.floor(p / c.interval);
+    S.prog[c.id] = p - got * c.interval;
+    S.stock[c.id] = Math.min(c.cap, have + got);
+  }
+}
+accrue(Date.now(), true);
+if (S.consentSet && accepted('noodzakelijk')) S.stock.PHPSESSID = byId('PHPSESSID').cap;
+
+// ---------------------------------------------------------------- meting
+// Alles hieronder wordt echt gemeten en blijft in deze browser.
+const T = { t0: Date.now(), clicks: 0, keys: 0, moved: 0, bannerShown: 0, bannerMs: 0, choice: '—', fired: 0 };
+addEventListener('pointerdown', () => T.clicks++);
+addEventListener('keydown', () => T.keys++);
+
+// ---------------------------------------------------------------- dom
+const $ = s => document.querySelector(s);
+const cv = $('#c'), ctx = cv.getContext('2d');
+const elLvl = $('#lvl'), elScore = $('#score'), elHint = $('#hint'), elJar = $('#jar');
+let W = 0, H = 0;
+
+function resize() {
+  const r = cv.getBoundingClientRect(), dpr = Math.min(2, devicePixelRatio || 1);
+  W = r.width; H = r.height;
+  cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+addEventListener('resize', resize);
+
+// ---------------------------------------------------------------- spel
+const G = {
+  running: false, level: 1, blocked: 0, sel: 'PHPSESSID',
+  inv: [], shots: [], bits: [], docked: [],
+  ox: 0, oy: 0, dir: 1, cols: 8, cellW: 96, cellH: 54,
+  px: 0, chew: 0, cool: 0, reveal: 0, note: '', noteUntil: 0,
+};
+
+function startLevel(n) {
+  const L = LEVELS[Math.min(n, LEVELS.length) - 1];
+  G.level = n; G.inv = []; G.shots = []; G.bits = []; G.docked = [];
+  G.cols = Math.max(4, Math.min(9, Math.floor((W - 24) / G.cellW)));
+  G.cellW = Math.min(96, (W - 24) / G.cols);
+
+  const list = [];
+  for (const [k, n2] of Object.entries(L.comp)) for (let i = 0; i < n2; i++) list.push(k);
+  list.sort((a, b) => (TRACKERS[b].hp - TRACKERS[a].hp));   // zwaarste achteraan
+  list.forEach((kind, i) => {
+    const t = TRACKERS[kind];
+    G.inv.push({ kind, gx: i % G.cols, gy: Math.floor(i / G.cols), hp: t.hp, max: t.hp, w: t.w, h: t.h, x: 0, y: 0, free: false });
+  });
+  G.total = G.inv.length;
+  G.ox = (W - G.cols * G.cellW) / 2; G.oy = 30; G.dir = 1;
+  G.px = W / 2;
+  G.running = true;
+  elLvl.textContent = 'level ' + n;
+  note(L.brief, 3600);
+  maybeAsk(L);
+}
+
+function note(txt, ms) { G.note = txt; G.noteUntil = performance.now() + (ms || 1800); }
+
+function dockY() { return H - G.docked.length * 15 - 6; }
+function playerY() { return dockY() - 26; }
+
+function fire() {
+  const c = byId(G.sel);
+  if (!accepted(c.cat)) { note('geweigerd. staat in cookie_consent.', 1800); return; }
+  if ((S.stock[c.id] || 0) < 1) { note('op. ' + c.taste + ' groeit aan: 1 per ' + c.interval + ' s', 1800); return; }
+  S.stock[c.id]--; S.eaten++; T.fired++;
+  G.chew = 1;
+  const y = playerY() - 12, x = G.px;
+  if (c.effect === 'spreid') {
+    for (let i = -2; i <= 2; i++) G.shots.push(shot(x, y, i * 62, c));
+  } else if (c.effect === 'zoekend') {
+    G.shots.push(Object.assign(shot(x, y, 0, c), { seek: true }));
+  } else {
+    G.shots.push(shot(x, y, 0, c));
+    if (c.effect === 'zicht') G.reveal = performance.now() + 5000;
+  }
+  save();
+}
+const shot = (x, y, vx, c) => ({ x, y, vx, vy: -430, p: c.power, c, chain: c.effect === 'ketting' });
+
+function hit(inv, s) {
+  const t = TRACKERS[inv.kind];
+  if (t.armour && s.p < t.armour) { note('kruimel ketst af op de cookiewall', 1200); crumbs(s.x, s.y, s.c.color, 3); return; }
+  inv.hp -= s.p;
+  crumbs(s.x, s.y, s.c.color, 6);
+  if (inv.hp > 0) return;
+  G.blocked += t.pts;
+  elScore.textContent = G.blocked + ' geblokkeerd';
+  if (t.splits && !s.chain) {
+    for (const d of [-1, 1]) G.inv.push({ kind:'partner', hp:2, max:2, w:t.w, h:t.h, free:true,
+      x: inv.x + d * 26, y: inv.y, vx: d * 26, vy: 14 });
+    note('een partner deelt je met twee partners', 1500);
+  }
+  inv.dead = true;
+  if (s.chain) {                                            // het netwerk werkt ook tegen het netwerk
+    for (const o of G.inv) {
+      if (o.dead || o === inv) continue;
+      if (Math.hypot(o.x - inv.x, o.y - inv.y) < 100) { o.hp -= 3; if (o.hp <= 0) { o.dead = true; G.blocked += TRACKERS[o.kind].pts; } }
+    }
+  }
+}
+
+function crumbs(x, y, col, n) {
+  for (let i = 0; i < n; i++) G.bits.push({ x, y, vx: (Math.random()-.5)*120, vy: (Math.random()-.5)*120 - 30, life: .5 + Math.random()*.4, col });
+}
+
+function update(dt, now) {
+  if (!G.running) return;
+  const alive = G.inv.filter(i => !i.dead);
+  const L = LEVELS[Math.min(G.level, LEVELS.length) - 1];
+  const rush = 1 + (G.total - alive.length) / Math.max(1, G.total);
+
+  // formatie schuift heen en weer en zakt
+  let minX = Infinity, maxX = -Infinity;
+  for (const i of alive) if (!i.free) { minX = Math.min(minX, i.gx * G.cellW); maxX = Math.max(maxX, i.gx * G.cellW + G.cellW); }
+  if (minX < Infinity) {
+    G.ox += G.dir * L.pace * rush * dt * 3.2;
+    if (G.ox + minX < 8) { G.ox = 8 - minX; G.dir = 1; G.oy += 14; }
+    if (G.ox + maxX > W - 8) { G.ox = W - 8 - maxX; G.dir = -1; G.oy += 14; }
+    G.oy += L.pace * rush * dt * .5;
+  }
+
+  for (const i of alive) {
+    if (i.free) { i.x += i.vx * dt; i.y += i.vy * dt; if (i.x < 20 || i.x > W - 20) i.vx *= -1; }
+    else { i.x = G.ox + i.gx * G.cellW + G.cellW / 2; i.y = G.oy + i.gy * G.cellH + G.cellH / 2; }
+    if (i.y + i.h / 2 > dockY()) { i.dead = true; G.docked.push(i.kind); }   // hij staat nu op je pagina
+  }
+
+  for (const s of G.shots) {
+    if (s.seek) {
+      let best = null, bd = 1e9;
+      for (const i of alive) { const d = Math.hypot(i.x - s.x, i.y - s.y); if (d < bd) { bd = d; best = i; } }
+      if (best) s.vx += Math.sign(best.x - s.x) * 420 * dt;
+    }
+    s.x += s.vx * dt; s.y += s.vy * dt;
+    for (const i of alive) {
+      if (i.dead) continue;
+      if (Math.abs(s.x - i.x) < i.w / 2 + 3 && Math.abs(s.y - i.y) < i.h / 2 + 3) { hit(i, s); s.dead = true; break; }
+    }
+    if (s.y < -10) s.dead = true;
+  }
+  G.shots = G.shots.filter(s => !s.dead);
+  G.inv = G.inv.filter(i => !i.dead);
+  for (const b of G.bits) { b.x += b.vx * dt; b.y += b.vy * dt; b.vy += 260 * dt; b.life -= dt; }
+  G.bits = G.bits.filter(b => b.life > 0);
+  G.chew = Math.max(0, G.chew - dt * 4);
+  G.cool = Math.max(0, G.cool - dt);
+
+  if (G.docked.length * 15 > H * .5) return over(false);
+  if (!G.inv.length) {
+    G.running = false;
+    S.level = G.level + 1; S.best = Math.max(S.best || 0, G.level); save();
+    if (G.level >= LEVELS.length) return over(true);
+    setTimeout(() => startLevel(G.level + 1), 900);
+  }
+}
+
+// ---------------------------------------------------------------- tekenen
+function draw(now) {
+  ctx.clearRect(0, 0, W, H);
+
+  for (const i of G.inv) {
+    const t = TRACKERS[i.kind];
+    if (t.unseen && now > G.reveal) continue;              // een trackingpixel is onzichtbaar. dat is het idee.
+    drawTracker(i, t, t.unseen);
+  }
+  for (const s of G.shots) { ctx.fillStyle = s.c.color; ctx.fillRect(s.x - 2, s.y - 4, 4, 8); }
+  for (const b of G.bits) { ctx.globalAlpha = Math.max(0, b.life); ctx.fillStyle = b.col; ctx.fillRect(b.x, b.y, 2, 2); ctx.globalAlpha = 1; }
+
+  drawMonster(G.px, playerY());
+
+  // wat er doorheen kwam, ligt onderop je pagina
+  G.docked.forEach((kind, n) => {
+    const y = H - (n + 1) * 15;
+    ctx.fillStyle = '#1a1a20'; ctx.fillRect(0, y, W, 14);
+    ctx.fillStyle = '#33333d'; ctx.font = '9px ui-monospace, monospace';
+    ctx.fillText(TRACKERS[kind].label + '  —  wij gebruiken cookies', 10, y + 10);
+    ctx.fillStyle = '#1a7f4b'; ctx.fillRect(W - 58, y + 3, 48, 8);
+  });
+
+  if (now < G.noteUntil) {
+    ctx.fillStyle = '#6b6b70'; ctx.font = '11px ui-monospace, monospace'; ctx.textAlign = 'center';
+    ctx.fillText(G.note, W / 2, 22); ctx.textAlign = 'left';
+  }
+}
+
+function drawTracker(i, t, ghost) {
+  const x = i.x - i.w / 2, y = i.y - i.h / 2;
+  ctx.fillStyle = ghost ? '#2a2a33' : '#1c1c23';
+  ctx.fillRect(x, y, i.w, i.h);
+  ctx.strokeStyle = i.hp < i.max ? '#3a3a46' : '#26262f';
+  ctx.strokeRect(x + .5, y + .5, i.w - 1, i.h - 1);
+  if (i.kind === 'pixel') { ctx.fillStyle = '#7dcfff'; ctx.fillRect(x + 3, y + 3, 4, 4); return; }
+  ctx.fillStyle = '#4a4a56'; ctx.font = '7px ui-monospace, monospace';
+  ctx.fillText(i.kind === 'wall' ? 'ACCEPTEER OM VERDER' : i.kind === 'partner' ? 'ad' : 'wij gebruiken cookies', x + 5, y + 11);
+  ctx.fillStyle = i.kind === 'wall' ? '#2a5c40' : '#1a7f4b';
+  ctx.fillRect(x + 5, y + i.h - 10, Math.min(30, i.w - 10), 6);
+  if (i.hp < i.max) { ctx.fillStyle = '#f7768e'; ctx.fillRect(x, y - 3, i.w * (i.hp / i.max), 2); }
+}
+
+function drawMonster(x, y) {
+  ctx.save(); ctx.translate(x, y);
+  ctx.fillStyle = '#4a90d9';
+  ctx.beginPath();
+  for (let a = 0; a < 32; a++) {                            // vacht
+    const th = (a / 32) * Math.PI * 2, r = 15 + (a % 2 ? 3.5 : 0);
+    ctx[a ? 'lineTo' : 'moveTo'](Math.cos(th) * r, Math.sin(th) * r);
+  }
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#07070a';                                // mond, open als hij kauwt
+  ctx.beginPath(); ctx.ellipse(0, 5, 9, 3 + G.chew * 5, 0, 0, Math.PI * 2); ctx.fill();
+  for (const dx of [-6, 6]) {
+    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(dx, -7, 5.5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#07070a'; ctx.beginPath(); ctx.arc(dx + (G.chew ? 0 : .8), -6, 2.4, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.restore();
+}
+
+// ---------------------------------------------------------------- lus
+let prev = performance.now();
+function frame(now) {
+  const dt = Math.min(.05, (now - prev) / 1000); prev = now;
+  accrue(Date.now(), false);
+  update(dt, now);
+  draw(now);
+  renderJar();
+  requestAnimationFrame(frame);
+}
+
+// ---------------------------------------------------------------- invoer
+const keys = {};
+addEventListener('keydown', e => {
+  if (['ArrowLeft','ArrowRight','Space','KeyA','KeyD'].includes(e.code)) e.preventDefault();
+  keys[e.code] = true;
+  if (e.code === 'Space' && G.running && !e.repeat) fire();
+  const n = parseInt(e.key, 10);
+  if (n >= 1 && n <= COOKIES.length) G.sel = COOKIES[n - 1].id;
+});
+addEventListener('keyup', e => { keys[e.code] = false; });
+setInterval(() => {                                          // vasthouden = doorschieten
+  if (!G.running) return;
+  const sp = 7;
+  if (keys.ArrowLeft || keys.KeyA) { G.px = Math.max(18, G.px - sp); T.moved++; }
+  if (keys.ArrowRight || keys.KeyD) { G.px = Math.min(W - 18, G.px + sp); T.moved++; }
+}, 16);
+cv.addEventListener('pointerdown', e => { G.px = e.offsetX; if (G.running) fire(); });
+cv.addEventListener('pointermove', e => { if (e.buttons) { G.px = e.offsetX; T.moved++; } });
+
+// ---------------------------------------------------------------- trommel
+let jarBuilt = false;
+function renderJar() {
+  if (!jarBuilt) {
+    elJar.innerHTML = COOKIES.map((c, i) => `
+      <div class="slot" data-id="${c.id}">
+        <div class="sel"></div>
+        <div class="k">${i + 1} · ${c.id}</div>
+        <div class="n">${c.taste}</div>
+        <div class="c"><b>0</b><small>/${c.cap}</small></div>
+        <div class="bar"><i></i></div>
+        <div class="no hidden">geweigerd</div>
+      </div>`).join('');
+    elJar.querySelectorAll('.slot').forEach(el => el.addEventListener('click', () => {
+      G.sel = el.dataset.id;
+      const c = byId(G.sel);
+      if (!accepted(c.cat)) openMenu('reject');
+      else note(c.taste + ' — ' + c.fx + ' · kracht ' + c.power, 2000);
+    }));
+    jarBuilt = true;
+  }
+  for (const el of elJar.children) {
+    const c = byId(el.dataset.id), ok = accepted(c.cat), have = S.stock[c.id] || 0;
+    el.classList.toggle('on', G.sel === c.id);
+    el.classList.toggle('off', !ok);
+    el.querySelector('.sel').style.background = G.sel === c.id ? c.color : 'transparent';
+    el.querySelector('.c b').textContent = ok ? have : '—';
+    el.querySelector('.bar i').style.width = (ok && have < c.cap ? ((S.prog[c.id] || 0) / c.interval) * 100 : ok ? 100 : 0) + '%';
+    el.querySelector('.bar i').style.background = c.color;
+    el.querySelector('.no').classList.toggle('hidden', ok);
+  }
+}
+
+// ---------------------------------------------------------------- melding
+const consent = $('#consent'), card = $('#card');
+const draft = { analytisch:{ c:false, li:true }, marketing:{ c:false, li:true }, derden:{ c:false, li:true } };
+
+function showBanner() {
+  T.bannerShown = Date.now();
+  consent.classList.remove('hidden');
+  card.innerHTML = `
+    <h2>&#127850; Wij gebruiken koekjes</h2>
+    <p>Deze pagina gebruikt koekjes en vergelijkbare technieken om het spel te laten werken,
+       om te meten hoe je speelt en om je relevante koekjes te tonen. Samen met <b>842 partners</b>.</p>
+    <p class="fine">Je hebt ze allemaal nodig. Niet meteen — maar wel voordat je klaar bent.</p>
+    <button class="btn" id="all">Alles accepteren</button>
+    <button class="link" id="prefs">Voorkeuren beheren</button>`;
+  $('#all').onclick = () => finish('alles accepteren', { analytisch:true, marketing:true, derden:true });
+  $('#prefs').onclick = showPrefs;
+}
+
+function showPrefs() {
+  const rows = Object.entries(CATS).map(([key, cat]) => {
+    const list = COOKIES.filter(c => c.cat === key).map(c =>
+      `<li><b>${c.id}</b> ${c.real} <span>${c.age}</span></li>`).join('');
+    const sw = key === 'noodzakelijk'
+      ? `<div class="sw"><input type="checkbox" checked disabled><span>Altijd actief</span></div>`
+      : `<div class="sw"><input type="checkbox" data-k="${key}" data-f="c" ${draft[key].c ? 'checked' : ''}><span>Toestemming</span></div>
+         <div class="sw"><input type="checkbox" data-k="${key}" data-f="li" ${draft[key].li ? 'checked' : ''}><span>Legitiem belang</span></div>`;
+    return `<div class="cat"><h3>${cat.title}</h3><div class="desc">${cat.desc}</div>${sw}<ul>${list}</ul></div>`;
+  }).join('');
+  card.innerHTML = `
+    <h2>Voorkeuren beheren</h2>
+    <p class="fine">Legitiem belang staat standaard aan. Zet beide uit om echt te weigeren.</p>
+    ${rows}
+    <button class="btn" id="ok">Keuzes opslaan</button>
+    <button class="link" id="none">Alles weigeren</button>`;
+  card.querySelectorAll('input[data-k]').forEach(i =>
+    i.onchange = () => { draft[i.dataset.k][i.dataset.f] = i.checked; });
+  $('#ok').onclick = () => {
+    const r = {}; for (const k in draft) r[k] = draft[k].c || draft[k].li;   // één van de twee is genoeg
+    finish('voorkeuren opgeslagen', r);
+  };
+  $('#none').onclick = () => {
+    card.innerHTML = `<div id="spinner">Je voorkeuren worden verwerkt&hellip;</div>`;
+    setTimeout(() => finish('alles weigeren', { analytisch:false, marketing:false, derden:false }), 3000);
+  };
+}
+
+function finish(choice, r) {
+  T.choice = choice;
+  T.bannerMs = Date.now() - T.bannerShown;
+  Object.assign(S.consent, r);
+  S.consentSet = true;
+  S.last = Date.now();
+  for (const c of COOKIES) if (accepted(c.cat) && S.stock[c.id] == null) S.stock[c.id] = c.session ? c.cap : Math.min(c.cap, 3);
+  save();
+  consent.classList.add('hidden');
+  elHint.innerHTML = '&larr; &rarr; bewegen &middot; spatie eten &middot; 1&ndash;6 kiezen<br>onderin zie je je koekjes aangroeien';
+  setTimeout(() => { elHint.style.opacity = 0; }, 5200);
+  resize(); startLevel(1);
+}
+
+// ---------------------------------------------------------------- vraag tijdens het spel
+const ask = $('#ask');
+function maybeAsk(L) {
+  ask.classList.add('hidden');
+  if (!L.need || accepted(L.need)) return;
+  ask.classList.remove('hidden');
+  ask.innerHTML = `
+    <div class="t">Voor dit level heb je ${CATS[L.need].title.toLowerCase()} nodig.</div>
+    <div class="d">Je hebt ze geweigerd. Wij respecteren je keuze &mdash; die staat in
+      <b>cookie_consent</b>, 365 dagen geldig. Zolang dat koekje er is, vragen we het niet opnieuw.</div>
+    <button class="gbtn" id="askno">Verder zonder</button>
+    <button class="gbtn warn" id="askclear">Cookies wissen&hellip;</button>`;
+  $('#askno').onclick = () => ask.classList.add('hidden');
+  $('#askclear').onclick = () => { ask.classList.add('hidden'); openMenu('clear'); };
+}
+
+// ---------------------------------------------------------------- menu
+const menu = $('#menu');
+$('#kebab').onclick = () => openMenu('menu');
+function openMenu(mode) {
+  menu.classList.remove('hidden');
+  const body = mode === 'reject'
+    ? `<p>Dit koekje heb je geweigerd. Die keuze staat in <b>cookie_consent</b> en is 365 dagen geldig.
+         Zolang dat koekje bestaat, krijg je de melding niet meer te zien.</p>
+       <p>Wil je opnieuw kiezen, dan moet je je cookies wissen. Je scoregeschiedenis staat daar ook in.</p>`
+    : `<p>Cookies en sitegegevens wissen verwijdert:</p>
+       <div class="rows">
+         <div>cookie_consent <span>je keuze</span></div>
+         <div>${COOKIES.length} koekjes <span>je voorraad</span></div>
+         <div>geschiedenis <span>${(S.history || []).length} scores</span></div>
+       </div>
+       <p>Daarna vragen we het opnieuw. Je begint met een lege trommel.</p>`;
+  menu.innerHTML = `<div class="inner"><h2>${mode === 'reject' ? 'JE KEUZE IS OPGESLAGEN' : 'INSTELLINGEN'}</h2>
+    ${body}
+    <button class="gbtn warn" id="mclear">Cookies en sitegegevens wissen</button>
+    <button class="gbtn" id="mclose">Sluiten</button></div>`;
+  $('#mclose').onclick = () => menu.classList.add('hidden');
+  $('#mclear').onclick = () => {
+    const visits = S.visits;
+    S = blank(); S.visits = visits; save();
+    menu.classList.add('hidden'); ask.classList.add('hidden');
+    G.running = false; jarBuilt = false; elJar.innerHTML = '';
+    for (const k in draft) { draft[k].c = false; draft[k].li = true; }
+    showBanner();
+  };
+}
+
+// ---------------------------------------------------------------- rapport
+function over(won) {
+  G.running = false;
+  S.history = (S.history || []).concat([{ level: G.level, blocked: G.blocked, at: Date.now() }]).slice(-20);
+  S.level = 1; save();
+  const mins = ((Date.now() - T.t0) / 60000);
+  const rows = [
+    ['tijd op deze pagina', mins.toFixed(1).replace('.', ',') + ' min'],
+    ['klikken', T.clicks],
+    ['toetsaanslagen', T.keys],
+    ['tijd tot je keuze', (T.bannerMs / 1000).toFixed(1).replace('.', ',') + ' s'],
+    ['je keuze', T.choice],
+    ['koekjes opgegeten', S.eaten],
+    ['bezoeken', S.visits],
+    ['scherm', innerWidth + '&times;' + innerHeight + ' @' + (devicePixelRatio || 1) + 'x'],
+    ['tijdzone', Intl.DateTimeFormat().resolvedOptions().timeZone],
+    ['taal', navigator.language],
+    ['kernen', navigator.hardwareConcurrency || '?'],
+    ['aanraakscherm', matchMedia('(pointer:coarse)').matches ? 'ja' : 'nee'],
+  ];
+  $('#report').classList.remove('hidden');
+  $('#report').innerHTML = `<div class="inner">
+    <h2>${won ? 'UITGESPEELD' : 'DE PAGINA IS ONLEESBAAR GEWORDEN'}</h2>
+    <p>Level ${G.level} &middot; ${G.blocked} trackers geblokkeerd.</p>
+    <h2 style="margin-top:26px">WAT WE OVER JE HEBBEN VERZAMELD</h2>
+    <div class="rows">${rows.map(r => `<div>${r[0]} <span>${r[1]}</span></div>`).join('')}</div>
+    <p class="fine" style="font-size:11px;color:#55555a">Dit is allemaal echt gemeten, tijdens dit spel, en het heeft je browser nooit verlaten.
+      Een echte cookiemelding meet ongeveer dit &mdash; en stuurt het wel door.</p>
+    <button class="gbtn" id="again">Opnieuw</button>
+    <button class="gbtn warn" id="rclear">Cookies wissen</button></div>`;
+  $('#again').onclick = () => { $('#report').classList.add('hidden'); resize(); startLevel(1); G.blocked = 0; elScore.textContent = '0 geblokkeerd'; };
+  $('#rclear').onclick = () => { $('#report').classList.add('hidden'); openMenu('clear'); };
+}
+
+// ---------------------------------------------------------------- start
+resize();
+requestAnimationFrame(frame);
+if (S.consentSet) {
+  elHint.innerHTML = 'welkom terug &middot; je koekjes zijn doorgegroeid';
+  setTimeout(() => { elHint.style.opacity = 0; }, 3200);
+  startLevel(1);
+} else {
+  showBanner();
+}
+</script>
+</body>
+</html>

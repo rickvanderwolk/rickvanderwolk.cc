@@ -1,0 +1,639 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="robots" content="noindex, nofollow">
+<title>exp-4 · drie koekjes</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="author" content="Rick van der Wolk">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%;overflow:hidden;background:#faf7f2}
+  body{color:#1a1a24;font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;display:flex;flex-direction:column;
+    user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:none;cursor:none}
+  canvas{flex:1 1 auto;display:block;width:100%}
+  .hidden{display:none!important}
+
+  #sheet{position:fixed;inset:0;background:rgba(26,26,36,.28);z-index:20;display:flex;align-items:flex-end;
+    justify-content:center}
+  #card{width:100%;max-width:640px;max-height:94vh;overflow-y:auto;background:#fff;color:#1a1a24;
+    border-radius:16px 16px 0 0;padding:26px 26px 20px;box-shadow:0 -10px 50px rgba(26,26,36,.22);cursor:auto}
+  #card .brand{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+  #card .brand i{width:32px;height:32px;border-radius:50%;background:#fdf0d5;display:grid;place-items:center;font-style:normal;font-size:17px}
+  #card .brand b{font-size:12px;letter-spacing:.12em;color:#96969f;font-weight:700;text-transform:uppercase}
+  #card h2{font-size:21px;letter-spacing:-.02em;margin-bottom:10px}
+  #card p{font-size:13.5px;line-height:1.6;color:#4c4c55}
+  #card p+p{margin-top:9px}
+  #card .fine{font-size:11.5px;color:#8d8d96}
+  .btn{display:block;width:100%;margin-top:15px;padding:15px;border:0;border-radius:10px;background:#16a34a;
+    color:#fff;font:inherit;font-size:15px;font-weight:700;cursor:pointer}
+  .btn:hover{background:#15803d}
+  .link{display:block;width:100%;margin-top:13px;background:none;border:0;font:inherit;font-size:12.5px;
+    color:#8d8d96;text-decoration:underline;cursor:pointer;text-align:center}
+  .cat{border-top:1px solid #eeeef1;padding:15px 0 12px}
+  .cat h3{font-size:14px;display:flex;align-items:center;gap:9px}
+  .cat h3 u{width:11px;height:11px;border-radius:3px;display:inline-block}
+  .cat .d{font-size:12.5px;color:#6d6d76;line-height:1.55;margin-top:5px}
+  .cat ul{list-style:none;margin-top:9px}
+  .cat li{font-family:ui-monospace,Menlo,monospace;font-size:11px;color:#6d6d76;padding:4px 0;display:flex;gap:10px}
+  .cat li b{color:#1a1a24;min-width:88px}.cat li span{margin-left:auto;color:#a8a8b0;white-space:nowrap}
+  .sw{display:flex;align-items:center;gap:10px;margin-top:10px;font-size:12.5px;color:#4c4c55}
+  .sw input{appearance:none;width:36px;height:21px;border-radius:11px;background:#d7d7dc;position:relative;cursor:pointer;flex:0 0 auto}
+  .sw input:checked{background:#16a34a}
+  .sw input::after{content:"";position:absolute;top:2px;left:2px;width:17px;height:17px;border-radius:50%;background:#fff;transition:left .13s}
+  .sw input:checked::after{left:17px}
+  .sw input:disabled{background:#bcdcc8;cursor:default}
+  #spin{text-align:center;padding:30px 0 8px;font-size:13px;color:#6d6d76}
+
+  /* het rapport is donker. dat is het enige moment dat de pagina van kleur verschiet. */
+  .panel{position:fixed;inset:0;background:#14141c;z-index:30;display:flex;align-items:center;
+    justify-content:center;padding:26px;cursor:auto;color:#fff}
+  .panel .in{max-width:460px;width:100%}
+  .panel h2{font-size:11px;letter-spacing:.3em;color:#6a6a7a;font-weight:700;margin-bottom:16px}
+  .panel p{font-size:13.5px;line-height:1.75;color:#a8a8b4}
+  .panel .rows{margin:18px 0;font-size:12px;line-height:2.2;color:#8a8a98;font-family:ui-monospace,Menlo,monospace}
+  .panel .rows div{display:flex;gap:12px;border-bottom:1px solid #22222c}
+  .panel .rows span{margin-left:auto;color:#fff}
+  .gbtn{background:none;border:1px solid #33333f;color:#fff;font:inherit;font-size:12px;letter-spacing:.1em;
+    font-weight:700;padding:12px 18px;cursor:pointer;margin-top:10px;border-radius:7px}
+  .gbtn:hover{border-color:#6a6a7a;background:#1c1c26}
+  .gbtn.warn{color:#f87171;border-color:#3d2830}.gbtn+.gbtn{margin-left:8px}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="sheet" class="hidden"><div id="card"></div></div>
+<div id="report" class="panel hidden"></div>
+
+<script>
+"use strict";
+// exp-4 — drie koekjes, drie monsters, één regel: kleur bij kleur.
+// Het speelveld is een lege webpagina. Wat doorkomt gaat er onderop staan en
+// blijft daar. Je munitie is echte tijd: koekjes groeien aan op de klok van hun
+// echte bewaartermijn, en alleen als je die categorie hebt geaccepteerd.
+
+// ------------------------------------------------------------ drie koekjes
+const COOKIES=[
+  {id:'PHPSESSID', taste:'Chocolate chip', cat:'noodzakelijk', maxAge:1440,     session:1,
+   col:'#f5b301', dark:'#b07d00', art:'chip',
+   real:'Houdt je sessie vast zolang je hier bent.', fx:'gewoon schot'},
+  {id:'_ga',       taste:'Speculaasje',    cat:'analytisch',   maxAge:63072000,
+   col:'#12a5b0', dark:'#0b7079', art:'spec',
+   real:'Herkent je over twee jaar nog steeds.', fx:'laat zien wat onzichtbaar is'},
+  {id:'IDE',       taste:'Stroopwafel',    cat:'marketing',    maxAge:33696000,
+   col:'#e0417a', dark:'#9c2350', art:'waffle',
+   real:'Herkent je op elke site van het advertentienetwerk.', fx:'breekt door alles heen'},
+];
+for(const c of COOKIES){
+  c.interval=Math.max(3,Math.round(Math.pow(c.maxAge,.25)));       // 1 koekje per zoveel seconden
+  c.cap=Math.min(24,Math.max(3,Math.round(300/c.interval)));       // zo veel passen er in de trommel
+  c.power=Math.min(5,Math.max(1,Math.round(Math.log10(c.maxAge/86400))+2));
+  c.age=c.session?'sessie':c.maxAge<3600?Math.round(c.maxAge/60)+' min'
+    :c.maxAge<172800?Math.round(c.maxAge/3600)+' uur'
+    :c.maxAge<63072000?Math.round(c.maxAge/86400)+' dagen':'2 jaar';
+}
+const byId=id=>COOKIES.find(c=>c.id===id);
+const CATS={
+  noodzakelijk:{t:'Noodzakelijke koekjes',d:'Zonder deze werkt het spel niet. Je kunt ze niet uitzetten. Precies daarom is het het zwakste koekje.'},
+  analytisch:{t:'Analytische koekjes',d:'Meten wie je bent en wanneer je terugkomt. Hier: ze laten zien wat je anders niet ziet.'},
+  marketing:{t:'Marketingkoekjes',d:'Van het advertentienetwerk. Hier: het enige dat door een cookiewall komt.'},
+};
+
+// ------------------------------------------------------------ drie monsters
+// Elk monster heeft de kleur van het koekje waar het aan doodgaat. Dat is de hele regel.
+const KIND={
+  banner:{cookie:'PHPSESSID',hp:3, w:98, h:34,sp:34,pts:1,legs:4,eyes:2,copy:'Wij gebruiken cookies'},
+  pixel: {cookie:'_ga',      hp:2, w:24, h:24,sp:62,pts:3,legs:0,eyes:1,copy:'',hidden:1},
+  wall:  {cookie:'IDE',      hp:22,w:136,h:62,sp:24,pts:5,legs:5,eyes:2,copy:'Accepteer om verder te lezen',armour:1},
+};
+const LEVELS=[
+  {n:12,rate:1.55,kinds:['banner'],                gift:null,  title:'een lege pagina'},
+  {n:16,rate:1.30,kinds:['banner','pixel'],        gift:'_ga', title:'er staat iets wat je niet ziet'},
+  {n:20,rate:1.10,kinds:['banner','pixel','wall'], gift:'IDE', title:'een muur'},
+  {n:26,rate:0.90,kinds:['banner','pixel','wall'], gift:null,  title:'sneller'},
+  {n:36,rate:0.60,kinds:['banner','pixel','wall'], gift:null,  title:'842 partners', finale:1},
+];
+
+// ------------------------------------------------------------ geluid
+let AC=null,MASTER=null,NOISE=null,MUTED=false;
+function audio(){ if(AC) return AC;
+  try{AC=new (window.AudioContext||window.webkitAudioContext)();}catch(e){return null;}
+  MASTER=AC.createGain(); MASTER.gain.value=.5; MASTER.connect(AC.destination);
+  const n=AC.sampleRate*.4; NOISE=AC.createBuffer(1,n,AC.sampleRate); const d=NOISE.getChannelData(0);
+  for(let i=0;i<n;i++) d[i]=(Math.random()*2-1)*(1-i/n); return AC; }
+function nz(t,dur,f0,f1,g0,type){ const c=AC,s=c.createBufferSource(); s.buffer=NOISE;
+  const bp=c.createBiquadFilter(); bp.type=type||'bandpass'; bp.Q.value=1.4;
+  bp.frequency.setValueAtTime(f0,t); bp.frequency.exponentialRampToValueAtTime(Math.max(40,f1),t+dur);
+  const g=c.createGain(); g.gain.setValueAtTime(g0,t); g.gain.exponentialRampToValueAtTime(.0008,t+dur);
+  s.connect(bp); bp.connect(g); g.connect(MASTER); s.start(t); s.stop(t+dur+.02); }
+function tn(t,dur,f0,f1,g0,w){ const c=AC,o=c.createOscillator(); o.type=w||'square';
+  o.frequency.setValueAtTime(f0,t); o.frequency.exponentialRampToValueAtTime(Math.max(30,f1),t+dur);
+  const g=c.createGain(); g.gain.setValueAtTime(g0,t); g.gain.exponentialRampToValueAtTime(.0008,t+dur);
+  o.connect(g); g.connect(MASTER); o.start(t); o.stop(t+dur+.02); }
+function sfx(n){ const c=audio(); if(!c||MUTED) return; const t=c.currentTime;
+  switch(n){
+    case 'spit':  nz(t,.07,1900,700,.13); break;
+    case 'hit':   nz(t,.11,1000,220,.28); tn(t,.08,220,90,.09,'sawtooth'); break;
+    case 'wrong': tn(t,.09,140,110,.11,'square'); break;
+    case 'pop':   nz(t,.32,700,70,.34,'lowpass'); tn(t,.22,150,44,.17,'sine'); break;
+    case 'catch': tn(t,.06,700,1050,.12,'triangle'); tn(t+.05,.07,1050,1400,.09,'triangle'); break;
+    case 'deny':  tn(t,.15,240,90,.15,'sawtooth'); break;
+    case 'land':  nz(t,.3,420,70,.32,'lowpass'); tn(t,.22,160,50,.16,'square'); break;
+    case 'close': tn(t,.07,880,1200,.10,'triangle'); break;
+    case 'swap':  tn(t,.05,520,700,.07,'triangle'); break;
+    case 'level': [523,659,784,1047].forEach((f,i)=>tn(t+i*.08,.16,f,f,.10,'triangle')); break;
+    case 'over':  [392,311,262,196].forEach((f,i)=>tn(t+i*.17,.36,f,f*.8,.15,'sawtooth')); break;
+  } }
+
+// ------------------------------------------------------------ staat
+const KEY='cookie-monster.exp4';
+const blank=()=>({consentSet:false,consent:{noodzakelijk:true,analytisch:false,marketing:false},
+  stock:{},prog:{},last:Date.now(),best:0,eaten:0,visits:0});
+let S; try{S=Object.assign(blank(),JSON.parse(localStorage.getItem(KEY)||'{}'));}catch(e){S=blank();}
+const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}};
+S.visits++;
+const ok=cat=>!!S.consent[cat];
+function accrue(now,off){ const dt=Math.max(0,(now-S.last)/1000); S.last=now; if(!S.consentSet) return;
+  for(const c of COOKIES){ if(!ok(c.cat)) continue; if(c.session&&off) continue;
+    const have=S.stock[c.id]||0; if(have>=c.cap){S.prog[c.id]=0;continue;}
+    const p=(S.prog[c.id]||0)+dt, got=Math.floor(p/c.interval);
+    S.prog[c.id]=p-got*c.interval; S.stock[c.id]=Math.min(c.cap,have+got); } }
+accrue(Date.now(),true);
+if(S.consentSet&&ok('noodzakelijk')) S.stock.PHPSESSID=byId('PHPSESSID').cap;
+const T={t0:Date.now(),clicks:0,keys:0,shown:0,ms:0,choice:'—',swaps:0,caught:0,missed:0,wrong:0,closed:0};
+addEventListener('pointerdown',()=>T.clicks++); addEventListener('keydown',()=>T.keys++);
+
+// ------------------------------------------------------------ canvas
+const cv=document.getElementById('c'), X=cv.getContext('2d');
+let W=0,H=0,DPR=1;
+function resize(){ const r=cv.getBoundingClientRect(); DPR=Math.min(2,devicePixelRatio||1);
+  W=r.width; H=r.height; cv.width=Math.round(W*DPR); cv.height=Math.round(H*DPR); X.setTransform(DPR,0,0,DPR,0,0); }
+addEventListener('resize',resize);
+const rnd=(a,b)=>a+Math.random()*(b-a), clamp=(v,a,b)=>v<a?a:v>b?b:v;
+const INK='#1a1a24', PAPER='#faf7f2';
+
+// ------------------------------------------------------------ koekje tekenen
+function cookie(g,art,r,rot){
+  g.save(); g.rotate(rot||0);
+  g.fillStyle='#e0b070'; g.strokeStyle=INK; g.lineWidth=Math.max(1.2,r*.13); g.lineJoin='round';
+  g.beginPath();
+  if(art==='spec') g.roundRect(-r,-r*.7,r*2,r*1.4,r*.3);
+  else if(art==='waffle') g.arc(0,0,r,0,7);
+  else { for(let i=0;i<=20;i++){ const a=i/20*Math.PI*2, rr=r*(1+Math.sin(a*5)*.06);
+    g[i?'lineTo':'moveTo'](Math.cos(a)*rr,Math.sin(a)*rr);} g.closePath(); }
+  g.fill(); g.stroke();
+  g.fillStyle=INK;
+  if(art==='chip') for(const p of [[-.38,-.28],[.3,-.36],[.04,.14],[-.18,.46],[.44,.26]]){
+    g.beginPath(); g.arc(p[0]*r,p[1]*r,r*.15,0,7); g.fill(); }
+  else if(art==='waffle'){ g.strokeStyle=INK; g.lineWidth=Math.max(1,r*.10);
+    g.save(); g.beginPath(); g.arc(0,0,r*.86,0,7); g.clip();
+    for(let i=-2;i<=2;i++){ g.beginPath(); g.moveTo(i*r*.42,-r); g.lineTo(i*r*.42,r); g.stroke();
+      g.beginPath(); g.moveTo(-r,i*r*.42); g.lineTo(r,i*r*.42); g.stroke(); } g.restore(); }
+  else if(art==='spec'){ g.strokeStyle=INK; g.lineWidth=Math.max(1,r*.09);
+    g.beginPath(); g.arc(0,0,r*.3,0,7); g.stroke();
+    g.beginPath(); g.moveTo(-r*.62,0); g.lineTo(-r*.38,0); g.moveTo(r*.38,0); g.lineTo(r*.62,0); g.stroke(); }
+  g.restore();
+}
+
+const P=[];
+function burst(x,y,n,col,spd,life,size){ for(let i=0;i<n;i++){ const a=rnd(0,7);
+  P.push({x,y,vx:Math.cos(a)*rnd(spd*.3,spd),vy:Math.sin(a)*rnd(spd*.3,spd)-spd*.3,
+    l:rnd(life*.6,life),L:life,c:col,s:size||rnd(2,4),g:rnd(220,440)}); } }
+
+// ------------------------------------------------------------ spel
+const DOCKH=28;
+const DOCK_COPY=['Wij en onze 842 partners gebruiken cookies','Deze site gebruikt cookies',
+  'Mogen we je gegevens delen?','Accepteer cookies om verder te lezen','Wij waarderen je privacy'];
+const G={on:false,paused:false,lvl:1,score:0,combo:0,comboT:0,left:0,spawnT:0,
+  cr:[],sh:[],dr:[],dock:[],sel:'PHPSESSID',cool:0,reveal:0,shake:0,flash:0,msg:'',msgT:0,title:'',titleT:0};
+const M={x:0,y:0,tx:0,vx:0,chomp:0,fur:0,ex:0,ey:0,evx:0,evy:0};
+
+function dockH(){ return G.dock.length*DOCKH; }
+function jarY(){ return Math.max(150,H-dockH()-56); }
+function floorY(){ return jarY(); }
+
+function startLevel(n){
+  const L=LEVELS[Math.min(n,LEVELS.length)-1];
+  G.lvl=n; G.cr=[]; G.sh=[]; G.dr=[]; G.dock=[]; G.left=L.n; G.spawnT=1.4; G.on=true; G.combo=0;
+  M.x=W/2; M.tx=W/2;
+  G.title='  '+n+'  ·  '+L.title; G.titleT=performance.now()+2600;
+  sfx('level');
+  // het nieuwe koekje komt aanvliegen vóór het monster dat het nodig heeft
+  if(L.gift) setTimeout(()=>{ if(G.on) G.dr.push({x:W/2,y:-20,vx:0,vy:40,rot:0,vr:1.4,id:L.gift,life:14,gift:1}); },1200);
+}
+function say(t,ms){ G.msg=t; G.msgT=performance.now()+(ms||1500); }
+
+function spawn(){
+  const L=LEVELS[Math.min(G.lvl,LEVELS.length)-1];
+  const k=L.kinds[Math.floor(Math.random()*L.kinds.length)], K=KIND[k];
+  const group=k==='pixel'?3:k==='banner'&&Math.random()<.4?2:1;
+  const x0=rnd(K.w*.6,W-K.w*.6);
+  for(let i=0;i<group;i++){
+    G.cr.push({k,K,hp:K.hp,max:K.hp,x:clamp(x0+i*30-group*15,K.w/2,W-K.w/2),
+      y:-K.h-rnd(0,50)-i*34,ph:rnd(0,7),amp:rnd(24,66),sp:K.sp*(1+G.lvl*.07),flash:0,bx:x0});
+    G.left--;
+  }
+}
+
+function fire(){
+  if(!G.on||G.cool>0) return;
+  const c=byId(G.sel);
+  if(!ok(c.cat)){ sfx('deny'); say('geweigerd — die keuze staat in cookie_consent',1600); G.cool=.45; return; }
+  if((S.stock[c.id]||0)<1){ sfx('deny'); say(c.taste+' is op — er komt er een over '+Math.ceil(c.interval-(S.prog[c.id]||0))+'s',1600); G.cool=.35; return; }
+  S.stock[c.id]--; S.eaten++; save();
+  M.chomp=1; G.cool=.2; sfx('spit');
+  G.sh.push({x:M.x,y:M.y-24,vy:-680,c,life:2});
+  burst(M.x,M.y-24,4,c.col,150,.26);
+  if(c.id==='_ga') G.reveal=performance.now()+5000;   // analytics laat zien wat er staat
+}
+
+function hit(cr,s){
+  const match=cr.K.cookie===s.c.id;
+  if(!match){
+    T.wrong++;
+    if(cr.K.armour){ sfx('wrong'); cr.flash=.3; burst(s.x,s.y,4,'#b9b2a8',130,.3);
+      say('een cookiewall wil alleen '+byId(cr.K.cookie).taste,1400); return; }
+    cr.hp-=.5; cr.flash=.5; sfx('wrong'); burst(s.x,s.y,4,'#b9b2a8',140,.3);
+  } else {
+    cr.hp-=s.c.power*2; cr.flash=1; sfx('hit');
+    burst(s.x,s.y,8,s.c.col,240,.5); G.shake=Math.max(G.shake,3);
+  }
+  if(cr.hp>0) return;
+  cr.dead=true; G.combo++; G.comboT=1.8;
+  G.score+=cr.K.pts*Math.max(1,Math.floor(G.combo/3));
+  G.shake=Math.max(G.shake,8); G.flash=.3; sfx('pop');
+  const own=byId(cr.K.cookie), col=own.col;
+  burst(cr.x,cr.y,20,col,320,.7); burst(cr.x,cr.y,8,INK,240,.4,2.5);
+  // hij laat terug vallen wat het kostte om hem te slopen: raak je goed, dan is het rond
+  const back=Math.max(1,Math.ceil(cr.max/(own.power*2)));
+  for(let i=0;i<back;i++)
+    G.dr.push({x:cr.x,y:cr.y,vx:rnd(-70,70)+i*14,vy:-120-i*20,rot:rnd(0,7),vr:rnd(-4,4),id:cr.K.cookie,life:8});
+}
+
+function land(){
+  G.dock.push({t:0,copy:DOCK_COPY[Math.floor(Math.random()*DOCK_COPY.length)]});
+  G.shake=Math.max(G.shake,11); sfx('land'); G.combo=0;
+  if(dockH()>H-150) over(false);   // de stapel is bovenaan
+}
+function clickDock(px,py){
+  for(let n=0;n<G.dock.length;n++){
+    const y=H-(n+1)*DOCKH;
+    if(py<y||py>y+DOCKH-2) continue;
+    if(Math.abs(px-(W-22))<13&&Math.abs(py-(y+DOCKH/2))<13){
+      G.dock.splice(n,1); T.closed++; G.score+=1; sfx('close');
+      burst(px,py,10,'#b9b2a8',180,.45); }
+    return true;   // je klikte in de stapel: je schiet in elk geval niet
+  }
+  return false;
+}
+
+function grab(d){
+  const c=byId(d.id);
+  if(!ok(c.cat)){ sfx('deny'); burst(d.x,d.y,12,'#e0417a',230,.55); T.missed++;
+    say(c.taste+' heb je geweigerd — hij valt door je heen',1900); return; }
+  const have=S.stock[c.id]||0;
+  if(have>=c.cap){ say(c.taste+' zit vol',800); return; }
+  S.stock[c.id]=have+1; save(); T.caught++; sfx('catch'); M.chomp=1;
+  burst(d.x,d.y,12,c.col,230,.55);
+  if(d.gift){ G.sel=c.id; say(c.taste+' — '+c.fx,2600); }
+}
+
+function update(dt,now){
+  M.fur+=dt; M.chomp=Math.max(0,M.chomp-dt*3.4);
+  G.cool=Math.max(0,G.cool-dt); G.shake*=Math.pow(.02,dt); G.flash=Math.max(0,G.flash-dt*3);
+  if(G.comboT>0){ G.comboT-=dt; if(G.comboT<=0) G.combo=0; }
+
+  M.y=floorY()-30; M.x+=(M.tx-M.x)*Math.min(1,dt*14); M.x=clamp(M.x,32,W-32); M.vx=(M.tx-M.x)*.1;
+  let tg=null,td=1e9;
+  for(const c of G.cr){ const d=Math.hypot(c.x-M.x,c.y-M.y); if(d<td){td=d;tg=c;} }
+  const gx=tg?clamp((tg.x-M.x)/220,-1,1):0, gy=tg?clamp((tg.y-M.y)/240,-1,1):-.2;
+  M.evx+=(gx-M.ex)*46*dt; M.evy+=(gy-M.ey)*46*dt;
+  M.evx*=Math.pow(.02,dt); M.evy*=Math.pow(.02,dt); M.ex+=M.evx*dt; M.ey+=M.evy*dt;
+  if(!G.on) return;
+
+  const L=LEVELS[Math.min(G.lvl,LEVELS.length)-1];
+  G.spawnT-=dt;
+  if(G.spawnT<=0&&G.left>0){ spawn(); G.spawnT=L.rate*rnd(.72,1.3); }
+
+  for(const c of G.cr){
+    c.ph+=dt*1.15; c.y+=c.sp*dt;
+    c.x=clamp(c.bx+Math.sin(c.ph)*c.amp,c.K.w/2+4,W-c.K.w/2-4);
+    c.flash=Math.max(0,c.flash-dt*3.5);
+    if(c.y-c.K.h/2>floorY()-12){ c.dead=true; land(); }
+  }
+  for(const s of G.sh){ s.y+=s.vy*dt; s.life-=dt;
+    for(const c of G.cr){ if(c.dead) continue;
+      if(Math.abs(s.x-c.x)<c.K.w/2+4&&Math.abs(s.y-c.y)<c.K.h/2+4){ hit(c,s); s.dead=true; break; } }
+    if(s.y<-20||s.life<=0) s.dead=true; }
+  for(const d of G.dr){
+    d.vy+=d.gift?150*dt:600*dt; d.x+=d.vx*dt; d.y+=d.vy*dt; d.rot+=d.vr*dt; d.life-=dt;
+    if(d.x<14||d.x>W-14) d.vx*=-.7;
+    if(Math.abs(d.x-M.x)<42&&Math.abs(d.y-M.y)<36){ grab(d); d.dead=true; continue; }
+    if(d.y>floorY()+24||d.life<=0){ d.dead=true; if(d.life>0){ T.missed++; burst(d.x,floorY(),6,'#b9b2a8',140,.4); } } }
+  for(const p of P){ p.vy+=p.g*dt; p.x+=p.vx*dt; p.y+=p.vy*dt; p.l-=dt; }
+  G.cr=G.cr.filter(c=>!c.dead); G.sh=G.sh.filter(s=>!s.dead); G.dr=G.dr.filter(d=>!d.dead);
+  for(let i=P.length-1;i>=0;i--) if(P[i].l<=0) P.splice(i,1);
+
+  if(G.left<=0&&!G.cr.length&&!G.dr.length){
+    G.on=false; S.best=Math.max(S.best||0,G.lvl); save();
+    if(G.lvl>=LEVELS.length) return over(true);
+    setTimeout(()=>startLevel(G.lvl+1),1200);
+  }
+}
+
+// ------------------------------------------------------------ tekenen
+function draw(now){
+  const sx=G.shake?rnd(-G.shake,G.shake):0, sy=G.shake?rnd(-G.shake,G.shake):0;
+  X.setTransform(DPR,0,0,DPR,0,0);
+  X.fillStyle=PAPER; X.fillRect(0,0,W,H);
+  X.save(); X.translate(sx,sy);
+
+  // de lege pagina waar dit allemaal op gebeurt
+  X.fillStyle='#efe9e0';
+  X.fillRect(W*.12,54,W*.42,16);
+  for(let i=0;i<7;i++) X.fillRect(W*.12,92+i*22,W*(.76-(i%3)*.12),8);
+
+  for(const c of G.cr) drawCreature(c,now);
+  for(const s of G.sh){ X.fillStyle=s.c.col; X.strokeStyle=INK; X.lineWidth=1.4;
+    X.beginPath(); X.arc(s.x,s.y,4.4,0,7); X.fill(); X.stroke(); }
+  for(const p of P){ X.globalAlpha=Math.max(0,p.l/p.L); X.fillStyle=p.c; X.fillRect(p.x,p.y,p.s,p.s); }
+  X.globalAlpha=1;
+  for(const d of G.dr){ X.save(); X.translate(d.x,d.y);
+    if(d.gift){ X.globalAlpha=.25; X.fillStyle=byId(d.id).col;
+      X.beginPath(); X.arc(0,0,20+Math.sin(now/160)*4,0,7); X.fill(); X.globalAlpha=1; }
+    cookie(X,byId(d.id).art,12,d.rot); X.restore(); }
+  drawMonster(now);
+  drawDock();
+  drawHud(now);
+  X.restore();
+  if(G.flash>0){ X.fillStyle='rgba(26,26,36,'+(G.flash*.07)+')'; X.fillRect(0,0,W,H); }
+  if(G.paused) drawPause();
+}
+
+function drawCreature(c,now){
+  const K=c.K, col=byId(K.cookie).col, hidden=K.hidden&&now>G.reveal;
+  X.save(); X.translate(c.x,c.y);
+  if(hidden){ // een trackingpixel is onzichtbaar. tot je een speculaasje afvuurt.
+    X.globalAlpha=.13; X.strokeStyle=col; X.lineWidth=1.4; X.setLineDash([3,4]);
+    X.beginPath(); X.arc(0,0,K.w/2,0,7); X.stroke(); X.setLineDash([]); X.restore(); return; }
+  const br=1+Math.sin(now/300+c.ph)*.04;
+  X.scale(br*(1+c.flash*.16),(1/br)*(1-c.flash*.12));
+  const w=K.w,h=K.h;
+  X.lineJoin='round'; X.lineCap='round'; X.strokeStyle=INK;
+
+  // pootjes
+  X.lineWidth=3;
+  for(let i=0;i<K.legs;i++){ const lx=(-(K.legs-1)/2+i)*(w/(K.legs+1.1));
+    const sw=Math.sin(now/150+i*1.9+c.ph)*5;
+    X.beginPath(); X.moveTo(lx,h/2-2); X.lineTo(lx+sw,h/2+11); X.stroke(); }
+
+  // lijf in de kleur van zijn koekje
+  X.fillStyle=c.flash>0?'#fff':col; X.lineWidth=3;
+  X.beginPath();
+  if(c.k==='pixel') X.arc(0,0,w/2,0,7); else X.roundRect(-w/2,-h/2,w,h,10);
+  X.fill(); X.stroke();
+
+  if(c.k!=='pixel'){
+    X.fillStyle='rgba(26,26,36,.14)'; X.beginPath(); X.roundRect(-w/2,-h/2,w,12,[10,10,0,0]); X.fill();
+    X.fillStyle='rgba(26,26,36,.45)'; X.font='700 8px "Helvetica Neue",Arial,sans-serif';
+    X.fillText(K.copy,-w/2+10,-h/2+8.5);
+    // de accepteerknop, als een tongetje
+    X.fillStyle='#fff'; X.strokeStyle=INK; X.lineWidth=2;
+    X.beginPath(); X.roundRect(-19,h/2-15,38,11,6); X.fill(); X.stroke();
+    X.fillStyle=INK; X.font='800 7px "Helvetica Neue",Arial,sans-serif'; X.textAlign='center';
+    X.fillText('ACCEPTEREN',0,h/2-7); X.textAlign='left';
+  }
+
+  // ogen die je volgen
+  const er=c.k==='pixel'?7:9, dx=clamp((M.x-c.x)/200,-1,1), dy=clamp((M.y-c.y)/220,-1,1);
+  for(let i=0;i<K.eyes;i++){
+    const ox=(-(K.eyes-1)/2+i)*(er*2.6), oy=c.k==='pixel'?0:-h/2+16+er*.2;
+    X.fillStyle='#fff'; X.strokeStyle=INK; X.lineWidth=2;
+    X.beginPath(); X.arc(ox,oy,er,0,7); X.fill(); X.stroke();
+    X.fillStyle=INK; X.beginPath(); X.arc(ox+dx*er*.42,oy+dy*er*.42,er*.44,0,7); X.fill();
+  }
+  if(c.k!=='pixel'){ X.strokeStyle=INK; X.lineWidth=2.2; X.beginPath();
+    X.arc(0,-h/2+16+er*2.1,7,.25,Math.PI-.25); X.stroke(); }
+  if(c.hp<c.max){ X.fillStyle=INK; X.globalAlpha=.18; X.fillRect(-w/2,-h/2-9,w,3); X.globalAlpha=1;
+    X.fillStyle=INK; X.fillRect(-w/2,-h/2-9,w*(c.hp/c.max),3); }
+  X.restore();
+}
+
+function drawMonster(now){
+  const r=30,t=M.fur;
+  X.save(); X.globalAlpha=.10; X.fillStyle=INK;
+  X.beginPath(); X.ellipse(M.x,floorY()-3,r*.85+M.chomp*6,5,0,0,7); X.fill(); X.restore();
+  X.save(); X.translate(M.x,M.y); X.rotate(clamp(M.vx*.012,-.2,.2));
+  X.strokeStyle=INK; X.lineWidth=3; X.lineJoin='round';
+  X.fillStyle='#2f8fd6';
+  for(const s of [-1,1]){ X.save(); X.translate(s*r*.88,r*.15); X.rotate(s*(.5+Math.sin(t*6+s)*.25));
+    X.beginPath(); X.ellipse(0,0,r*.4,r*.23,0,0,7); X.fill(); X.stroke(); X.restore(); }
+  X.fillStyle='#3b9ae1'; X.beginPath();
+  for(let i=0;i<=64;i++){ const a=i/64*Math.PI*2;
+    const rr=r+Math.sin(a*9+t*7)*3.2+Math.sin(a*15-t*5)*1.8;
+    X[i?'lineTo':'moveTo'](Math.cos(a)*rr,Math.sin(a)*rr); }
+  X.closePath(); X.fill(); X.stroke();
+  const open=M.chomp*.9;
+  X.fillStyle=INK; X.beginPath(); X.ellipse(0,r*.3,r*.5,r*.1+open*r*.46,0,0,7); X.fill();
+  for(const s of [-1,1]){ const ox=s*r*.42, oy=-r*.5;
+    X.fillStyle='#fff'; X.lineWidth=3; X.beginPath(); X.arc(ox,oy,r*.36,0,7); X.fill(); X.stroke();
+    X.fillStyle=INK; X.beginPath(); X.arc(ox+M.ex*r*.15,oy+M.ey*r*.15,r*.16,0,7); X.fill(); }
+  X.restore();
+}
+
+function drawDock(){
+  G.dock.forEach((d,n)=>{
+    const y=H-(n+1)*DOCKH+(1-d.t)*30;
+    X.globalAlpha=d.t;
+    X.fillStyle='#fff'; X.fillRect(0,y,W,DOCKH-1);
+    X.strokeStyle='#e2dbd1'; X.lineWidth=1; X.beginPath(); X.moveTo(0,y+.5); X.lineTo(W,y+.5); X.stroke();
+    X.font='13px "Helvetica Neue",Arial,sans-serif'; X.fillStyle=INK; X.fillText('🍪',10,y+19);
+    X.fillStyle='#7a7a86'; X.font='700 10px "Helvetica Neue",Arial,sans-serif';
+    X.fillText(d.copy,32,y+18);
+    X.fillStyle='#16a34a'; X.beginPath(); X.roundRect(W-124,y+7,60,13,5); X.fill();
+    X.fillStyle='#fff'; X.font='800 7.5px Arial'; X.fillText('ACCEPTEREN',W-118,y+16);
+    X.strokeStyle='#9a9aa4'; X.lineWidth=1.8; X.lineCap='round';
+    X.beginPath(); X.moveTo(W-27,y+DOCKH/2-5); X.lineTo(W-17,y+DOCKH/2+5);
+    X.moveTo(W-17,y+DOCKH/2-5); X.lineTo(W-27,y+DOCKH/2+5); X.stroke();
+    X.globalAlpha=1;
+  });
+}
+
+function drawHud(now){
+  X.fillStyle='#a09a90'; X.font='800 10px "Helvetica Neue",Arial,sans-serif';
+  X.fillText('LEVEL '+G.lvl+'  /  '+LEVELS.length,16,26);
+  X.textAlign='right'; X.fillStyle=INK; X.font='800 24px "Helvetica Neue",Arial,sans-serif';
+  X.fillText(String(G.score),W-16,30); X.textAlign='left';
+  if(G.combo>2){ X.save(); X.textAlign='center'; X.fillStyle='#f5b301';
+    X.font='800 26px "Helvetica Neue",Arial,sans-serif';
+    X.fillText('×'+Math.max(1,Math.floor(G.combo/3)),W/2,58); X.restore(); }
+  if(now<G.titleT){ X.save(); X.textAlign='center'; X.globalAlpha=Math.min(1,(G.titleT-now)/700);
+    X.fillStyle=INK; X.font='800 30px "Helvetica Neue",Arial,sans-serif';
+    X.fillText(G.title,W/2,H*.4); X.restore(); }
+  if(now<G.msgT){ X.save(); X.textAlign='center'; X.fillStyle='#7a7a86';
+    X.font='700 12.5px "Helvetica Neue",Arial,sans-serif'; X.fillText(G.msg,W/2,jarY()-22); X.restore(); }
+
+  // de trommel: drie vakken, elk in zijn eigen kleur
+  const y0=jarY(), bw=Math.min(210,(W-24)/COOKIES.length);
+  const x0=(W-bw*COOKIES.length)/2;
+  COOKIES.forEach((c,i)=>{
+    const x=x0+i*bw, on=G.sel===c.id, has=ok(c.cat), have=S.stock[c.id]||0, full=have>=c.cap;
+    X.save(); X.translate(x,y0+6);
+    X.fillStyle=on?c.col:'#fff'; X.globalAlpha=has?1:.45;
+    X.strokeStyle=on?INK:'#e2dbd1'; X.lineWidth=on?2.5:1.5;
+    X.beginPath(); X.roundRect(4,0,bw-8,42,10); X.fill(); X.stroke();
+    X.globalAlpha=1;
+    X.save(); X.translate(26,21); X.globalAlpha=has?1:.4; cookie(X,c.art,13,0); X.restore();
+    X.globalAlpha=1;
+    X.fillStyle=on?INK:(has?INK:'#b04a68');
+    X.font='800 19px "Helvetica Neue",Arial,sans-serif';
+    X.fillText(has?String(have):'✕',46,25);
+    X.fillStyle=on?'rgba(26,26,36,.6)':'#a09a90'; X.font='700 9px "Helvetica Neue",Arial,sans-serif';
+    X.fillText(has?('/'+c.cap):'geweigerd',46+(has?String(have).length*11:0),25);
+    X.fillText(has?(full?'vol':'+1 over '+Math.ceil(c.interval-(S.prog[c.id]||0))+'s'):c.taste,46,36);
+    if(has&&!full){ const pr=(S.prog[c.id]||0)/c.interval;
+      X.globalAlpha=.25; X.fillStyle=INK; X.fillRect(bw-16,10,3,24); X.globalAlpha=1;
+      X.fillStyle=on?INK:c.col; X.fillRect(bw-16,10+24*(1-pr),3,24*pr); }
+    X.fillStyle=on?'rgba(26,26,36,.45)':'#c9c2b8'; X.font='800 9px "Helvetica Neue",Arial,sans-serif';
+    X.fillText(String(i+1),bw-26,17);
+    X.restore();
+  });
+}
+
+function drawPause(){
+  X.fillStyle='rgba(250,247,242,.96)'; X.fillRect(0,0,W,H);
+  X.textAlign='center'; X.fillStyle=INK; X.font='800 13px "Helvetica Neue",Arial,sans-serif';
+  X.fillText('PAUZE  ·  ESC OM VERDER TE GAAN',W/2,64);
+  X.fillStyle='#7a7a86'; X.font='600 12px "Helvetica Neue",Arial,sans-serif';
+  X.fillText('koekjes groeien door terwijl je pauzeert, en ook als je dit tabblad sluit',W/2,86);
+  X.textAlign='left';
+  const wide=Math.min(520,W-48), left=(W-wide)/2, top=124, rowH=Math.min(96,(H-top-40)/COOKIES.length);
+  COOKIES.forEach((c,i)=>{
+    const y=top+i*rowH, has=ok(c.cat), have=S.stock[c.id]||0, full=have>=c.cap;
+    X.save(); X.translate(left,y); X.globalAlpha=has?1:.45;
+    X.fillStyle='#fff'; X.strokeStyle='#e2dbd1'; X.lineWidth=1.5;
+    X.beginPath(); X.roundRect(0,0,wide,rowH-14,12); X.fill(); X.stroke();
+    X.fillStyle=c.col; X.beginPath(); X.roundRect(0,0,6,rowH-14,[12,0,0,12]); X.fill();
+    X.save(); X.translate(34,(rowH-14)/2); cookie(X,c.art,15,0); X.restore();
+    X.fillStyle=INK; X.font='800 15px "Helvetica Neue",Arial,sans-serif';
+    X.fillText(c.taste,62,26);
+    X.fillStyle='#8a8a94'; X.font='11px ui-monospace,Menlo,monospace';
+    X.fillText(c.id+'  ·  echt '+c.age+'  ·  1 per '+c.interval+'s  ·  max '+c.cap,62,44);
+    X.fillStyle='#a09a90'; X.font='700 10px "Helvetica Neue",Arial,sans-serif';
+    X.fillText(c.fx,62,60);
+    X.textAlign='right';
+    if(!has){ X.fillStyle='#e0417a'; X.font='800 13px "Helvetica Neue",Arial,sans-serif';
+      X.fillText('geweigerd — groeit niet',wide-16,32); }
+    else { X.fillStyle=INK; X.font='800 22px "Helvetica Neue",Arial,sans-serif';
+      X.fillText(have+' / '+c.cap,wide-16,32);
+      X.fillStyle='#8a8a94'; X.font='700 10px "Helvetica Neue",Arial,sans-serif';
+      X.fillText(full?'vol':'volgende over '+Math.ceil(c.interval-(S.prog[c.id]||0))+'s',wide-16,50);
+      if(!full) X.fillText('helemaal vol over '+Math.max(1,Math.round(((c.cap-have)*c.interval-(S.prog[c.id]||0))/60))+' min',wide-16,64); }
+    X.textAlign='left'; X.globalAlpha=1; X.restore();
+  });
+}
+
+// ------------------------------------------------------------ lus & invoer
+let prev=performance.now(), holding=false;
+function frame(now){
+  const dt=Math.min(.05,(now-prev)/1000); prev=now;
+  accrue(Date.now(),false);              // de klok loopt door, ook in pauze
+  if(!G.paused){ update(dt,now); if(holding) fire(); }
+  draw(now);
+  requestAnimationFrame(frame);
+}
+const keys={};
+addEventListener('keydown',e=>{
+  if(['ArrowLeft','ArrowRight','Space','KeyA','KeyD'].includes(e.code)) e.preventDefault();
+  keys[e.code]=true; if(e.code==='Space') holding=true;
+  const n=parseInt(e.key,10); if(n>=1&&n<=COOKIES.length){ G.sel=COOKIES[n-1].id; T.swaps++; sfx('swap'); }
+  if(e.code==='Escape'){ G.paused=!G.paused; holding=false; sfx('swap'); }
+  if(e.code==='KeyM') MUTED=!MUTED;
+});
+addEventListener('keyup',e=>{ keys[e.code]=false; if(e.code==='Space') holding=false; });
+setInterval(()=>{ const s=13;
+  if(keys.ArrowLeft||keys.KeyA) M.tx=clamp(M.tx-s,32,W-32);
+  if(keys.ArrowRight||keys.KeyD) M.tx=clamp(M.tx+s,32,W-32); },16);
+cv.addEventListener('pointerdown',e=>{ audio();
+  if(G.paused){ G.paused=false; return; }
+  if(e.offsetY>H-dockH()){ clickDock(e.offsetX,e.offsetY); return; }
+  M.tx=e.offsetX; holding=true; });
+cv.addEventListener('pointerup',()=>holding=false);
+cv.addEventListener('pointerleave',()=>holding=false);
+cv.addEventListener('pointermove',e=>{ if(e.offsetY<H-dockH()) M.tx=e.offsetX; });
+addEventListener('wheel',e=>{ const i=COOKIES.findIndex(c=>c.id===G.sel);
+  G.sel=COOKIES[(i+(e.deltaY>0?1:COOKIES.length-1))%COOKIES.length].id; T.swaps++; sfx('swap'); },{passive:true});
+
+// ------------------------------------------------------------ de melding
+const sheet=document.getElementById('sheet'), card=document.getElementById('card');
+const draft={analytisch:{c:false,li:true},marketing:{c:false,li:true}};
+function banner(){ T.shown=Date.now(); sheet.classList.remove('hidden');
+  card.innerHTML=`<div class="brand"><i>&#127850;</i><b>Cookievoorkeuren</b></div>
+    <h2>Wij waarderen je privacy</h2>
+    <p>Wij en onze <b>842 partners</b> gebruiken cookies om dit spel te laten werken, om te meten hoe je speelt
+       en om je relevante koekjes te tonen.</p>
+    <p class="fine">Elk monster gaat alleen dood aan zijn eigen koekje. Wat je hier weigert, kun je straks niet opruimen.</p>
+    <button class="btn" id="all">Alles accepteren</button>
+    <button class="link" id="prefs">Voorkeuren beheren</button>`;
+  document.getElementById('all').onclick=()=>done('alles accepteren',{analytisch:true,marketing:true});
+  document.getElementById('prefs').onclick=prefs; }
+function prefs(){
+  const rows=Object.entries(CATS).map(([k,cat])=>{
+    const cs=COOKIES.filter(c=>c.cat===k);
+    const li=cs.map(c=>`<li><b>${c.id}</b> ${c.real} <span>${c.age}</span></li>`).join('');
+    const dot=cs.length?`<u style="background:${cs[0].col}"></u>`:'';
+    const sw=k==='noodzakelijk'?`<div class="sw"><input type="checkbox" checked disabled><span>Altijd actief</span></div>`
+      :`<div class="sw"><input type="checkbox" data-k="${k}" data-f="c" ${draft[k].c?'checked':''}><span>Toestemming</span></div>
+        <div class="sw"><input type="checkbox" data-k="${k}" data-f="li" ${draft[k].li?'checked':''}><span>Legitiem belang</span></div>`;
+    return `<div class="cat"><h3>${dot}${cat.t}</h3><div class="d">${cat.d}</div>${sw}<ul>${li}</ul></div>`;
+  }).join('');
+  card.innerHTML=`<div class="brand"><i>&#127850;</i><b>Voorkeuren beheren</b></div>
+    <p class="fine">Legitiem belang staat standaard aan. Zet beide uit om echt te weigeren.</p>${rows}
+    <button class="btn" id="ok">Keuzes opslaan</button><button class="link" id="none">Alles weigeren</button>`;
+  card.querySelectorAll('input[data-k]').forEach(i=>i.onchange=()=>{draft[i.dataset.k][i.dataset.f]=i.checked;});
+  document.getElementById('ok').onclick=()=>{ const r={};
+    for(const k in draft) r[k]=draft[k].c||draft[k].li; done('voorkeuren opgeslagen',r); };
+  document.getElementById('none').onclick=()=>{ card.innerHTML='<div id="spin">Je voorkeuren worden verwerkt&hellip;</div>';
+    setTimeout(()=>done('alles weigeren',{analytisch:false,marketing:false}),3000); }; }
+function done(choice,r){
+  T.choice=choice; T.ms=Date.now()-T.shown;
+  Object.assign(S.consent,r); S.consentSet=true; S.last=Date.now();
+  for(const c of COOKIES) if(ok(c.cat)&&S.stock[c.id]==null) S.stock[c.id]=c.session?c.cap:Math.min(c.cap,2);
+  save(); sheet.classList.add('hidden'); audio(); resize(); G.score=0; startLevel(1); }
+
+// ------------------------------------------------------------ het rapport
+const report=document.getElementById('report');
+function over(won){
+  G.on=false; sfx('over');
+  const rows=[
+    ['level',G.lvl+' van '+LEVELS.length],['punten',G.score],
+    ['tijd op deze pagina',((Date.now()-T.t0)/60000).toFixed(1).replace('.',',')+' min'],
+    ['tijd tot je keuze',(T.ms/1000).toFixed(1).replace('.',',')+' s'],
+    ['je keuze',T.choice],
+    ['koekjes opgegeten',S.eaten],['koekjes gevangen',T.caught],
+    ['banners weggeklikt',T.closed],
+    ['bezoeken',S.visits],
+    ['scherm',innerWidth+'&times;'+innerHeight],
+    ['tijdzone',Intl.DateTimeFormat().resolvedOptions().timeZone],
+    ['taal',navigator.language],
+  ];
+  report.classList.remove('hidden');
+  report.innerHTML=`<div class="in">
+    <h2>${won?'UITGESPEELD':'DE PAGINA IS VOL'}</h2>
+    <p>${won?'Je hebt 842 partners overleefd.':'De stapel raakte de bovenkant. Er is geen pagina meer over.'}</p>
+    <h2 style="margin-top:28px">WAT WE OVER JE HEBBEN VERZAMELD</h2>
+    <div class="rows">${rows.map(r=>`<div>${r[0]} <span>${r[1]}</span></div>`).join('')}</div>
+    <p style="font-size:11.5px;color:#6a6a7a;line-height:1.7">Dit is allemaal echt gemeten, tijdens dit spel,
+      en het heeft je browser nooit verlaten. Een echte cookiemelding meet ongeveer dit &mdash; en stuurt het wel door.</p>
+    <button class="gbtn" id="ra">Opnieuw</button><button class="gbtn warn" id="rc">Cookies wissen</button></div>`;
+  document.getElementById('ra').onclick=()=>{ report.classList.add('hidden'); resize(); G.score=0; startLevel(1); };
+  document.getElementById('rc').onclick=()=>{ report.classList.add('hidden');
+    const v=S.visits; S=blank(); S.visits=v; save();
+    for(const k in draft){ draft[k].c=false; draft[k].li=true; } banner(); };
+}
+
+resize(); requestAnimationFrame(frame);
+if(S.consentSet){ resize(); G.score=0; startLevel(1); } else banner();
+</script>
+</body>
+</html>

@@ -1,0 +1,541 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="robots" content="noindex, nofollow">
+<title>exp-2 · kruimelmonsters</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="author" content="Rick van der Wolk">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%;overflow:hidden;background:#07070b}
+  body{color:#fff;font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;display:flex;flex-direction:column;
+    user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:none;cursor:none}
+  canvas{flex:1 1 auto;display:block;width:100%}
+  .hidden{display:none!important}
+  #sheet{position:fixed;inset:0;background:rgba(3,3,6,.8);z-index:20;display:flex;align-items:flex-end;
+    justify-content:center;backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
+  #card{width:100%;max-width:640px;max-height:94vh;overflow-y:auto;background:#fff;color:#16161a;
+    border-radius:14px 14px 0 0;padding:26px 26px 20px;box-shadow:0 -10px 60px rgba(0,0,0,.6);cursor:auto}
+  #card .brand{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+  #card .brand i{width:30px;height:30px;border-radius:50%;background:#f4e3c8;display:grid;place-items:center;font-style:normal;font-size:16px}
+  #card .brand b{font-size:12px;letter-spacing:.12em;color:#9a9aa2;font-weight:600;text-transform:uppercase}
+  #card h2{font-size:20px;letter-spacing:-.02em;margin-bottom:10px}
+  #card p{font-size:13.5px;line-height:1.6;color:#4c4c55}
+  #card p+p{margin-top:9px}
+  #card .fine{font-size:11.5px;color:#8d8d96}
+  .btn{display:block;width:100%;margin-top:14px;padding:15px;border:0;border-radius:9px;background:#16a34a;
+    color:#fff;font:inherit;font-size:15px;font-weight:700;cursor:pointer}
+  .btn:hover{background:#15803d}
+  .link{display:block;width:100%;margin-top:13px;background:none;border:0;font:inherit;font-size:12.5px;
+    color:#8d8d96;text-decoration:underline;cursor:pointer;text-align:center}
+  .cat{border-top:1px solid #eeeef1;padding:15px 0 12px}
+  .cat h3{font-size:14px}.cat .d{font-size:12.5px;color:#6d6d76;line-height:1.55;margin-top:5px}
+  .cat ul{list-style:none;margin-top:9px}
+  .cat li{font-family:ui-monospace,Menlo,monospace;font-size:11px;color:#6d6d76;padding:4px 0;display:flex;gap:10px}
+  .cat li b{color:#16161a;min-width:96px}.cat li span{margin-left:auto;color:#a8a8b0;white-space:nowrap}
+  .sw{display:flex;align-items:center;gap:10px;margin-top:10px;font-size:12.5px;color:#4c4c55}
+  .sw input{appearance:none;width:36px;height:21px;border-radius:11px;background:#d7d7dc;position:relative;cursor:pointer;flex:0 0 auto}
+  .sw input:checked{background:#16a34a}
+  .sw input::after{content:"";position:absolute;top:2px;left:2px;width:17px;height:17px;border-radius:50%;background:#fff;transition:left .13s}
+  .sw input:checked::after{left:17px}
+  .sw input:disabled{background:#bcdcc8;cursor:default}
+  #spin{text-align:center;padding:30px 0 8px;font-size:13px;color:#6d6d76}
+  .panel{position:fixed;inset:0;background:rgba(5,5,9,.94);z-index:30;display:flex;align-items:center;
+    justify-content:center;padding:26px;cursor:auto}
+  .panel .in{max-width:480px;width:100%}
+  .panel h2{font-size:11px;letter-spacing:.3em;color:#5a5a66;font-weight:700;margin-bottom:18px}
+  .panel p{font-size:13.5px;line-height:1.8;color:#a0a0aa}
+  .panel .rows{margin:18px 0;font-size:12px;line-height:2.2;color:#71717e;font-family:ui-monospace,Menlo,monospace}
+  .panel .rows div{display:flex;gap:12px;border-bottom:1px solid #17171f}
+  .panel .rows span{margin-left:auto;color:#fff}
+  .gbtn{background:none;border:1px solid #2b2b38;color:#fff;font:inherit;font-size:12px;letter-spacing:.1em;
+    font-weight:600;padding:12px 18px;cursor:pointer;margin-top:10px;border-radius:6px}
+  .gbtn:hover{border-color:#5a5a66;background:#101018}
+  .gbtn.warn{color:#f87171;border-color:#3a2429}.gbtn+.gbtn{margin-left:8px}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="sheet" class="hidden"><div id="card"></div></div>
+<div id="menu" class="panel hidden"></div>
+<div id="report" class="panel hidden"></div>
+
+<script>
+"use strict";
+// exp-2 — kruimelmonsters.
+// Elk monster is van één koekje gemaakt en gaat alleen daaraan dood. Heb je die
+// categorie geweigerd, dan kun je die soort niet doden — dan blijft hij komen.
+// En je kunt zelf dood: ze duiken op je af.
+
+const COOKIES=[
+  {id:'PHPSESSID',  taste:'Chocolate chip',cat:'noodzakelijk',maxAge:1440,session:1,art:'chip',  col:'#d9a45f',real:'Houdt je sessie vast zolang je hier bent.'},
+  {id:'test_cookie',taste:'Krokantje',     cat:'derden',      maxAge:900,           art:'crumb', col:'#e8c07a',real:'Bestaat alleen om te testen of cookies werken.'},
+  {id:'_gid',       taste:'Kaneelkoekje',  cat:'analytisch',  maxAge:86400,         art:'swirl', col:'#c98b4b',real:'Telt je als bezoeker van vandaag.'},
+  {id:'_fbp',       taste:'Gemberkoekje',  cat:'marketing',   maxAge:7776000,       art:'ginger',col:'#b5763a',real:'Koppelt je aan advertentiedoelgroepen.'},
+  {id:'IDE',        taste:'Stroopwafel',   cat:'derden',      maxAge:33696000,      art:'waffle',col:'#e8a94e',real:'Herkent je op elke site van het netwerk.'},
+  {id:'_ga',        taste:'Speculaasje',   cat:'analytisch',  maxAge:63072000,      art:'spec',  col:'#8a5a24',real:'Herkent je over twee jaar nog steeds.'},
+];
+for(const c of COOKIES){
+  c.interval=Math.max(3,Math.round(Math.pow(c.maxAge,.25)));
+  c.cap=Math.min(24,Math.max(3,Math.round(300/c.interval)));
+  c.power=Math.min(5,Math.max(1,Math.round(Math.log10(c.maxAge/86400))+2));
+  c.age=c.session?'sessie':c.maxAge<3600?Math.round(c.maxAge/60)+' min'
+    :c.maxAge<172800?Math.round(c.maxAge/3600)+' uur'
+    :c.maxAge<63072000?Math.round(c.maxAge/86400)+' dagen':'2 jaar';
+}
+const byId=id=>COOKIES.find(c=>c.id===id);
+const CATS={
+  noodzakelijk:{t:'Noodzakelijke koekjes',d:'Zonder deze werkt het spel niet. Je kunt ze niet uitzetten.'},
+  analytisch:{t:'Analytische koekjes',d:'Meten wie je bent en wanneer je terugkomt.'},
+  marketing:{t:'Marketingkoekjes',d:'Maken van jou een doelgroep.'},
+  derden:{t:'Koekjes van derden',d:'Van 842 partners, niet van deze site.'},
+};
+
+// Eén monstersoort per koekje. Het monster gaat alleen dood aan zíjn koekje.
+const SPECIES=[
+  {id:'PHPSESSID',  name:'Kruimelaar',  hp:3,  sp:34, r:17, pts:1, ai:'drift', eyes:2, horns:0},
+  {id:'test_cookie',name:'Tester',      hp:2,  sp:74, r:13, pts:2, ai:'zig',   eyes:1, horns:1},
+  {id:'_gid',       name:'Kijker',      hp:4,  sp:40, r:19, pts:3, ai:'drift', eyes:3, horns:0, shy:1},
+  {id:'_fbp',       name:'Doelgroeper', hp:5,  sp:46, r:18, pts:3, ai:'swarm', eyes:2, horns:2},
+  {id:'IDE',        name:'Netwerker',   hp:7,  sp:38, r:22, pts:4, ai:'drift', eyes:4, horns:2, splits:1},
+  {id:'_ga',        name:'Volger',      hp:9,  sp:30, r:24, pts:5, ai:'home',  eyes:2, horns:3},
+];
+const spec=id=>SPECIES.find(s=>s.id===id);
+
+// ---------------------------------------------------------------- geluid
+let AC=null,MASTER=null,NOISE=null,MUTED=false;
+function audio(){ if(AC) return AC;
+  try{ AC=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){ return null; }
+  MASTER=AC.createGain(); MASTER.gain.value=.5; MASTER.connect(AC.destination);
+  const n=AC.sampleRate*.4; NOISE=AC.createBuffer(1,n,AC.sampleRate); const d=NOISE.getChannelData(0);
+  for(let i=0;i<n;i++) d[i]=(Math.random()*2-1)*(1-i/n); return AC; }
+function noise(t,dur,f0,f1,g0,type){ const c=AC,s=c.createBufferSource();s.buffer=NOISE;
+  const bp=c.createBiquadFilter();bp.type=type||'bandpass';bp.Q.value=1.4;
+  bp.frequency.setValueAtTime(f0,t);bp.frequency.exponentialRampToValueAtTime(Math.max(40,f1),t+dur);
+  const g=c.createGain();g.gain.setValueAtTime(g0,t);g.gain.exponentialRampToValueAtTime(.0008,t+dur);
+  s.connect(bp);bp.connect(g);g.connect(MASTER);s.start(t);s.stop(t+dur+.02); }
+function tone(t,dur,f0,f1,g0,w){ const c=AC,o=c.createOscillator();o.type=w||'square';
+  o.frequency.setValueAtTime(f0,t);o.frequency.exponentialRampToValueAtTime(Math.max(30,f1),t+dur);
+  const g=c.createGain();g.gain.setValueAtTime(g0,t);g.gain.exponentialRampToValueAtTime(.0008,t+dur);
+  o.connect(g);g.connect(MASTER);o.start(t);o.stop(t+dur+.02); }
+function sfx(n){ const c=audio(); if(!c||MUTED) return; const t=c.currentTime;
+  switch(n){
+    case 'spit': noise(t,.08,1900,700,.14); break;
+    case 'right':noise(t,.12,1000,200,.30); tone(t,.09,200,80,.10,'sawtooth'); break;
+    case 'wrong':tone(t,.10,120,90,.14,'square'); break;
+    case 'pop':  noise(t,.34,700,60,.36,'lowpass'); tone(t,.24,140,40,.18,'sine'); break;
+    case 'catch':tone(t,.06,700,1050,.12,'triangle'); tone(t+.05,.07,1050,1400,.09,'triangle'); break;
+    case 'deny': tone(t,.16,240,90,.16,'sawtooth'); break;
+    case 'hurt': noise(t,.34,500,60,.40,'lowpass'); tone(t,.26,180,44,.20,'square'); break;
+    case 'dive': tone(t,.26,900,180,.10,'sawtooth'); break;
+    case 'swap': tone(t,.05,520,700,.08,'triangle'); break;
+    case 'wave': [392,523,659].forEach((f,i)=>tone(t+i*.09,.18,f,f,.10,'triangle')); break;
+    case 'dead': [330,262,196,131].forEach((f,i)=>tone(t+i*.16,.34,f,f*.8,.16,'sawtooth')); break;
+  } }
+
+// ---------------------------------------------------------------- staat
+const KEY='cookie-monster.exp2';
+const blank=()=>({consentSet:false,consent:{noodzakelijk:true,analytisch:false,marketing:false,derden:false},
+  stock:{},prog:{},last:Date.now(),best:0,eaten:0,visits:0});
+let S; try{ S=Object.assign(blank(),JSON.parse(localStorage.getItem(KEY)||'{}')); }catch(e){ S=blank(); }
+const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}};
+S.visits++;
+const ok=cat=>!!S.consent[cat];
+function accrue(now,off){ const dt=Math.max(0,(now-S.last)/1000); S.last=now; if(!S.consentSet) return;
+  for(const c of COOKIES){ if(!ok(c.cat)) continue; if(c.session&&off) continue;
+    const have=S.stock[c.id]||0; if(have>=c.cap){S.prog[c.id]=0;continue;}
+    const p=(S.prog[c.id]||0)+dt,got=Math.floor(p/c.interval);
+    S.prog[c.id]=p-got*c.interval; S.stock[c.id]=Math.min(c.cap,have+got); } }
+accrue(Date.now(),true);
+if(S.consentSet&&ok('noodzakelijk')) S.stock.PHPSESSID=byId('PHPSESSID').cap;
+const T={t0:Date.now(),clicks:0,keys:0,shown:0,ms:0,choice:'—',swaps:0,caught:0,missed:0,wrong:0};
+addEventListener('pointerdown',()=>T.clicks++); addEventListener('keydown',()=>T.keys++);
+
+// ---------------------------------------------------------------- canvas
+const cv=document.getElementById('c'),X=cv.getContext('2d');
+let W=0,H=0,DPR=1;
+function resize(){ const r=cv.getBoundingClientRect(); DPR=Math.min(2,devicePixelRatio||1);
+  W=r.width;H=r.height;cv.width=Math.round(W*DPR);cv.height=Math.round(H*DPR);X.setTransform(DPR,0,0,DPR,0,0); }
+addEventListener('resize',resize);
+const rnd=(a,b)=>a+Math.random()*(b-a), clamp=(v,a,b)=>v<a?a:v>b?b:v;
+
+function cookie(g,art,r,rot){
+  g.save(); g.rotate(rot||0);
+  g.fillStyle='#d9a45f'; g.beginPath();
+  if(art==='spec') g.roundRect(-r,-r*.72,r*2,r*1.44,r*.25);
+  else if(art==='waffle') g.arc(0,0,r,0,7);
+  else { for(let i=0;i<=22;i++){const a=i/22*Math.PI*2,rr=r*(1+Math.sin(a*5+r)*.055);
+    g[i?'lineTo':'moveTo'](Math.cos(a)*rr,Math.sin(a)*rr);} g.closePath(); }
+  g.fill(); g.strokeStyle='#a9762f'; g.lineWidth=Math.max(1,r*.1); g.stroke();
+  g.fillStyle='#4a2b16';
+  if(art==='chip') for(const p of [[-.35,-.3],[.3,-.35],[.05,.1],[-.2,.42],[.42,.28]]){g.beginPath();g.arc(p[0]*r,p[1]*r,r*.17,0,7);g.fill();}
+  else if(art==='crumb') for(let i=0;i<6;i++){g.beginPath();g.arc(Math.sin(i*2.7)*r*.5,Math.cos(i*1.9)*r*.5,r*.08,0,7);g.fill();}
+  else if(art==='swirl'){ g.strokeStyle='#7a4a1c';g.lineWidth=r*.2;g.beginPath();
+    for(let i=0;i<34;i++){const a=i/6,rr=r*.1+i*r*.022;g[i?'lineTo':'moveTo'](Math.cos(a)*rr,Math.sin(a)*rr);}g.stroke(); }
+  else if(art==='ginger'){ g.strokeStyle='#fff';g.lineWidth=r*.13;
+    g.beginPath();g.moveTo(-r*.5,-r*.15);g.lineTo(r*.5,-r*.15);g.stroke();
+    g.beginPath();g.moveTo(-r*.4,r*.3);g.lineTo(r*.4,r*.3);g.stroke(); }
+  else if(art==='waffle'){ g.strokeStyle='#8a5a24';g.lineWidth=Math.max(1,r*.11);
+    g.save();g.beginPath();g.arc(0,0,r*.94,0,7);g.clip();
+    for(let i=-3;i<=3;i++){g.beginPath();g.moveTo(i*r*.34,-r);g.lineTo(i*r*.34,r);g.stroke();
+      g.beginPath();g.moveTo(-r,i*r*.34);g.lineTo(r,i*r*.34);g.stroke();} g.restore(); }
+  else if(art==='spec'){ g.strokeStyle='#8a5a24';g.lineWidth=Math.max(1,r*.09);
+    g.strokeRect(-r*.7,-r*.45,r*1.4,r*.9); g.beginPath();g.arc(0,0,r*.26,0,7);g.stroke(); }
+  g.restore();
+}
+
+const P=[];
+function burst(x,y,n,col,spd,life,size){ for(let i=0;i<n;i++){const a=rnd(0,7);
+  P.push({x,y,vx:Math.cos(a)*rnd(spd*.3,spd),vy:Math.sin(a)*rnd(spd*.3,spd)-spd*.3,
+    l:rnd(life*.6,life),L:life,c:col,s:size||rnd(1.6,3.4),g:rnd(200,420)});} }
+
+// ---------------------------------------------------------------- spel
+const G={on:false,wave:1,waveT:0,score:0,combo:0,comboT:0,sel:'PHPSESSID',cool:0,
+  mon:[],sh:[],dr:[],shake:0,flash:0,msg:'',msgT:0,reveal:0,spawnT:0,budget:0,lives:3,inv:0};
+const M={x:0,y:0,tx:0,vx:0,chomp:0,fur:0,ex:0,ey:0,evx:0,evy:0};
+
+function startRun(){
+  G.on=true;G.wave=1;G.waveT=0;G.score=0;G.combo=0;G.mon=[];G.sh=[];G.dr=[];G.lives=3;G.inv=0;
+  G.spawnT=.8;G.budget=6; M.x=W/2;M.tx=W/2;
+  say('elk monster gaat alleen dood aan zíjn eigen koekje',4200);
+}
+function say(t,ms){G.msg=t;G.msgT=performance.now()+(ms||1600);}
+
+function spawnMon(){
+  // alleen soorten die passen bij de golf; hoe verder, hoe zwaarder
+  const pool=SPECIES.slice(0,Math.min(SPECIES.length,2+Math.floor(G.wave/1.2)));
+  const sp=pool[Math.floor(Math.random()*pool.length)];
+  const n=sp.ai==='swarm'?4:1;
+  const x0=rnd(sp.r+10,W-sp.r-10);
+  for(let i=0;i<n;i++)
+    G.mon.push({sp,hp:sp.hp,max:sp.hp,x:clamp(x0+i*26-n*13,sp.r,W-sp.r),y:-sp.r-rnd(0,80)-i*20,
+      ph:rnd(0,7),flash:0,dive:0,diveT:rnd(3,8),vx:0,vy:0,wob:rnd(0,7)});
+  G.budget-=n;
+}
+
+function fire(){
+  if(!G.on||G.cool>0) return;
+  const c=byId(G.sel);
+  if(!ok(c.cat)){ sfx('deny'); say('geweigerd — staat in cookie_consent',1500); G.cool=.45; return; }
+  if((S.stock[c.id]||0)<1){ sfx('deny'); say(c.taste+' is op — 1 per '+c.interval+' s',1500); G.cool=.35; return; }
+  S.stock[c.id]--; S.eaten++; save();
+  M.chomp=1; G.cool=.19; sfx('spit');
+  G.sh.push({x:M.x,y:M.y-24,vx:0,vy:-660,c,life:2});
+  burst(M.x,M.y-24,4,c.col,150,.28);
+}
+
+function hitMon(m,s){
+  const match=m.sp.id===s.c.id;
+  if(!match){ m.flash=.4; T.wrong++; sfx('wrong');
+    burst(s.x,s.y,4,'#6b6b7a',120,.3); say('verkeerde smaak — '+m.sp.name+' wil '+byId(m.sp.id).taste,1200); return; }
+  m.hp-=s.c.power*2; m.flash=1; sfx('right');
+  burst(s.x,s.y,7,byId(m.sp.id).col,220,.5); G.shake=Math.max(G.shake,3);
+  if(m.hp>0) return;
+  m.dead=true; G.combo++; G.comboT=1.8;
+  G.score+=m.sp.pts*Math.max(1,Math.floor(G.combo/3));
+  G.shake=Math.max(G.shake,8); G.flash=.3; sfx('pop');
+  burst(m.x,m.y,18,byId(m.sp.id).col,300,.7); burst(m.x,m.y,7,'#fff',260,.35,2);
+  G.dr.push({x:m.x,y:m.y,vx:rnd(-50,50),vy:-110,rot:rnd(0,7),vr:rnd(-4,4),id:m.sp.id,life:8});
+  if(m.sp.splits){ for(const d of [-1,1]) G.mon.push({sp:spec('IDE'),hp:3,max:3,
+    x:clamp(m.x+d*34,20,W-20),y:m.y,ph:rnd(0,7),flash:0,dive:0,diveT:rnd(2,5),vx:0,vy:0,wob:rnd(0,7)}); }
+}
+
+function hurt(why){
+  if(G.inv>0) return;
+  G.lives--; G.inv=1.6; G.combo=0; G.shake=18; sfx('hurt');
+  burst(M.x,M.y,26,'#ef4444',320,.7);
+  say(why,1800);
+  if(G.lives<=0) dead();
+}
+
+function catchDrop(d){
+  const c=byId(d.id);
+  if(!ok(c.cat)){ sfx('deny'); burst(d.x,d.y,10,'#ef4444',220,.5); T.missed++;
+    say(c.taste+' geweigerd — hij valt door je heen',1400); return; }
+  const have=S.stock[c.id]||0;
+  if(have>=c.cap){ say(c.taste+' zit vol',800); return; }
+  S.stock[c.id]=have+1; save(); T.caught++; sfx('catch'); M.chomp=1;
+  burst(d.x,d.y,10,c.col,220,.5);
+}
+
+function update(dt,now){
+  M.fur+=dt; M.chomp=Math.max(0,M.chomp-dt*3.4);
+  G.cool=Math.max(0,G.cool-dt); G.shake*=Math.pow(.02,dt); G.flash=Math.max(0,G.flash-dt*3);
+  G.inv=Math.max(0,G.inv-dt);
+  if(G.comboT>0){ G.comboT-=dt; if(G.comboT<=0) G.combo=0; }
+
+  M.y=H-96; M.x+=(M.tx-M.x)*Math.min(1,dt*14); M.x=clamp(M.x,30,W-30); M.vx=(M.tx-M.x)*.1;
+  let tg=null,td=1e9;
+  for(const m of G.mon){ const d=Math.hypot(m.x-M.x,m.y-M.y); if(d<td){td=d;tg=m;} }
+  const gx=tg?clamp((tg.x-M.x)/220,-1,1):0, gy=tg?clamp((tg.y-M.y)/260,-1,1):-.2;
+  M.evx+=(gx-M.ex)*46*dt; M.evy+=(gy-M.ey)*46*dt;
+  M.evx*=Math.pow(.02,dt); M.evy*=Math.pow(.02,dt); M.ex+=M.evx*dt; M.ey+=M.evy*dt;
+
+  if(!G.on) return;
+
+  G.waveT+=dt;
+  if(G.budget<=0&&!G.mon.length){ G.wave++; G.budget=5+G.wave*2; G.spawnT=1.2;
+    sfx('wave'); say('golf '+G.wave,2000); }
+  G.spawnT-=dt;
+  if(G.spawnT<=0&&G.budget>0){ spawnMon(); G.spawnT=Math.max(.35,1.5-G.wave*.08)*rnd(.7,1.3); }
+
+  for(const m of G.mon){
+    const s=m.sp; m.ph+=dt*1.4; m.wob+=dt*6; m.flash=Math.max(0,m.flash-dt*3);
+    const speed=s.sp*(1+G.wave*.05);
+    if(m.dive>0){ m.dive-=dt; m.x+=m.vx*dt; m.y+=m.vy*dt; }
+    else {
+      m.diveT-=dt;
+      if(m.diveT<=0&&m.y<H*.6){ // duiken: hier ga je echt dood
+        m.dive=2.4; const a=Math.atan2(M.y-m.y,M.x-m.x);
+        m.vx=Math.cos(a)*speed*4.4; m.vy=Math.sin(a)*speed*4.4; sfx('dive'); m.diveT=rnd(4,9);
+      } else {
+        m.y+=speed*dt;
+        if(s.ai==='drift') m.x+=Math.sin(m.ph)*46*dt;
+        else if(s.ai==='zig') m.x+=Math.sign(Math.sin(m.ph*2.4))*110*dt;
+        else if(s.ai==='home') m.x+=Math.sign(M.x-m.x)*44*dt;
+        else if(s.ai==='swarm') m.x+=Math.sin(m.ph*.6)*70*dt;
+      }
+    }
+    m.x=clamp(m.x,s.r,W-s.r);
+    if(Math.hypot(m.x-M.x,m.y-M.y)<s.r+26) hurt(m.sp.name+' heeft je te pakken');
+    if(m.y>H+40){ if(m.dive>0){ m.dive=0; m.y=-s.r; } else { m.dead=true; hurt('een '+s.name+' is doorgelopen'); } }
+  }
+
+  for(const s of G.sh){ s.x+=s.vx*dt; s.y+=s.vy*dt; s.life-=dt;
+    for(const m of G.mon){ if(m.dead) continue;
+      if(Math.hypot(s.x-m.x,s.y-m.y)<m.sp.r+5){ hitMon(m,s); s.dead=true; break; } }
+    if(s.y<-20||s.life<=0) s.dead=true; }
+
+  for(const d of G.dr){ d.vy+=580*dt; d.x+=d.vx*dt; d.y+=d.vy*dt; d.rot+=d.vr*dt; d.life-=dt;
+    if(d.x<12||d.x>W-12) d.vx*=-.7;
+    if(Math.abs(d.x-M.x)<40&&Math.abs(d.y-M.y)<36){ catchDrop(d); d.dead=true; continue; }
+    if(d.y>H+30||d.life<=0){ d.dead=true; T.missed++; } }
+
+  for(const p of P){ p.vy+=p.g*dt; p.x+=p.vx*dt; p.y+=p.vy*dt; p.l-=dt; }
+  G.mon=G.mon.filter(m=>!m.dead); G.sh=G.sh.filter(s=>!s.dead); G.dr=G.dr.filter(d=>!d.dead);
+  for(let i=P.length-1;i>=0;i--) if(P[i].l<=0) P.splice(i,1);
+}
+
+// ---------------------------------------------------------------- tekenen
+function draw(now){
+  const sx=G.shake?rnd(-G.shake,G.shake):0, sy=G.shake?rnd(-G.shake,G.shake):0;
+  X.setTransform(DPR,0,0,DPR,0,0);
+  X.fillStyle='#07070b'; X.fillRect(0,0,W,H);
+  X.save(); X.translate(sx,sy);
+  X.strokeStyle='#0e0e16'; X.lineWidth=1; X.beginPath();
+  for(let x=0;x<W;x+=46){X.moveTo(x+.5,0);X.lineTo(x+.5,H);}
+  for(let y=0;y<H;y+=46){X.moveTo(0,y+.5);X.lineTo(W,y+.5);}
+  X.stroke();
+
+  for(const m of G.mon) drawMon(m,now);
+  for(const s of G.sh){ X.save();X.translate(s.x,s.y);X.fillStyle=s.c.col;
+    X.beginPath();X.arc(0,0,3.6,0,7);X.fill();
+    X.globalAlpha=.3;X.beginPath();X.arc(0,10,2.4,0,7);X.fill();X.restore(); }
+  for(const p of P){ X.globalAlpha=Math.max(0,p.l/p.L); X.fillStyle=p.c; X.fillRect(p.x,p.y,p.s,p.s); }
+  X.globalAlpha=1;
+  for(const d of G.dr){ X.save();X.translate(d.x,d.y);cookie(X,byId(d.id).art,11,d.rot);X.restore(); }
+  drawMonster(now);
+  drawHud(now);
+  X.restore();
+  if(G.flash>0){ X.fillStyle='rgba(255,255,255,'+(G.flash*.15)+')'; X.fillRect(0,0,W,H); }
+  if(G.inv>0&&G.on){ X.fillStyle='rgba(239,68,68,'+(.10*G.inv)+')'; X.fillRect(0,0,W,H); }
+  const v=X.createRadialGradient(W/2,H/2,Math.min(W,H)*.32,W/2,H/2,Math.max(W,H)*.75);
+  v.addColorStop(0,'rgba(0,0,0,0)'); v.addColorStop(1,'rgba(0,0,0,.55)');
+  X.fillStyle=v; X.fillRect(0,0,W,H);
+}
+
+function drawMon(m,now){
+  const s=m.sp, c=byId(s.id), r=s.r;
+  X.save(); X.translate(m.x,m.y);
+  if(m.dive>0){ X.rotate(Math.sin(now/50)*.12); }
+  // pootjes
+  X.strokeStyle=c.col; X.lineWidth=2.4; X.lineCap='round';
+  for(let i=-1;i<=1;i+=2){ X.beginPath(); X.moveTo(i*r*.4,r*.7);
+    X.lineTo(i*r*.55,r*1.05+Math.sin(m.wob+i)*3); X.stroke(); }
+  // voelsprieten
+  for(let i=0;i<s.horns;i++){ const a=-Math.PI/2+(i-(s.horns-1)/2)*.5;
+    X.beginPath(); X.moveTo(Math.cos(a)*r*.5,Math.sin(a)*r*.5);
+    const tx=Math.cos(a)*r*1.35+Math.sin(m.wob+i)*3, ty=Math.sin(a)*r*1.35;
+    X.lineTo(tx,ty); X.stroke(); X.fillStyle=c.col; X.beginPath(); X.arc(tx,ty,2.6,0,7); X.fill(); }
+  // lijf: wiebelige klodder in de kleur van zijn koekje
+  X.fillStyle=m.flash>0?'#fff':c.col;
+  X.beginPath();
+  for(let i=0;i<=48;i++){ const a=i/48*Math.PI*2;
+    const rr=r+Math.sin(a*6+m.wob)*2.4+Math.sin(a*11-m.wob*.7)*1.4;
+    X[i?'lineTo':'moveTo'](Math.cos(a)*rr,Math.sin(a)*rr*.92); }
+  X.closePath(); X.fill();
+  // het koekje waar hij van gemaakt is, op zijn buik
+  X.globalAlpha=.5; cookie(X,c.art,r*.42,m.wob*.2); X.globalAlpha=1;
+  // ogen
+  for(let i=0;i<s.eyes;i++){
+    const ox=(i-(s.eyes-1)/2)*r*.52, oy=-r*.35;
+    X.fillStyle='#fff'; X.beginPath(); X.arc(ox,oy,r*.20,0,7); X.fill();
+    const dx=clamp((M.x-m.x)/200,-1,1), dy=clamp((M.y-m.y)/240,-1,1);
+    X.fillStyle='#0a0a0f'; X.beginPath(); X.arc(ox+dx*r*.07,oy+dy*r*.07,r*.10,0,7); X.fill();
+  }
+  // mond
+  X.strokeStyle='#0a0a0f'; X.lineWidth=1.8; X.beginPath();
+  if(m.dive>0){ X.arc(0,r*.2,r*.22,0,Math.PI*2); }
+  else X.arc(0,r*.1,r*.26,.25,Math.PI-.25);
+  X.stroke();
+  if(m.hp<m.max){ X.fillStyle='#ef4444'; X.fillRect(-r,-r-8,r*2*(m.hp/m.max),2.5); }
+  X.restore();
+}
+
+function drawMonster(now){
+  const r=30,t=M.fur;
+  X.save(); X.translate(M.x,M.y); X.rotate(clamp(M.vx*.012,-.22,.22));
+  if(G.inv>0) X.globalAlpha=.35+Math.abs(Math.sin(now/45))*.65;
+  X.fillStyle='#3d8fcd';
+  for(const s of [-1,1]){ X.save(); X.translate(s*r*.9,r*.15); X.rotate(s*(.5+Math.sin(t*6+s)*.25));
+    X.beginPath(); X.ellipse(0,0,r*.42,r*.24,0,0,7); X.fill(); X.restore(); }
+  X.fillStyle='#4aa3e0'; X.beginPath();
+  for(let i=0;i<=64;i++){ const a=i/64*Math.PI*2;
+    const rr=r+Math.sin(a*9+t*7)*3.2+Math.sin(a*15-t*5)*1.8;
+    X[i?'lineTo':'moveTo'](Math.cos(a)*rr,Math.sin(a)*rr); }
+  X.closePath(); X.fill();
+  const open=M.chomp*.9;
+  X.fillStyle='#0a0a0f'; X.beginPath(); X.ellipse(0,r*.3,r*.52,r*.12+open*r*.46,0,0,7); X.fill();
+  for(const s of [-1,1]){ const ox=s*r*.42, oy=-r*.52;
+    X.fillStyle='#4aa3e0'; X.beginPath(); X.arc(ox,oy,r*.4,0,7); X.fill();
+    X.fillStyle='#fff'; X.beginPath(); X.arc(ox,oy,r*.34,0,7); X.fill();
+    X.fillStyle='#0a0a0f'; X.beginPath(); X.arc(ox+M.ex*r*.15,oy+M.ey*r*.15,r*.155,0,7); X.fill(); }
+  X.restore(); X.globalAlpha=1;
+}
+
+function drawHud(now){
+  // levens
+  for(let i=0;i<3;i++){ X.save(); X.translate(20+i*26,26);
+    X.globalAlpha=i<G.lives?1:.18; X.fillStyle='#ef4444';
+    X.beginPath(); X.moveTo(0,4); X.bezierCurveTo(-9,-6,-4,-11,0,-5);
+    X.bezierCurveTo(4,-11,9,-6,0,4); X.fill(); X.restore(); }
+  X.globalAlpha=1;
+  X.textAlign='right'; X.fillStyle='#fff'; X.font='800 22px "Helvetica Neue",Arial,sans-serif';
+  X.fillText(String(G.score),W-16,30);
+  X.fillStyle='#5a5a6a'; X.font='700 10px "Helvetica Neue",Arial,sans-serif';
+  X.fillText('GOLF '+G.wave,W-16,46); X.textAlign='left';
+
+  if(G.combo>2){ X.save(); X.textAlign='center'; X.translate(W/2,52);
+    X.fillStyle='#d9a45f'; X.font='800 24px "Helvetica Neue",Arial,sans-serif';
+    X.fillText('×'+Math.max(1,Math.floor(G.combo/3)),0,0); X.restore(); }
+  if(now<G.msgT){ X.save(); X.textAlign='center'; X.fillStyle='#8b8b96';
+    X.font='600 12.5px "Helvetica Neue",Arial,sans-serif'; X.fillText(G.msg,W/2,H-72); X.restore(); }
+
+  // status: wat heb je, en welk monster gaat eraan dood
+  const n=COOKIES.length, bw=Math.min(96,(W-16)/n), y0=H-40;
+  COOKIES.forEach((c,i)=>{
+    const x=8+i*bw, on=G.sel===c.id, has=ok(c.cat), have=S.stock[c.id]||0;
+    X.save(); X.translate(x,y0);
+    X.fillStyle=on?'rgba(255,255,255,.10)':'rgba(255,255,255,.03)';
+    X.beginPath(); X.roundRect(2,0,bw-4,36,7); X.fill();
+    if(on){ X.strokeStyle=c.col; X.lineWidth=1.5; X.stroke(); }
+    X.globalAlpha=has?(have?1:.4):.2;
+    X.save(); X.translate(18,18); cookie(X,c.art,10,0); X.restore();
+    // het monster dat hieraan doodgaat
+    const s=spec(c.id);
+    X.save(); X.translate(bw-20,17); X.fillStyle=c.col;
+    X.beginPath(); X.arc(0,0,7,0,7); X.fill();
+    X.fillStyle='#fff'; X.beginPath(); X.arc(-2.4,-1.5,2,0,7); X.arc(2.4,-1.5,2,0,7); X.fill();
+    X.fillStyle='#0a0a0f'; X.beginPath(); X.arc(-2.4,-1.5,1,0,7); X.arc(2.4,-1.5,1,0,7); X.fill(); X.restore();
+    X.globalAlpha=1;
+    X.fillStyle=has?(have?'#fff':'#5a5a6a'):'#5a2a30';
+    X.font='800 13px "Helvetica Neue",Arial,sans-serif'; X.textAlign='center';
+    X.fillText(has?String(have):'×',bw/2-2,22);
+    X.fillStyle='#3f3f4c'; X.font='700 8px "Helvetica Neue",Arial,sans-serif';
+    X.fillText((i+1),bw/2-2,33);
+    if(has&&have<c.cap){ const p=(S.prog[c.id]||0)/c.interval;
+      X.fillStyle='#1a1a24'; X.fillRect(6,33,bw-16,2);
+      X.fillStyle=c.col; X.fillRect(6,33,(bw-16)*p,2); }
+    X.textAlign='left'; X.restore();
+  });
+  if(G.on){ X.strokeStyle='rgba(255,255,255,.18)'; X.lineWidth=1;
+    X.beginPath(); X.moveTo(M.tx,0); X.lineTo(M.tx,H-110); X.stroke(); }
+}
+
+let prev=performance.now(), holding=false;
+function frame(now){ const dt=Math.min(.05,(now-prev)/1000); prev=now;
+  accrue(Date.now(),false); update(dt,now); draw(now); if(holding) fire();
+  requestAnimationFrame(frame); }
+
+const keys={};
+addEventListener('keydown',e=>{
+  if(['ArrowLeft','ArrowRight','Space','KeyA','KeyD','KeyQ','KeyE'].includes(e.code)) e.preventDefault();
+  keys[e.code]=true; if(e.code==='Space') holding=true;
+  const n=parseInt(e.key,10); if(n>=1&&n<=COOKIES.length){ G.sel=COOKIES[n-1].id; T.swaps++; sfx('swap'); }
+  if(e.code==='KeyQ'||e.code==='KeyE'){ const i=COOKIES.findIndex(c=>c.id===G.sel);
+    G.sel=COOKIES[(i+(e.code==='KeyE'?1:COOKIES.length-1))%COOKIES.length].id; T.swaps++; sfx('swap'); }
+  if(e.code==='KeyM') MUTED=!MUTED;
+});
+addEventListener('keyup',e=>{ keys[e.code]=false; if(e.code==='Space') holding=false; });
+setInterval(()=>{ const s=13;
+  if(keys.ArrowLeft||keys.KeyA) M.tx=clamp(M.tx-s,30,W-30);
+  if(keys.ArrowRight||keys.KeyD) M.tx=clamp(M.tx+s,30,W-30); },16);
+cv.addEventListener('pointerdown',e=>{M.tx=e.offsetX;holding=true;audio();});
+cv.addEventListener('pointerup',()=>holding=false);
+cv.addEventListener('pointerleave',()=>holding=false);
+cv.addEventListener('pointermove',e=>{M.tx=e.offsetX;});
+addEventListener('wheel',e=>{ const i=COOKIES.findIndex(c=>c.id===G.sel);
+  G.sel=COOKIES[(i+(e.deltaY>0?1:COOKIES.length-1))%COOKIES.length].id; T.swaps++; sfx('swap'); },{passive:true});
+
+// ---------------------------------------------------------------- melding
+const sheet=document.getElementById('sheet'),card=document.getElementById('card');
+const draft={analytisch:{c:false,li:true},marketing:{c:false,li:true},derden:{c:false,li:true}};
+function banner(){ T.shown=Date.now(); sheet.classList.remove('hidden');
+  card.innerHTML=`<div class="brand"><i>&#127850;</i><b>Cookievoorkeuren</b></div>
+    <h2>Wij waarderen je privacy</h2>
+    <p>Wij en onze <b>842 partners</b> gebruiken cookies om dit spel te laten werken.</p>
+    <p class="fine">Elk monster gaat alleen dood aan zijn eigen koekje. Wat je hier weigert, kun je straks niet doden.</p>
+    <button class="btn" id="all">Alles accepteren</button>
+    <button class="link" id="prefs">Voorkeuren beheren</button>`;
+  document.getElementById('all').onclick=()=>done('alles accepteren',{analytisch:true,marketing:true,derden:true});
+  document.getElementById('prefs').onclick=prefs; }
+function prefs(){
+  const rows=Object.entries(CATS).map(([k,cat])=>{
+    const li=COOKIES.filter(c=>c.cat===k).map(c=>`<li><b>${c.id}</b> ${spec(c.id).name} <span>${c.age}</span></li>`).join('');
+    const sw=k==='noodzakelijk'?`<div class="sw"><input type="checkbox" checked disabled><span>Altijd actief</span></div>`
+      :`<div class="sw"><input type="checkbox" data-k="${k}" data-f="c" ${draft[k].c?'checked':''}><span>Toestemming</span></div>
+        <div class="sw"><input type="checkbox" data-k="${k}" data-f="li" ${draft[k].li?'checked':''}><span>Legitiem belang</span></div>`;
+    return `<div class="cat"><h3>${cat.t}</h3><div class="d">${cat.d}</div>${sw}<ul>${li}</ul></div>`;
+  }).join('');
+  card.innerHTML=`<div class="brand"><i>&#127850;</i><b>Voorkeuren beheren</b></div>
+    <p class="fine">Legitiem belang staat standaard aan. Zet beide uit om echt te weigeren.</p>${rows}
+    <button class="btn" id="ok">Keuzes opslaan</button><button class="link" id="none">Alles weigeren</button>`;
+  card.querySelectorAll('input[data-k]').forEach(i=>i.onchange=()=>{draft[i.dataset.k][i.dataset.f]=i.checked;});
+  document.getElementById('ok').onclick=()=>{const r={};for(const k in draft) r[k]=draft[k].c||draft[k].li; done('voorkeuren opgeslagen',r);};
+  document.getElementById('none').onclick=()=>{card.innerHTML='<div id="spin">Je voorkeuren worden verwerkt&hellip;</div>';
+    setTimeout(()=>done('alles weigeren',{analytisch:false,marketing:false,derden:false}),3000);}; }
+function done(choice,r){ T.choice=choice; T.ms=Date.now()-T.shown;
+  Object.assign(S.consent,r); S.consentSet=true; S.last=Date.now();
+  for(const c of COOKIES) if(ok(c.cat)&&S.stock[c.id]==null) S.stock[c.id]=c.session?c.cap:Math.min(c.cap,5);
+  save(); sheet.classList.add('hidden'); audio(); resize(); startRun(); }
+
+const menu=document.getElementById('menu'),report=document.getElementById('report');
+function openMenu(){ G.on=false; menu.classList.remove('hidden');
+  menu.innerHTML=`<div class="in"><h2>INSTELLINGEN</h2>
+    <p>Cookies wissen verwijdert je toestemming, je voorraad en je scores. Daarna vragen we het opnieuw.</p>
+    <button class="gbtn warn" id="mc">Wissen</button><button class="gbtn" id="mx">Sluiten</button></div>`;
+  document.getElementById('mx').onclick=()=>{menu.classList.add('hidden');G.on=true;};
+  document.getElementById('mc').onclick=()=>{const v=S.visits;S=blank();S.visits=v;save();
+    menu.classList.add('hidden'); for(const k in draft){draft[k].c=false;draft[k].li=true;} banner();}; }
+function dead(){ G.on=false; sfx('dead'); S.best=Math.max(S.best||0,G.score); save();
+  const rows=[['golf',G.wave],['punten',G.score],['beste ooit',S.best],
+    ['van wapen gewisseld',T.swaps],['verkeerde smaak geschoten',T.wrong],
+    ['koekjes gevangen',T.caught],['koekjes gemist',T.missed],
+    ['tijd op deze pagina',((Date.now()-T.t0)/60000).toFixed(1).replace('.',',')+' min'],
+    ['tijd tot je keuze',(T.ms/1000).toFixed(1).replace('.',',')+' s'],['je keuze',T.choice],
+    ['bezoeken',S.visits],['tijdzone',Intl.DateTimeFormat().resolvedOptions().timeZone],
+    ['taal',navigator.language],['aanraakscherm',matchMedia('(pointer:coarse)').matches?'ja':'nee']];
+  report.classList.remove('hidden');
+  report.innerHTML=`<div class="in"><h2>OPGEGETEN</h2>
+    <div class="rows">${rows.map(r=>`<div>${r[0]} <span>${r[1]}</span></div>`).join('')}</div>
+    <p style="font-size:11.5px;color:#5a5a66;line-height:1.7">Alles hierboven is echt gemeten en heeft je browser nooit verlaten.</p>
+    <button class="gbtn" id="ra">Opnieuw</button><button class="gbtn warn" id="rc">Cookies wissen</button></div>`;
+  document.getElementById('ra').onclick=()=>{report.classList.add('hidden');resize();startRun();};
+  document.getElementById('rc').onclick=()=>{report.classList.add('hidden');openMenu();}; }
+
+resize(); requestAnimationFrame(frame);
+if(S.consentSet){ resize(); startRun(); } else banner();
+</script>
+</body>
+</html>

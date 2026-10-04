@@ -1,0 +1,768 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="robots" content="noindex, nofollow">
+<title>exp-1 · om nom nom</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="author" content="Rick van der Wolk">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%;overflow:hidden;background:#08080c}
+  body{
+    color:#fff;font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;
+    display:flex;flex-direction:column;user-select:none;-webkit-user-select:none;
+    -webkit-touch-callout:none;touch-action:none;cursor:none;
+  }
+  canvas{flex:1 1 auto;display:block;width:100%}
+  .hidden{display:none!important}
+
+  /* de melding: expres een andere wereld dan het spel */
+  #sheet{position:fixed;inset:0;background:rgba(3,3,6,.8);z-index:20;display:flex;
+    align-items:flex-end;justify-content:center;backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
+  #card{width:100%;max-width:640px;max-height:94vh;overflow-y:auto;background:#fff;color:#16161a;
+    border-radius:14px 14px 0 0;padding:26px 26px 20px;box-shadow:0 -10px 60px rgba(0,0,0,.6);cursor:auto}
+  #card .brand{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+  #card .brand i{width:30px;height:30px;border-radius:50%;background:#f4e3c8;display:grid;place-items:center;font-style:normal;font-size:16px}
+  #card .brand b{font-size:12px;letter-spacing:.12em;color:#9a9aa2;font-weight:600;text-transform:uppercase}
+  #card h2{font-size:20px;letter-spacing:-.02em;margin-bottom:10px}
+  #card p{font-size:13.5px;line-height:1.6;color:#4c4c55}
+  #card p+p{margin-top:9px}
+  #card .fine{font-size:11.5px;color:#8d8d96}
+  .btn{display:block;width:100%;margin-top:14px;padding:15px;border:0;border-radius:9px;
+    background:#16a34a;color:#fff;font:inherit;font-size:15px;font-weight:700;cursor:pointer}
+  .btn:hover{background:#15803d}
+  .link{display:block;width:100%;margin-top:13px;background:none;border:0;font:inherit;font-size:12.5px;
+    color:#8d8d96;text-decoration:underline;cursor:pointer;text-align:center}
+  .link:hover{color:#4c4c55}
+  .cat{border-top:1px solid #eeeef1;padding:15px 0 12px}
+  .cat h3{font-size:14px}
+  .cat .d{font-size:12.5px;color:#6d6d76;line-height:1.55;margin-top:5px}
+  .cat ul{list-style:none;margin-top:9px}
+  .cat li{font-family:ui-monospace,Menlo,monospace;font-size:11px;color:#6d6d76;padding:4px 0;display:flex;gap:10px;align-items:baseline}
+  .cat li b{color:#16161a;min-width:96px}
+  .cat li span{margin-left:auto;color:#a8a8b0;white-space:nowrap}
+  .sw{display:flex;align-items:center;gap:10px;margin-top:10px;font-size:12.5px;color:#4c4c55}
+  .sw input{appearance:none;width:36px;height:21px;border-radius:11px;background:#d7d7dc;position:relative;cursor:pointer;flex:0 0 auto}
+  .sw input:checked{background:#16a34a}
+  .sw input::after{content:"";position:absolute;top:2px;left:2px;width:17px;height:17px;border-radius:50%;background:#fff;transition:left .13s}
+  .sw input:checked::after{left:17px}
+  .sw input:disabled{background:#bcdcc8;cursor:default}
+  #spin{text-align:center;padding:30px 0 8px;font-size:13px;color:#6d6d76}
+
+  /* overlays in spelstijl */
+  .panel{position:fixed;inset:0;background:rgba(5,5,9,.93);z-index:30;display:flex;align-items:center;
+    justify-content:center;padding:26px;cursor:auto}
+  .panel .in{max-width:480px;width:100%}
+  .panel h2{font-size:11px;letter-spacing:.3em;color:#5a5a66;font-weight:700;margin-bottom:18px}
+  .panel p{font-size:13.5px;line-height:1.8;color:#a0a0aa}
+  .panel .rows{margin:18px 0;font-size:12px;line-height:2.2;color:#71717e;font-family:ui-monospace,Menlo,monospace}
+  .panel .rows div{display:flex;gap:12px;border-bottom:1px solid #17171f}
+  .panel .rows span{margin-left:auto;color:#fff}
+  .gbtn{background:none;border:1px solid #2b2b38;color:#fff;font:inherit;font-size:12px;letter-spacing:.1em;
+    font-weight:600;padding:12px 18px;cursor:pointer;margin-top:10px;border-radius:6px}
+  .gbtn:hover{border-color:#5a5a66;background:#101018}
+  .gbtn.warn{color:#f87171;border-color:#3a2429}
+  .gbtn+.gbtn{margin-left:8px}
+
+  #ask{position:fixed;left:14px;right:14px;bottom:14px;z-index:15;background:#101018;border:1px solid #23232e;
+    border-radius:10px;padding:16px 18px;max-width:540px;margin:0 auto;cursor:auto}
+  #ask .t{font-size:13px;font-weight:700}
+  #ask .d{font-size:12.5px;line-height:1.65;color:#8b8b96;margin-top:8px}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="sheet" class="hidden"><div id="card"></div></div>
+<div id="ask" class="hidden"></div>
+<div id="menu" class="panel hidden"></div>
+<div id="report" class="panel hidden"></div>
+
+<script>
+"use strict";
+// exp-1 — invaders, maar dan uitgewerkt.
+// Wat exp-0 miste: iets te doen tussen de schoten door. Nu vallen de koekjes
+// die je uit een tracker slaat naar beneden en moet je ze vangen — maar alleen
+// koekjes uit een categorie die je hebt geaccepteerd blijven liggen.
+
+// ============================================================ koekjes
+// maxAge = de echte bewaartermijn van een echt bestaand cookie.
+// Zeldzaamheid en kracht zijn daar allebei uit afgeleid, niet verzonnen.
+const COOKIES = [
+  {id:'PHPSESSID',  taste:'Chocolate chip', cat:'noodzakelijk', maxAge:1440,     session:1, art:'chip',   fx:'enkel schot',            real:'Houdt je sessie vast zolang je hier bent.'},
+  {id:'test_cookie',taste:'Krokantje',      cat:'derden',       maxAge:900,                 art:'crumb',  fx:'snel, zwak',             real:'Bestaat alleen om te testen of cookies werken.'},
+  {id:'_gid',       taste:'Kaneelkoekje',   cat:'analytisch',   maxAge:86400,               art:'swirl',  fx:'onthult trackingpixels', real:'Telt je als bezoeker van vandaag.'},
+  {id:'_fbp',       taste:'Gemberkoekje',   cat:'marketing',    maxAge:7776000,             art:'ginger', fx:'spreidschot',            real:'Koppelt je aan advertentiedoelgroepen.'},
+  {id:'IDE',        taste:'Stroopwafel',    cat:'derden',       maxAge:33696000,            art:'waffle', fx:'kettingreactie',         real:'Herkent je op elke site van het netwerk.'},
+  {id:'_ga',        taste:'Speculaasje',    cat:'analytisch',   maxAge:63072000,            art:'spec',   fx:'zoekend schot',          real:'Herkent je over twee jaar nog steeds.'},
+];
+for (const c of COOKIES) {
+  c.interval = Math.max(3, Math.round(Math.pow(c.maxAge, .25)));
+  c.cap      = Math.min(24, Math.max(3, Math.round(300 / c.interval)));
+  c.power    = Math.min(5, Math.max(1, Math.round(Math.log10(c.maxAge/86400)) + 2));
+  c.age      = c.session ? 'sessie' : c.maxAge<3600 ? Math.round(c.maxAge/60)+' min'
+             : c.maxAge<172800 ? Math.round(c.maxAge/3600)+' uur'
+             : c.maxAge<63072000 ? Math.round(c.maxAge/86400)+' dagen' : '2 jaar';
+}
+const byId = id => COOKIES.find(c=>c.id===id);
+const CATS = {
+  noodzakelijk:{t:'Noodzakelijke koekjes', d:'Zonder deze werkt het spel niet. Je kunt ze niet uitzetten. Precies daarom zijn ze het zwakst.'},
+  analytisch:  {t:'Analytische koekjes',   d:'Meten wie je bent en wanneer je terugkomt. Hier: ze laten je zien wat je anders niet ziet.'},
+  marketing:   {t:'Marketingkoekjes',      d:'Maken van jou een doelgroep. Hier: breed, luid, raakt alles tegelijk.'},
+  derden:      {t:'Koekjes van derden',    d:'Van 842 partners, niet van deze site. Hier: het zwaarste dat je kunt krijgen.'},
+};
+
+const TRACKERS = {
+  banner: {w:104,h:34,hp:3,  pts:1, drops:'test_cookie', copy:'Wij gebruiken cookies'},
+  popup:  {w:120,h:64,hp:7,  pts:2, drops:'_gid',        copy:'Blijf op de hoogte!', shoots:1},
+  pixel:  {w:12, h:12,hp:1,  pts:4, drops:'_ga',         copy:'',                    unseen:1},
+  wall:   {w:150,h:82,hp:22, pts:6, drops:'_fbp',        copy:'Accepteer om verder te lezen', armour:3},
+  partner:{w:76, h:28,hp:4,  pts:2, drops:'IDE',         copy:'advertentie',         splits:1},
+};
+
+const LEVELS = [
+  {need:null,        pool:{banner:1},                          n:14, rate:1.25, brief:'Banners. Noodzakelijke koekjes zijn genoeg.'},
+  {need:null,        pool:{banner:3,popup:1},                  n:20, rate:1.05, brief:'Pop-ups schieten terug. Vang de koekjes die vallen.'},
+  {need:'analytisch',pool:{banner:2,popup:1,pixel:2},          n:24, rate:.95, brief:'Er staat iets op deze pagina wat je niet ziet.'},
+  {need:'marketing', pool:{banner:2,popup:2,wall:1},           n:26, rate:.9,  brief:'Een cookiewall. Kruimels ketsen erop af.'},
+  {need:'derden',    pool:{popup:2,wall:1,partner:3},          n:30, rate:.8,  brief:'Partners. Sloop er een en er staan er twee.'},
+  {need:null,        pool:{banner:2,popup:2,pixel:2,wall:1,partner:2}, n:38, rate:.65, brief:'Alles tegelijk. Zoals een gemiddelde nieuwssite.'},
+];
+
+// ============================================================ geluid
+let AC=null, MASTER=null, NOISE=null, MUTED=false;
+function audio(){
+  if (AC) return AC;
+  try { AC = new (window.AudioContext||window.webkitAudioContext)(); } catch(e){ return null; }
+  MASTER = AC.createGain(); MASTER.gain.value=.5; MASTER.connect(AC.destination);
+  const n = AC.sampleRate*.4; NOISE = AC.createBuffer(1,n,AC.sampleRate);
+  const d = NOISE.getChannelData(0);
+  for (let i=0;i<n;i++) d[i] = (Math.random()*2-1) * (1-i/n);
+  return AC;
+}
+function noise(t,dur,f0,f1,gain,type){
+  const c=AC, s=c.createBufferSource(); s.buffer=NOISE;
+  const bp=c.createBiquadFilter(); bp.type=type||'bandpass'; bp.Q.value=1.4;
+  bp.frequency.setValueAtTime(f0,t); bp.frequency.exponentialRampToValueAtTime(Math.max(40,f1),t+dur);
+  const g=c.createGain(); g.gain.setValueAtTime(gain,t); g.gain.exponentialRampToValueAtTime(.0008,t+dur);
+  s.connect(bp); bp.connect(g); g.connect(MASTER); s.start(t); s.stop(t+dur+.02);
+}
+function tone(t,dur,f0,f1,gain,wave){
+  const c=AC, o=c.createOscillator(); o.type=wave||'square';
+  o.frequency.setValueAtTime(f0,t); o.frequency.exponentialRampToValueAtTime(Math.max(30,f1),t+dur);
+  const g=c.createGain(); g.gain.setValueAtTime(gain,t); g.gain.exponentialRampToValueAtTime(.0008,t+dur);
+  o.connect(g); g.connect(MASTER); o.start(t); o.stop(t+dur+.02);
+}
+function sfx(name){
+  const c=audio(); if(!c||MUTED) return; const t=c.currentTime;
+  switch(name){
+    case 'spit':   noise(t,.09,1800,600,.16); break;
+    case 'crunch': noise(t,.13,900,180,.34); tone(t,.09,180,70,.10,'sawtooth'); break;
+    case 'chomp':  noise(t,.20,600,120,.42,'lowpass'); tone(t,.14,120,48,.16,'sine'); break;
+    case 'nom':    tone(t,.10,150,90,.12,'sine'); tone(t+.11,.10,120,74,.12,'sine'); break;
+    case 'catch':  tone(t,.07,660,990,.13,'triangle'); tone(t+.05,.08,990,1320,.10,'triangle'); break;
+    case 'deny':   tone(t,.16,240,90,.16,'sawtooth'); break;
+    case 'boom':   noise(t,.42,700,60,.40,'lowpass'); tone(t,.30,110,32,.22,'sine'); break;
+    case 'hurt':   noise(t,.26,400,80,.30,'lowpass'); tone(t,.20,220,60,.16,'square'); break;
+    case 'frenzy': for(let i=0;i<7;i++) tone(t+i*.055,.10,220*Math.pow(1.26,i),260*Math.pow(1.26,i),.11,'square'); break;
+    case 'level':  [523,659,784,1047].forEach((f,i)=>tone(t+i*.08,.16,f,f,.11,'triangle')); break;
+  }
+}
+
+// ============================================================ staat
+const KEY='cookie-monster.exp1';
+const blank=()=>({consentSet:false,consent:{noodzakelijk:true,analytisch:false,marketing:false,derden:false},
+  stock:{},prog:{},last:Date.now(),best:0,eaten:0,visits:0,history:[]});
+let S; try{ S=Object.assign(blank(),JSON.parse(localStorage.getItem(KEY)||'{}')); }catch(e){ S=blank(); }
+const save=()=>{ try{ localStorage.setItem(KEY,JSON.stringify(S)); }catch(e){} };
+S.visits++;
+const ok = cat => !!S.consent[cat];
+
+function accrue(now,offline){
+  const dt=Math.max(0,(now-S.last)/1000); S.last=now;
+  if(!S.consentSet) return;
+  for(const c of COOKIES){
+    if(!ok(c.cat)) continue;
+    if(c.session&&offline) continue;
+    const have=S.stock[c.id]||0;
+    if(have>=c.cap){ S.prog[c.id]=0; continue; }
+    const p=(S.prog[c.id]||0)+dt, got=Math.floor(p/c.interval);
+    S.prog[c.id]=p-got*c.interval;
+    S.stock[c.id]=Math.min(c.cap,have+got);
+  }
+}
+accrue(Date.now(),true);
+if(S.consentSet&&ok('noodzakelijk')) S.stock.PHPSESSID=byId('PHPSESSID').cap;
+
+// alles hieronder wordt echt gemeten en blijft in deze browser
+const T={t0:Date.now(),clicks:0,keys:0,shown:0,ms:0,choice:'—',fired:0,caught:0,missed:0};
+addEventListener('pointerdown',()=>T.clicks++);
+addEventListener('keydown',()=>T.keys++);
+
+// ============================================================ canvas
+const cv=document.getElementById('c'), X=cv.getContext('2d');
+let W=0,H=0,DPR=1;
+function resize(){
+  const r=cv.getBoundingClientRect(); DPR=Math.min(2,devicePixelRatio||1);
+  W=r.width; H=r.height; cv.width=Math.round(W*DPR); cv.height=Math.round(H*DPR);
+  X.setTransform(DPR,0,0,DPR,0,0);
+}
+addEventListener('resize',resize);
+const rnd=(a,b)=>a+Math.random()*(b-a);
+const clamp=(v,a,b)=>v<a?a:v>b?b:v;
+
+// ============================================================ koekjes tekenen
+function cookie(g,art,r,rot){
+  g.save(); g.rotate(rot||0);
+  const base='#d9a45f', dark='#a9762f';
+  g.fillStyle=base; g.beginPath();
+  if(art==='spec'){ g.roundRect(-r,-r*.72,r*2,r*1.44,r*.25); }
+  else if(art==='waffle'){ g.arc(0,0,r,0,7); }
+  else { // onregelmatige koekrand
+    for(let i=0;i<=22;i++){ const a=i/22*Math.PI*2, rr=r*(1+Math.sin(a*5+r)*.055);
+      g[i?'lineTo':'moveTo'](Math.cos(a)*rr,Math.sin(a)*rr); }
+    g.closePath();
+  }
+  g.fill();
+  g.strokeStyle=dark; g.lineWidth=Math.max(1,r*.10); g.stroke();
+  g.fillStyle='#4a2b16';
+  if(art==='chip'){ for(const p of [[-.35,-.3],[.3,-.35],[.05,.1],[-.2,.42],[.42,.28]])
+      { g.beginPath(); g.arc(p[0]*r,p[1]*r,r*.17,0,7); g.fill(); } }
+  else if(art==='crumb'){ for(let i=0;i<7;i++){ g.beginPath(); g.arc(rnd(-.6,.6)*r,rnd(-.6,.6)*r,r*.07,0,7); g.fill(); } }
+  else if(art==='swirl'){ g.strokeStyle='#7a4a1c'; g.lineWidth=r*.20; g.beginPath();
+      for(let i=0;i<34;i++){ const a=i/6, rr=r*.10+i*r*.022; g[i?'lineTo':'moveTo'](Math.cos(a)*rr,Math.sin(a)*rr); } g.stroke(); }
+  else if(art==='ginger'){ g.fillStyle='#fff'; g.lineWidth=r*.13; g.strokeStyle='#fff';
+      g.beginPath(); g.moveTo(-r*.5,-r*.15); g.lineTo(r*.5,-r*.15); g.stroke();
+      g.beginPath(); g.moveTo(-r*.4,r*.3); g.lineTo(r*.4,r*.3); g.stroke();
+      g.beginPath(); g.arc(-r*.25,-r*.5,r*.1,0,7); g.arc(r*.25,-r*.5,r*.1,0,7); g.fillStyle='#4a2b16'; g.fill(); }
+  else if(art==='waffle'){ g.strokeStyle='#8a5a24'; g.lineWidth=Math.max(1,r*.11);
+      g.save(); g.beginPath(); g.arc(0,0,r*.94,0,7); g.clip();
+      for(let i=-3;i<=3;i++){ g.beginPath(); g.moveTo(i*r*.34,-r); g.lineTo(i*r*.34,r); g.stroke();
+        g.beginPath(); g.moveTo(-r,i*r*.34); g.lineTo(r,i*r*.34); g.stroke(); } g.restore(); }
+  else if(art==='spec'){ g.strokeStyle='#8a5a24'; g.lineWidth=Math.max(1,r*.09);
+      g.strokeRect(-r*.7,-r*.45,r*1.4,r*.9);
+      g.beginPath(); g.arc(0,0,r*.26,0,7); g.stroke(); }
+  g.restore();
+}
+
+// ============================================================ deeltjes
+const P=[];
+function burst(x,y,n,col,spd,life,size){
+  for(let i=0;i<n;i++){ const a=rnd(0,7);
+    P.push({x,y,vx:Math.cos(a)*rnd(spd*.3,spd),vy:Math.sin(a)*rnd(spd*.3,spd)-spd*.3,
+      l:rnd(life*.6,life),L:life,c:col,s:size||rnd(1.6,3.4),g:rnd(200,420)}); }
+}
+function crumbBurst(x,y,n){ burst(x,y,n,'#d9a45f',260,.65); burst(x,y,Math.ceil(n/3),'#4a2b16',200,.6,2); }
+
+// ============================================================ spel
+const G={
+  on:false,lvl:1,score:0,combo:0,comboT:0,best:0,
+  tr:[],sh:[],dr:[],md:[],dock:[],
+  spawnT:0,left:0,
+  sel:'PHPSESSID',cool:0,frenzy:0,reveal:0,shake:0,flash:0,
+  msg:'',msgT:0,slow:1,
+};
+const M={x:0,y:0,vx:0,tx:0,chomp:0,fur:0,ex:0,ey:0,evx:0,evy:0,hurt:0,eatT:0};
+
+function dockH(){ return G.dock.length*17; }
+function floorY(){ return H-dockH(); }
+
+function startLevel(n){
+  const L=LEVELS[Math.min(n,LEVELS.length)-1];
+  G.lvl=n; G.tr=[];G.sh=[];G.dr=[];G.md=[];G.dock=[];
+  G.left=L.n; G.spawnT=.6; G.on=true; G.combo=0;
+  M.x=W/2; M.tx=W/2;
+  say(L.brief,3400); sfx('level');
+  askIfNeeded(L);
+}
+function say(t,ms){ G.msg=t; G.msgT=performance.now()+(ms||1600); }
+
+function spawn(){
+  const L=LEVELS[Math.min(G.lvl,LEVELS.length)-1];
+  const bag=[]; for(const [k,w] of Object.entries(L.pool)) for(let i=0;i<w;i++) bag.push(k);
+  const kind=bag[Math.floor(Math.random()*bag.length)], t=TRACKERS[kind];
+  const squad=kind==='pixel'?3:kind==='wall'?1:kind==='partner'?2:Math.random()<.4?2:1;
+  const y0=-t.h-rnd(0,60), phase=rnd(0,7), amp=rnd(30,90), sp=rnd(26,42)+G.lvl*3;
+  const x0=rnd(t.w*.7,W-t.w*.7);
+  for(let i=0;i<squad;i++){
+    G.tr.push({kind,hp:t.hp,max:t.hp,w:t.w,h:t.h,x:x0,y:y0-i*(t.h+16),
+      bx:x0,phase:phase+i*.5,amp,sp,flash:0,fire:rnd(1.5,3.5)});
+    G.left--;
+  }
+}
+
+function fire(){
+  if(!G.on||G.cool>0) return;
+  const c=byId(G.sel);
+  if(!G.frenzy){
+    if(!ok(c.cat)){ sfx('deny'); say('geweigerd. staat in cookie_consent.',1600); G.cool=.5; return; }
+    if((S.stock[c.id]||0)<1){ sfx('deny'); say(c.taste+' is op — 1 per '+c.interval+' s',1600); G.cool=.4; return; }
+    S.stock[c.id]--; S.eaten++; save();
+  }
+  T.fired++; M.chomp=1; M.eatT=.5; G.cool=G.frenzy?.09:.20; sfx('spit');
+  const y=M.y-26;
+  const mk=(vx,extra)=>Object.assign({x:M.x,y,vx,vy:-620,p:c.power,c,life:2},extra||{});
+  if(c.art==='ginger'){ for(let i=-2;i<=2;i++) G.sh.push(mk(i*130)); }
+  else if(c.id==='_ga'){ G.sh.push(mk(0,{seek:1})); }
+  else { G.sh.push(mk(0,c.id==='IDE'?{chain:1}:null));
+         if(c.id==='_gid') G.reveal=performance.now()+5200; }
+  burst(M.x,y,4,'#d9a45f',160,.3);
+}
+
+function hitTracker(tr,s){
+  const t=TRACKERS[tr.kind];
+  if(t.armour&&s.p<t.armour){ say('kruimel ketst af op de cookiewall',1100); burst(s.x,s.y,5,'#8b8b96',150,.35); sfx('crunch'); return; }
+  tr.hp-=s.p; tr.flash=1; crumbBurst(s.x,s.y,6); sfx('crunch'); G.shake=Math.max(G.shake,3);
+  if(tr.hp>0) return;
+  kill(tr,s.chain);
+  if(s.chain) for(const o of G.tr){ if(o.dead||o===tr) continue;
+    if(Math.hypot(o.x-tr.x,o.y-tr.y)<130){ o.hp-=4; o.flash=1; if(o.hp<=0) kill(o,true); } }
+}
+
+function kill(tr,byChain){
+  const t=TRACKERS[tr.kind];
+  tr.dead=true;
+  G.combo++; G.comboT=1.7;
+  G.score+=t.pts*Math.max(1,Math.floor(G.combo/3));
+  G.shake=Math.max(G.shake,7); G.flash=.35;
+  crumbBurst(tr.x,tr.y,16); burst(tr.x,tr.y,8,'#ffffff',300,.4,2);
+  sfx('boom');
+  // de tracker laat zijn cookie vallen. dat is letterlijk wat een tracker doet.
+  G.dr.push({x:tr.x,y:tr.y,vx:rnd(-40,40),vy:-90,rot:rnd(0,7),vr:rnd(-4,4),id:t.drops,life:9});
+  if(t.splits&&!byChain){
+    for(const d of [-1,1]) G.tr.push({kind:'partner',hp:3,max:3,w:t.w,h:t.h,x:tr.x+d*40,y:tr.y,
+      bx:tr.x+d*40,phase:rnd(0,7),amp:50,sp:44,flash:0,fire:9});
+    say('een partner deelt je met twee partners',1500);
+  }
+  if(G.combo===10&&!G.frenzy){ G.frenzy=6; sfx('frenzy'); say('OM NOM NOM — alles is gratis',2200); G.shake=16; }
+}
+
+function dockIt(kind){
+  G.dock.push({kind,t:0});
+  G.shake=Math.max(G.shake,10); sfx('hurt');
+  if(dockH()>H*.52) gameOver(false);
+}
+
+function catchDrop(d){
+  const c=byId(d.id);
+  if(!ok(c.cat)){ sfx('deny'); burst(d.x,d.y,10,'#f87171',220,.5); say(c.taste+' geweigerd — hij valt door je heen',1400); T.missed++; return; }
+  const have=S.stock[c.id]||0;
+  if(have>=c.cap){ say(c.taste+' zit vol',900); burst(d.x,d.y,6,'#8b8b96',150,.4); return; }
+  S.stock[c.id]=have+1; save(); T.caught++;
+  sfx('catch'); M.chomp=1; M.eatT=.45; burst(d.x,d.y,10,'#d9a45f',220,.5);
+  say('+1 '+c.taste,900);
+}
+
+// ============================================================ update
+function update(dt,now){
+  M.fur+=dt;
+  M.chomp=Math.max(0,M.chomp-dt*3.4);
+  M.eatT=Math.max(0,M.eatT-dt);
+  M.hurt=Math.max(0,M.hurt-dt);
+  G.cool=Math.max(0,G.cool-dt);
+  G.shake*=Math.pow(.02,dt);
+  G.flash=Math.max(0,G.flash-dt*3);
+  if(G.frenzy>0){ G.frenzy=Math.max(0,G.frenzy-dt); if(!G.frenzy) say('en weer betalen',1400); }
+  if(G.comboT>0){ G.comboT-=dt; if(G.comboT<=0) G.combo=0; }
+
+  // koekiemonster
+  M.y=floorY()-34;
+  M.x+=(M.tx-M.x)*Math.min(1,dt*13);
+  M.x=clamp(M.x,34,W-34);
+  M.vx=(M.tx-M.x)*.1;
+  // googly ogen met veertje, kijken naar de dichtstbijzijnde tracker
+  let tgt=null,td=1e9;
+  for(const t of G.tr){ const d=Math.hypot(t.x-M.x,t.y-M.y); if(d<td){td=d;tgt=t;} }
+  const gx=tgt?clamp((tgt.x-M.x)/220,-1,1):0, gy=tgt?clamp((tgt.y-M.y)/260,-1,1):-.2;
+  M.evx+=(gx-M.ex)*44*dt; M.evy+=(gy-M.ey)*44*dt;
+  M.evx*=Math.pow(.02,dt); M.evy*=Math.pow(.02,dt);
+  M.ex+=M.evx*dt; M.ey+=M.evy*dt;
+
+  if(!G.on) return;
+
+  // spawnen
+  const L=LEVELS[Math.min(G.lvl,LEVELS.length)-1];
+  G.spawnT-=dt;
+  if(G.spawnT<=0&&G.left>0){ spawn(); G.spawnT=L.rate*rnd(.7,1.25); }
+
+  // trackers
+  for(const t of G.tr){
+    const T2=TRACKERS[t.kind];
+    t.y+=t.sp*dt; t.phase+=dt*1.1;
+    t.x=clamp(t.bx+Math.sin(t.phase)*t.amp,t.w/2+4,W-t.w/2-4);
+    t.flash=Math.max(0,t.flash-dt*4);
+    if(T2.shoots){ t.fire-=dt; if(t.fire<=0){ t.fire=rnd(2.2,4.2);
+      G.md.push({x:t.x,y:t.y+t.h/2,vy:rnd(150,220)}); } }
+    if(t.y-t.h/2>floorY()-14){ t.dead=true; dockIt(t.kind); }
+  }
+
+  // schoten
+  for(const s of G.sh){
+    if(s.seek){ let b=null,bd=1e9;
+      for(const t of G.tr){ if(t.dead) continue; const d=Math.hypot(t.x-s.x,t.y-s.y); if(d<bd){bd=d;b=t;} }
+      if(b) s.vx+=Math.sign(b.x-s.x)*720*dt; }
+    s.x+=s.vx*dt; s.y+=s.vy*dt; s.life-=dt;
+    for(const t of G.tr){ if(t.dead) continue;
+      if(Math.abs(s.x-t.x)<t.w/2+4&&Math.abs(s.y-t.y)<t.h/2+4){ hitTracker(t,s); s.dead=true; break; } }
+    if(s.y<-20||s.life<=0) s.dead=true;
+  }
+
+  // gevallen koekjes
+  for(const d of G.dr){
+    d.vy+=560*dt; d.x+=d.vx*dt; d.y+=d.vy*dt; d.rot+=d.vr*dt; d.life-=dt;
+    if(d.x<12||d.x>W-12) d.vx*=-.7;
+    if(Math.abs(d.x-M.x)<40&&Math.abs(d.y-M.y)<34){ catchDrop(d); d.dead=true; continue; }
+    if(d.y>floorY()+20||d.life<=0){ d.dead=true; if(d.life>0){ T.missed++; burst(d.x,floorY(),6,'#4a2b16',140,.4);} }
+  }
+
+  // wat de pop-ups terugschieten
+  for(const m of G.md){
+    m.y+=m.vy*dt;
+    if(Math.abs(m.x-M.x)<32&&Math.abs(m.y-M.y)<30){ m.dead=true; M.hurt=.6; G.combo=0;
+      say('een pop-up zette een cookie op jou',1600); dockIt('banner'); }
+    if(m.y>H) m.dead=true;
+  }
+
+  for(const p of P){ p.vy+=p.g*dt; p.x+=p.vx*dt; p.y+=p.vy*dt; p.l-=dt; }
+
+  G.tr=G.tr.filter(t=>!t.dead); G.sh=G.sh.filter(s=>!s.dead);
+  G.dr=G.dr.filter(d=>!d.dead); G.md=G.md.filter(m=>!m.dead);
+  for(let i=P.length-1;i>=0;i--) if(P[i].l<=0) P.splice(i,1);
+
+  for(const d of G.dock) d.t=Math.min(1,d.t+dt*6);
+
+  if(G.left<=0&&!G.tr.length&&!G.dr.length){
+    G.on=false; S.best=Math.max(S.best||0,G.lvl); save();
+    if(G.lvl>=LEVELS.length) return gameOver(true);
+    setTimeout(()=>startLevel(G.lvl+1),1100);
+  }
+}
+
+// ============================================================ tekenen
+function draw(now){
+  const sx=G.shake?rnd(-G.shake,G.shake):0, sy=G.shake?rnd(-G.shake,G.shake):0;
+  X.setTransform(DPR,0,0,DPR,0,0);
+  X.fillStyle='#08080c'; X.fillRect(0,0,W,H);
+  X.save(); X.translate(sx,sy);
+
+  // achtergrond: een lege webpagina in draadmodel
+  X.strokeStyle='#0f0f18'; X.lineWidth=1; X.beginPath();
+  for(let x=0;x<W;x+=44){ X.moveTo(x+.5,0); X.lineTo(x+.5,H); }
+  for(let y=0;y<H;y+=44){ X.moveTo(0,y+.5); X.lineTo(W,y+.5); }
+  X.stroke();
+
+  if(G.frenzy>0){ X.fillStyle='rgba(74,163,224,'+(.05+Math.sin(now/70)*.03)+')'; X.fillRect(0,0,W,H); }
+
+  for(const t of G.tr) drawTracker(t,now);
+  for(const m of G.md) drawModal(m);
+  for(const s of G.sh){
+    X.save(); X.translate(s.x,s.y);
+    X.fillStyle=s.c.art==='waffle'?'#f0b45c':'#d9a45f';
+    X.beginPath(); X.arc(0,0,3.4,0,7); X.fill();
+    X.globalAlpha=.35; X.beginPath(); X.arc(0,9,2.4,0,7); X.fill(); X.restore();
+  }
+  for(const p of P){ X.globalAlpha=Math.max(0,p.l/p.L); X.fillStyle=p.c; X.fillRect(p.x,p.y,p.s,p.s); }
+  X.globalAlpha=1;
+  for(const d of G.dr){ X.save(); X.translate(d.x,d.y); cookie(X,byId(d.id).art,11,d.rot); X.restore(); }
+
+  drawMonster(now);
+  drawDock();
+  drawHud(now);
+
+  X.restore();
+  if(G.flash>0){ X.fillStyle='rgba(255,255,255,'+(G.flash*.16)+')'; X.fillRect(0,0,W,H); }
+  // vignet
+  const v=X.createRadialGradient(W/2,H/2,Math.min(W,H)*.3,W/2,H/2,Math.max(W,H)*.75);
+  v.addColorStop(0,'rgba(0,0,0,0)'); v.addColorStop(1,'rgba(0,0,0,.55)');
+  X.fillStyle=v; X.fillRect(0,0,W,H);
+}
+
+function drawTracker(t,now){
+  const T2=TRACKERS[t.kind];
+  if(T2.unseen&&now>G.reveal){ // een trackingpixel is onzichtbaar. dat is het idee.
+    if(G.frenzy<=0) return;
+  }
+  const x=t.x-t.w/2,y=t.y-t.h/2;
+  X.save();
+  if(t.kind==='pixel'){
+    X.strokeStyle='#7dd3fc'; X.setLineDash([3,3]); X.strokeRect(x-4,y-4,t.w+8,t.h+8); X.setLineDash([]);
+    X.fillStyle='#7dd3fc'; X.fillRect(x,y,t.w,t.h); X.restore(); return;
+  }
+  X.fillStyle=t.flash>0?'#3a3a4a':'#15151e';
+  X.strokeStyle=t.kind==='wall'?'#3b3b4d':'#22222e'; X.lineWidth=1;
+  X.beginPath(); X.roundRect(x,y,t.w,t.h,6); X.fill(); X.stroke();
+  X.fillStyle='#e7e7ee'; X.font='700 9px "Helvetica Neue",Arial,sans-serif';
+  X.fillText(T2.copy.slice(0,26),x+9,y+16);
+  X.fillStyle='#2c2c3a';
+  X.fillRect(x+9,y+22,t.w-46,3); if(t.h>44) X.fillRect(x+9,y+29,t.w-70,3);
+  const pulse=.7+Math.sin(now/240+t.phase)*.3;
+  X.fillStyle='rgba(22,163,74,'+pulse+')';
+  X.beginPath(); X.roundRect(x+t.w-38,y+t.h-16,30,11,3); X.fill();
+  X.fillStyle='#0a0a0f'; X.font='700 7px "Helvetica Neue",Arial,sans-serif';
+  X.fillText('OK',x+t.w-27,y+t.h-8);
+  if(t.hp<t.max){ X.fillStyle='#ef4444'; X.fillRect(x,y-4,t.w*(t.hp/t.max),2.5); }
+  X.restore();
+}
+
+function drawModal(m){
+  X.save(); X.translate(m.x,m.y);
+  X.fillStyle='#e7e7ee'; X.beginPath(); X.roundRect(-13,-9,26,18,3); X.fill();
+  X.fillStyle='#0a0a0f'; X.font='700 8px Arial'; X.fillText('ABONNEER',-12,3.5); X.restore();
+}
+
+function drawMonster(now){
+  const r=30, t=M.fur;
+  X.save(); X.translate(M.x,M.y);
+  X.rotate(clamp(M.vx*.012,-.22,.22));
+  if(M.hurt>0){ X.globalAlpha=.4+Math.abs(Math.sin(now/40))*.6; }
+
+  // armen
+  X.fillStyle='#3d8fcd';
+  for(const s of [-1,1]){ X.save(); X.translate(s*r*.9,r*.15);
+    X.rotate(s*(.5+Math.sin(t*6+s)*.25)); X.beginPath(); X.ellipse(0,0,r*.42,r*.24,0,0,7); X.fill(); X.restore(); }
+
+  // vacht
+  X.fillStyle=G.frenzy>0?'#63b8f0':'#4aa3e0';
+  X.beginPath();
+  for(let i=0;i<=64;i++){ const a=i/64*Math.PI*2;
+    const rr=r+Math.sin(a*9+t*7)*3.2+Math.sin(a*15-t*5)*1.8;
+    X[i?'lineTo':'moveTo'](Math.cos(a)*rr,Math.sin(a)*rr); }
+  X.closePath(); X.fill();
+
+  // mond
+  const open=M.chomp*.9;
+  X.fillStyle='#0a0a0f'; X.beginPath();
+  X.ellipse(0,r*.30,r*.52,r*.12+open*r*.46,0,0,7); X.fill();
+  if(open>.25){ X.fillStyle='#e05a5a'; X.beginPath();
+    X.ellipse(0,r*.30+open*r*.26,r*.26,open*r*.16,0,0,7); X.fill(); }
+
+  // googly ogen
+  for(const s of [-1,1]){
+    const ox=s*r*.42, oy=-r*.52;
+    X.fillStyle='#4aa3e0'; X.beginPath(); X.arc(ox,oy,r*.40,0,7); X.fill();
+    X.fillStyle='#fff'; X.beginPath(); X.arc(ox,oy,r*.34,0,7); X.fill();
+    X.fillStyle='#0a0a0f';
+    const spin=G.frenzy>0?now/60+s:0;
+    const px=ox+(G.frenzy>0?Math.cos(spin)*r*.14:M.ex*r*.15);
+    const py=oy+(G.frenzy>0?Math.sin(spin)*r*.14:M.ey*r*.15);
+    X.beginPath(); X.arc(px,py,r*.155,0,7); X.fill();
+  }
+  X.restore();
+  X.globalAlpha=1;
+}
+
+function drawDock(){
+  G.dock.forEach((d,n)=>{
+    const y=H-(n+1)*17+(1-d.t)*22;
+    X.globalAlpha=d.t;
+    X.fillStyle='#14141d'; X.fillRect(0,y,W,16);
+    X.strokeStyle='#20202c'; X.beginPath(); X.moveTo(0,y+.5); X.lineTo(W,y+.5); X.stroke();
+    X.fillStyle='#4a4a5a'; X.font='700 9px "Helvetica Neue",Arial,sans-serif';
+    X.fillText('Wij en onze 842 partners gebruiken cookies',12,y+11);
+    X.fillStyle='#16a34a'; X.beginPath(); X.roundRect(W-70,y+4,58,9,3); X.fill();
+    X.fillStyle='#0a0a0f'; X.font='700 7px Arial'; X.fillText('ACCEPTEREN',W-64,y+11);
+    X.globalAlpha=1;
+  });
+}
+
+function drawHud(now){
+  X.textAlign='left';
+  X.fillStyle='#5a5a6a'; X.font='700 11px "Helvetica Neue",Arial,sans-serif';
+  X.fillText('LEVEL '+G.lvl,16,26);
+  X.textAlign='right'; X.fillStyle='#fff'; X.font='800 22px "Helvetica Neue",Arial,sans-serif';
+  X.fillText(String(G.score),W-16,30);
+  X.textAlign='left';
+
+  if(G.combo>2){
+    X.save(); X.textAlign='center';
+    const k=1+Math.min(.5,G.combo/28);
+    X.translate(W/2,64); X.scale(k,k);
+    X.fillStyle=G.frenzy>0?'#7dd3fc':'#d9a45f';
+    X.font='800 26px "Helvetica Neue",Arial,sans-serif';
+    X.fillText('×'+Math.max(1,Math.floor(G.combo/3)),0,0);
+    X.fillStyle='#5a5a6a'; X.font='700 9px "Helvetica Neue",Arial,sans-serif';
+    X.fillText(G.combo+' ACHTER ELKAAR',0,14); X.restore();
+  }
+  if(G.frenzy>0){
+    X.save(); X.textAlign='center'; X.fillStyle='#7dd3fc';
+    X.font='800 13px "Helvetica Neue",Arial,sans-serif';
+    X.fillText('OM NOM NOM  '+G.frenzy.toFixed(1)+'s',W/2,H-dockH()-84); X.restore();
+  }
+  if(now<G.msgT){
+    X.save(); X.textAlign='center'; X.fillStyle='#8b8b96';
+    X.font='600 12px "Helvetica Neue",Arial,sans-serif';
+    X.fillText(G.msg,W/2,H-dockH()-64); X.restore();
+  }
+
+  // koektrommel
+  const n=COOKIES.length, bw=Math.min(78,(W-24)/n), y0=H-dockH()-46;
+  COOKIES.forEach((c,i)=>{
+    const x=12+i*bw+bw/2, on=G.sel===c.id, has=ok(c.cat), have=S.stock[c.id]||0;
+    X.save(); X.translate(x,y0); X.globalAlpha=has?(have?1:.45):.22;
+    if(on){ X.fillStyle='rgba(255,255,255,.07)'; X.beginPath(); X.roundRect(-bw/2+2,-20,bw-4,44,7); X.fill(); }
+    cookie(X,c.art,12,0);
+    X.globalAlpha=1;
+    X.textAlign='center';
+    X.fillStyle=has?(have?'#fff':'#5a5a6a'):'#4a2a30';
+    X.font='800 12px "Helvetica Neue",Arial,sans-serif';
+    X.fillText(has?String(have):'—',0,28);
+    if(has&&have<c.cap){ const p=(S.prog[c.id]||0)/c.interval;
+      X.fillStyle='#20202c'; X.fillRect(-14,32,28,2);
+      X.fillStyle='#d9a45f'; X.fillRect(-14,32,28*p,2); }
+    if(on){ X.fillStyle='#5a5a6a'; X.font='700 8px "Helvetica Neue",Arial,sans-serif';
+      X.fillText((i+1)+' · '+c.id,0,-24); }
+    X.restore();
+  });
+  X.textAlign='left';
+
+  // muisaanwijzer
+  if(!G.on) return;
+  X.strokeStyle='rgba(255,255,255,.25)'; X.lineWidth=1;
+  X.beginPath(); X.moveTo(M.tx,0); X.lineTo(M.tx,H-dockH()); X.stroke();
+}
+
+// ============================================================ lus
+let prev=performance.now();
+function frame(now){
+  const dt=Math.min(.05,(now-prev)/1000); prev=now;
+  accrue(Date.now(),false);
+  update(dt,now);
+  draw(now);
+  if(holding) fire();
+  requestAnimationFrame(frame);
+}
+
+// ============================================================ invoer
+let holding=false;
+const keys={};
+addEventListener('keydown',e=>{
+  if(['ArrowLeft','ArrowRight','Space','KeyA','KeyD'].includes(e.code)) e.preventDefault();
+  keys[e.code]=true;
+  if(e.code==='Space') holding=true;
+  const n=parseInt(e.key,10); if(n>=1&&n<=COOKIES.length){ G.sel=COOKIES[n-1].id; sfx('nom'); }
+  if(e.code==='KeyM'){ MUTED=!MUTED; say(MUTED?'geluid uit':'geluid aan',1000); }
+});
+addEventListener('keyup',e=>{ keys[e.code]=false; if(e.code==='Space') holding=false; });
+setInterval(()=>{ const s=13;
+  if(keys.ArrowLeft||keys.KeyA) M.tx=clamp(M.tx-s,34,W-34);
+  if(keys.ArrowRight||keys.KeyD) M.tx=clamp(M.tx+s,34,W-34);
+},16);
+cv.addEventListener('pointerdown',e=>{ M.tx=e.offsetX; holding=true; audio(); });
+cv.addEventListener('pointerup',()=>holding=false);
+cv.addEventListener('pointerleave',()=>holding=false);
+cv.addEventListener('pointermove',e=>{ M.tx=e.offsetX; });
+addEventListener('wheel',e=>{ const i=COOKIES.findIndex(c=>c.id===G.sel);
+  G.sel=COOKIES[(i+(e.deltaY>0?1:COOKIES.length-1))%COOKIES.length].id; },{passive:true});
+
+// ============================================================ de melding
+const sheet=document.getElementById('sheet'), card=document.getElementById('card');
+const draft={analytisch:{c:false,li:true},marketing:{c:false,li:true},derden:{c:false,li:true}};
+
+function banner(){
+  T.shown=Date.now(); sheet.classList.remove('hidden');
+  card.innerHTML=`
+    <div class="brand"><i>&#127850;</i><b>Cookievoorkeuren</b></div>
+    <h2>Wij waarderen je privacy</h2>
+    <p>Wij en onze <b>842 partners</b> gebruiken cookies om dit spel te laten werken, om te meten hoe je speelt
+       en om je relevante koekjes te tonen.</p>
+    <p class="fine">Je hebt ze allemaal nodig. Niet meteen &mdash; maar wel voordat je klaar bent.</p>
+    <button class="btn" id="all">Alles accepteren</button>
+    <button class="link" id="prefs">Voorkeuren beheren</button>`;
+  document.getElementById('all').onclick=()=>done('alles accepteren',{analytisch:true,marketing:true,derden:true});
+  document.getElementById('prefs').onclick=prefs;
+}
+function prefs(){
+  const rows=Object.entries(CATS).map(([k,cat])=>{
+    const li=COOKIES.filter(c=>c.cat===k).map(c=>`<li><b>${c.id}</b> ${c.real} <span>${c.age}</span></li>`).join('');
+    const sw=k==='noodzakelijk'
+      ? `<div class="sw"><input type="checkbox" checked disabled><span>Altijd actief</span></div>`
+      : `<div class="sw"><input type="checkbox" data-k="${k}" data-f="c" ${draft[k].c?'checked':''}><span>Toestemming</span></div>
+         <div class="sw"><input type="checkbox" data-k="${k}" data-f="li" ${draft[k].li?'checked':''}><span>Legitiem belang</span></div>`;
+    return `<div class="cat"><h3>${cat.t}</h3><div class="d">${cat.d}</div>${sw}<ul>${li}</ul></div>`;
+  }).join('');
+  card.innerHTML=`<div class="brand"><i>&#127850;</i><b>Voorkeuren beheren</b></div>
+    <p class="fine">Legitiem belang staat standaard aan. Zet beide uit om echt te weigeren.</p>
+    ${rows}<button class="btn" id="ok">Keuzes opslaan</button>
+    <button class="link" id="none">Alles weigeren</button>`;
+  card.querySelectorAll('input[data-k]').forEach(i=>i.onchange=()=>{ draft[i.dataset.k][i.dataset.f]=i.checked; });
+  document.getElementById('ok').onclick=()=>{ const r={};
+    for(const k in draft) r[k]=draft[k].c||draft[k].li;   // één van de twee is genoeg
+    done('voorkeuren opgeslagen',r); };
+  document.getElementById('none').onclick=()=>{ card.innerHTML='<div id="spin">Je voorkeuren worden verwerkt&hellip;</div>';
+    setTimeout(()=>done('alles weigeren',{analytisch:false,marketing:false,derden:false}),3000); };
+}
+function done(choice,r){
+  T.choice=choice; T.ms=Date.now()-T.shown;
+  Object.assign(S.consent,r); S.consentSet=true; S.last=Date.now();
+  for(const c of COOKIES) if(ok(c.cat)&&S.stock[c.id]==null) S.stock[c.id]=c.session?c.cap:Math.min(c.cap,4);
+  save(); sheet.classList.add('hidden'); audio();
+  resize(); G.score=0; startLevel(1);
+  say('muis of pijltjes · vasthouden = happen · 1-6 kiest een koekje',5000);
+}
+
+// ============================================================ vraag tijdens het spel
+const ask=document.getElementById('ask');
+function askIfNeeded(L){
+  ask.classList.add('hidden');
+  if(!L.need||ok(L.need)) return;
+  ask.classList.remove('hidden');
+  ask.innerHTML=`<div class="t">Voor dit level heb je ${CATS[L.need].t.toLowerCase()} nodig.</div>
+    <div class="d">Je hebt ze geweigerd. Wij respecteren je keuze &mdash; die staat in <b>cookie_consent</b>,
+      365 dagen geldig. Zolang dat koekje er is, vragen we het niet opnieuw.</div>
+    <button class="gbtn" id="an">Verder zonder</button>
+    <button class="gbtn warn" id="ac">Cookies wissen&hellip;</button>`;
+  document.getElementById('an').onclick=()=>ask.classList.add('hidden');
+  document.getElementById('ac').onclick=()=>{ ask.classList.add('hidden'); openMenu('clear'); };
+}
+
+// ============================================================ menu / rapport
+const menu=document.getElementById('menu'), report=document.getElementById('report');
+function openMenu(mode){
+  G.on=false; menu.classList.remove('hidden');
+  menu.innerHTML=`<div class="in"><h2>${mode==='reject'?'JE KEUZE IS OPGESLAGEN':'INSTELLINGEN'}</h2>
+    <p>Cookies en sitegegevens wissen verwijdert je toestemming, je voorraad koekjes en je scores.
+       Daarna vragen we het opnieuw en begin je met een lege trommel.</p>
+    <div class="rows"><div>cookie_consent <span>je keuze</span></div>
+      <div>${COOKIES.length} koekjes <span>je voorraad</span></div>
+      <div>geschiedenis <span>${(S.history||[]).length} scores</span></div></div>
+    <button class="gbtn warn" id="mc">Wissen</button><button class="gbtn" id="mx">Sluiten</button></div>`;
+  document.getElementById('mx').onclick=()=>{ menu.classList.add('hidden'); G.on=true; };
+  document.getElementById('mc').onclick=()=>{ const v=S.visits; S=blank(); S.visits=v; save();
+    menu.classList.add('hidden'); ask.classList.add('hidden');
+    for(const k in draft){ draft[k].c=false; draft[k].li=true; } banner(); };
+}
+function gameOver(won){
+  G.on=false;
+  S.history=(S.history||[]).concat([{lvl:G.lvl,score:G.score,at:Date.now()}]).slice(-20); save();
+  const rows=[
+    ['tijd op deze pagina',((Date.now()-T.t0)/60000).toFixed(1).replace('.',',')+' min'],
+    ['klikken',T.clicks],['toetsaanslagen',T.keys],
+    ['tijd tot je keuze',(T.ms/1000).toFixed(1).replace('.',',')+' s'],
+    ['je keuze',T.choice],
+    ['koekjes gegeten',S.eaten],['koekjes gevangen',T.caught],['koekjes gemist',T.missed],
+    ['bezoeken',S.visits],
+    ['scherm',innerWidth+'&times;'+innerHeight+' @'+(devicePixelRatio||1)+'x'],
+    ['tijdzone',Intl.DateTimeFormat().resolvedOptions().timeZone],
+    ['taal',navigator.language],['kernen',navigator.hardwareConcurrency||'?'],
+    ['aanraakscherm',matchMedia('(pointer:coarse)').matches?'ja':'nee'],
+  ];
+  report.classList.remove('hidden');
+  report.innerHTML=`<div class="in">
+    <h2>${won?'UITGESPEELD':'DE PAGINA IS ONLEESBAAR GEWORDEN'}</h2>
+    <p>Level ${G.lvl} &middot; ${G.score} punten.</p>
+    <h2 style="margin-top:26px">WAT WE OVER JE HEBBEN VERZAMELD</h2>
+    <div class="rows">${rows.map(r=>`<div>${r[0]} <span>${r[1]}</span></div>`).join('')}</div>
+    <p style="font-size:11.5px;color:#5a5a66;line-height:1.7">Dit is allemaal echt gemeten, tijdens dit spel,
+      en het heeft je browser nooit verlaten. Een echte cookiemelding meet ongeveer dit &mdash; en stuurt het wel door.</p>
+    <button class="gbtn" id="ra">Opnieuw</button><button class="gbtn warn" id="rc">Cookies wissen</button></div>`;
+  document.getElementById('ra').onclick=()=>{ report.classList.add('hidden'); resize(); G.score=0; startLevel(1); };
+  document.getElementById('rc').onclick=()=>{ report.classList.add('hidden'); openMenu('clear'); };
+}
+
+// ============================================================ start
+resize(); requestAnimationFrame(frame);
+if(S.consentSet){ resize(); G.score=0; startLevel(1); say('welkom terug · je koekjes zijn doorgegroeid',3000); }
+else banner();
+</script>
+</body>
+</html>

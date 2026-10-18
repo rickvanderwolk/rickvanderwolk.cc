@@ -1,0 +1,1054 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="robots" content="noindex, nofollow">
+<title>verwachting — temperatuur</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Synthwave voor thuis: melodie uit de temperatuurverwachting, akkoorden en vorm uit de luchtdruk, tempo uit de daglengte. Ravenstein.">
+<meta name="author" content="Rick van der Wolk">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8C%86%3C/text%3E%3C/svg%3E">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body {
+    background: #0d0d10; color: #d8d8d4;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 13px; line-height: 1.5;
+    padding: 28px 16px 60px;
+  }
+  main { max-width: 860px; margin: 0 auto; }
+  h1 { font-size: 15px; font-weight: normal; letter-spacing: .18em; color: #e8e8e6; }
+  .sub { color: #66666c; margin-top: 4px; }
+  h2 {
+    font-size: 10px; font-weight: normal; letter-spacing: .18em; text-transform: uppercase;
+    color: #55555a; margin: 28px 0 8px;
+  }
+  button {
+    background: #17171c; color: #e8e8e6; border: 1px solid #2a2a31; font: inherit;
+    padding: 7px 14px; cursor: pointer; letter-spacing: .08em;
+  }
+  button:hover { border-color: #4a4a52; }
+  button.big { padding: 10px 22px; }
+  .row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 18px; margin-top: 22px; }
+  label { color: #88888e; display: inline-flex; align-items: center; gap: 10px; }
+  input[type=range] { width: 160px; accent-color: #9a9aa2; }
+  input[type=datetime-local] {
+    background: #17171c; color: #e8e8e6; border: 1px solid #2a2a31; font: inherit; padding: 6px 8px;
+    color-scheme: dark;
+  }
+  #status { color: #66666c; }
+
+  .scroll { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; min-width: 640px; }
+  td, th { text-align: left; padding: 6px 10px 6px 0; vertical-align: top; border-top: 1px solid #1b1b21; }
+  th { font-weight: normal; font-size: 10px; letter-spacing: .14em; color: #55555a; text-transform: uppercase; border-top: 0; }
+  td.v { color: #e8e8e6; white-space: nowrap; }
+  td.fx { color: #9a9aa0; }
+  td.n { color: #b8b8b4; white-space: nowrap; }
+  .tag { font-size: 10px; letter-spacing: .1em; padding: 1px 6px; border: 1px solid; white-space: nowrap; }
+  .echt { color: #8fc79a; border-color: #2f4a35; }
+  .berekend { color: #8fb3d9; border-color: #2c3e52; }
+  .synthese { color: #c19ad9; border-color: #46324f; }
+  .hash { color: #a8a8ae; border-color: #3a3a41; border-style: dashed; }
+  .sim { color: #e3b35c; border-color: #5a4422; }
+  .off { color: #d97a6a; }
+  .dim { color: #55555a; }
+  .cur { color: #e8e8e6; border-bottom: 1px solid #9a9aa2; }
+
+  #sim { border: 1px dashed #2a2a31; padding: 12px; }
+  #sim.on { border-color: #e3b35c; background: #1a150c; }
+  #simBanner { color: #e3b35c; margin-top: 10px; letter-spacing: .04em; }
+  #sim .row { margin-top: 0; }
+
+  .bar { height: 3px; background: #1b1b21; width: 120px; position: relative; margin-top: 8px; }
+  .bar i { position: absolute; left: 0; top: 0; bottom: 0; background: #6a6a72; }
+  .bar b { position: absolute; top: -2px; width: 1px; height: 7px; background: #c8c8c4; }
+  tr.rest td { color: #45454a; }
+  .note { font-size: 11px; color: #66666c; margin-top: 16px; max-width: 70ch; }
+</style>
+</head>
+<body>
+<main>
+  <h1>VERWACHTING · TEMPERATUUR</h1>
+  <div class="sub">Synthwave voor Ravenstein (51,80 N · 5,65 O). De melodie is de temperatuurverwachting van de komende 24 uur, akkoorden en opbouw volgen de luchtdruk, het tempo de daglengte.</div>
+
+  <div class="row">
+    <button id="play" class="big">start</button>
+    <label>volume <input id="vol" type="range" min="0" max="1" step="0.01" value="0.6"></label>
+    <span id="status">stil</span>
+  </div>
+
+  <h2>Simuleer moment</h2>
+  <div id="sim">
+    <div class="row">
+      <input id="simAt" type="datetime-local">
+      <button id="simGo">simuleer</button>
+      <button data-preset="tonight">vanavond 22:00</button>
+      <button data-preset="tomorrow">morgenmiddag</button>
+      <button id="simOff">terug naar nu</button>
+    </div>
+    <div id="simBanner" hidden></div>
+  </div>
+
+  <h2>Inputs</h2>
+  <div class="scroll">
+    <table>
+      <thead><tr><th>input</th><th>waarde</th><th>soort</th><th>doet nu</th></tr></thead>
+      <tbody id="inputs"></tbody>
+    </table>
+  </div>
+
+  <h2>Arrangement</h2>
+  <div class="scroll">
+    <table>
+      <thead><tr><th>onderdeel</th><th>nu</th><th>soort</th><th>hoe</th></tr></thead>
+      <tbody id="arr"></tbody>
+    </table>
+  </div>
+
+  <h2>Partijen</h2>
+  <div class="scroll">
+    <table>
+      <thead><tr><th>partij</th><th>drempel</th><th>stand</th><th>klank</th></tr></thead>
+      <tbody id="parts"></tbody>
+    </table>
+  </div>
+  <p class="note">Elke maat volgt uit de klok (16e-raster vanaf het begin van de zonnedag), de astronomie en de weerdata hierboven. <span class="tag hash">hash</span> betekent: een vaste keuze afgeleid uit de tijd, zonder betekenis. Die zit alleen nog in het ritme van het motief, de keuze uit twee progressies, de arpeggio-volgorde en kleine timing- en aanslagverschillen. Ruis is klankmateriaal (drums, galm) uit een vaste seed.</p>
+</main>
+
+<script>
+'use strict';
+
+// ---------- constants ----------
+const LAT = 51.80, LON = 5.65;
+const RAD = Math.PI / 180;
+const TZ = 'Europe/Amsterdam';
+const WX_URL = `https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}` +
+  `&current=cloud_cover,precipitation,wind_speed_10m,pressure_msl` +
+  `&hourly=temperature_2m,pressure_msl&past_days=1&forecast_days=3&wind_speed_unit=kmh&timezone=UTC`;
+const WX_KEY = 'verwachting.wx3';
+const WX_EVERY_MS = 15 * 60 * 1000;
+const WX_RETRY_MS = 3 * 60 * 1000;
+const WX_STALE_MIN = 90;          // older than this: live weather layers off (the forecast stays usable)
+const LOOKAHEAD = 3;              // seconds scheduled ahead
+const TICK_MS = 250;
+const SEC_BARS = 16, TRACK_SECS = 12;   // a section is 16 bars, a track 12 sections (~9 min)
+const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+const SC_MIN = [0, 2, 3, 5, 7, 8, 10], SC_MAJ = [0, 2, 4, 5, 7, 9, 11];
+// progressions as scale degrees, one chord per two bars, grouped by pressure trend
+const PROGS = {
+  minor: {
+    rising:  [[5, 6, 0, 0], [0, 2, 6, 5]],       // VI VII i i — opening up
+    stable:  [[0, 5, 2, 6], [0, 6, 5, 6]],       // i VI III VII — the classic night drive
+    falling: [[0, 3, 4, 0], [0, 1, 3, 4]],       // i iv v i, i ii° iv v — more tension
+  },
+  major: {
+    rising:  [[0, 4, 5, 3], [3, 4, 0, 0]],
+    stable:  [[0, 5, 3, 4], [0, 3, 5, 4]],
+    falling: [[5, 1, 4, 0], [1, 4, 5, 2]],
+  },
+};
+// energy shape of the twelve sections in a track, by pressure trend
+const CURVES = {
+  rising:  [0.2, 0.3, 0.4, 0.5, 0.55, 0.6, 0.5, 0.6, 0.65, 0.7, 0.6, 0.4],
+  stable:  [0.2, 0.4, 0.6, 0.8, 0.9, 0.45, 0.35, 0.7, 0.85, 1.0, 0.8, 0.45],
+  falling: [0.3, 0.5, 0.75, 0.95, 1.0, 0.6, 0.3, 0.6, 0.9, 1.0, 1.0, 0.5],
+};
+const TREND_NL = { rising: 'stijgend', stable: 'stabiel', falling: 'dalend' };
+// bass patterns: [16th step, octave up], from sparse to busy
+const BASS_PATS = [
+  [[0, 0], [6, 0], [8, 0], [10, 1], [12, 0]],
+  [[0, 0], [3, 0], [6, 0], [8, 0], [11, 0], [14, 0]],
+  [[0, 0], [2, 0], [4, 0], [6, 0], [8, 0], [10, 0], [12, 0], [14, 0]],
+  [[0, 0], [2, 1], [4, 0], [6, 1], [8, 0], [10, 1], [12, 0], [14, 1]],
+];
+const ARP_ORDERS = [[0, 1, 2, 3], [0, 2, 1, 3], [0, 1, 2, 3, 2, 1], [3, 2, 1, 0], [0, 2, 3, 1]];
+// rhythms for the eight motif notes over two bars (16th steps)
+// sections of a track in which the lead plays its motif (the verses and the peak)
+const LEAD_SECS = [2, 3, 4, 7, 8, 9, 10];
+const RHYTHMS = [[0, 3, 6, 8, 12, 16, 19, 24], [0, 4, 6, 10, 12, 16, 22, 24], [0, 2, 6, 8, 14, 16, 20, 26], [0, 6, 8, 12, 16, 18, 22, 28]];
+const PARTS = [
+  { key: 'pad',   name: 'pads',     sound: 'twee zaagtanden per noot, Juno-achtige chorus, pompt op de kick' },
+  { key: 'bass',  name: 'bas',      sound: 'zaagtand met snel dichtgaand filter, patroon drukker bij meer energie' },
+  { key: 'kick',  name: 'kick',     sound: 'sinus met toonval 150 → 42 Hz' },
+  { key: 'arp',   name: 'arpeggio', sound: 'blokgolf, plukfilter, echo op een gepunte 8e' },
+  { key: 'hat',   name: 'hihat',    sound: 'ruis door hoogdoorlaat, op de achtste offbeats' },
+  { key: 'snare', name: 'snare',    sound: 'ruis + driehoek, gated reverb (jaren 80)' },
+  { key: 'lead',  name: 'lead',     sound: 'twee zaagtanden met vibrato, speelt de temperatuurverwachting' },
+];
+
+// ---------- deterministic helpers ----------
+function mix32(h) {
+  h ^= h >>> 16; h = Math.imul(h, 0x7feb352d);
+  h ^= h >>> 15; h = Math.imul(h, 0x846ca68b);
+  h ^= h >>> 16; return h >>> 0;
+}
+// hash of non-negative integers (may exceed 2^32)
+function hash(...xs) {
+  let h = 0x811c9dc5;
+  for (const x of xs) {
+    h = mix32(h ^ (x >>> 0));
+    h = mix32(h ^ (Math.floor(x / 4294967296) >>> 0) ^ 0x9e3779b9);
+  }
+  return h;
+}
+const unit = h => h / 4294967296;
+// seeded noise for synthesis only (drums, reverb impulse)
+function mulberry32(a) {
+  return () => {
+    a |= 0; a = a + 0x6d2b79f5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
+const wrap = (m, lo) => lo + (((m - lo) % 12) + 12) % 12;   // pitch into [lo, lo+12)
+const noteName = m => NOTE_NAMES[((m % 12) + 12) % 12] + (Math.floor(m / 12) - 1);
+
+// ---------- astronomy ----------
+function sunPos(ms) {
+  const d = ms / 86400000 - 10957.5;                       // days since J2000.0
+  const g = (357.529 + 0.98560028 * d) * RAD;
+  const q = 280.459 + 0.98564736 * d;
+  const lam = q + 1.915 * Math.sin(g) + 0.020 * Math.sin(2 * g);   // ecliptic longitude (deg)
+  const L = lam * RAD;
+  const e = (23.439 - 0.00000036 * d) * RAD;
+  const ra = Math.atan2(Math.cos(e) * Math.sin(L), Math.cos(L));
+  const dec = Math.asin(Math.sin(e) * Math.sin(L));
+  const gmst = 18.697374558 + 24.06570982441908 * d;       // hours
+  const H = (gmst * 15 + LON) * RAD - ra;
+  const phi = LAT * RAD;
+  const alt = Math.asin(Math.sin(phi) * Math.sin(dec) + Math.cos(phi) * Math.cos(dec) * Math.cos(H));
+  return { alt: alt / RAD, dec, lam: ((lam % 360) + 360) % 360 };
+}
+function dayLengthFromDec(dec) {
+  const phi = LAT * RAD;
+  const c = (Math.sin(-0.833 * RAD) - Math.sin(phi) * Math.sin(dec)) / (Math.cos(phi) * Math.cos(dec));
+  if (c >= 1) return 0;
+  if (c <= -1) return 24;
+  return 2 * Math.acos(c) / RAD / 15;
+}
+// local mean solar day: tempo and key are fixed per solar day and the 16th grid starts at its midnight
+const solarDay = ms => Math.floor(ms / 86400000 + LON / 360);
+const solarDayEnd = dn => (dn + 1 - LON / 360) * 86400;   // unix seconds
+const DAY_MIN = dayLengthFromDec(-23.44 * RAD), DAY_MAX = dayLengthFromDec(23.44 * RAD);
+const dayCache = new Map();
+function dayInfo(ms) {
+  const dn = solarDay(ms);
+  let info = dayCache.get(dn);
+  if (!info) {
+    const noon = (dn + 0.5 - LON / 360) * 86400000;
+    const D = dayLengthFromDec(sunPos(noon).dec);
+    const k = (D - DAY_MIN) / (DAY_MAX - DAY_MIN) * 2 - 1;   // -1 shortest day, +1 longest
+    const bpm = Math.round(84 + 8 * k);                       // 76 .. 92
+    info = { dn, D, k, bpm, step: 15 / bpm, start: (dn - LON / 360) * 86400, rootPc: (dn * 7) % 12 };
+    if (dayCache.size > 8) dayCache.clear();
+    dayCache.set(dn, info);
+  }
+  return info;
+}
+const SYNODIC = 29.530588853, NEW_MOON_REF = 947182440000;   // 2000-01-06 18:14 UTC
+function moon(ms) {
+  const p = ((((ms - NEW_MOON_REF) / 86400000) / SYNODIC) % 1 + 1) % 1;
+  return { phase: p, illum: (1 - Math.cos(2 * Math.PI * p)) / 2 };
+}
+function moonName(p) {
+  if (p < 0.034 || p > 0.966) return 'nieuwe maan';
+  if (p < 0.216) return 'wassende sikkel';
+  if (p < 0.284) return 'eerste kwartier';
+  if (p < 0.466) return 'wassende maan';
+  if (p < 0.534) return 'volle maan';
+  if (p < 0.716) return 'afnemende maan';
+  if (p < 0.784) return 'laatste kwartier';
+  return 'afnemende sikkel';
+}
+
+// ---------- calendar ----------
+const wdFmt = new Intl.DateTimeFormat('en-GB', { timeZone: TZ, weekday: 'short' });
+const WD = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const partCache = new Map();
+function localPart(fmt, key, ms) {   // NL offsets are whole hours, so cache per hour
+  const k = key + Math.floor(ms / 3600000);
+  let v = partCache.get(k);
+  if (v === undefined) {
+    v = fmt.format(ms);
+    if (partCache.size > 96) partCache.clear();
+    partCache.set(k, v);
+  }
+  return v;
+}
+const localWeekday = ms => WD.indexOf(localPart(wdFmt, 'w', ms));   // 0 monday .. 6 sunday
+const DAYS = ['maandag', 'dinsdag', 'woensdag', 'donderdag', 'vrijdag', 'zaterdag', 'zondag'];
+
+// ---------- weather data (live + hourly forecast) ----------
+const wx = { cloud: null, rain: null, wind: null, pres: null, hourly: null, at: 0, modelTime: null, error: null, last: 0 };
+try {
+  const saved = JSON.parse(localStorage.getItem(WX_KEY) || 'null');
+  if (saved && saved.at) Object.assign(wx, saved, { error: null });
+} catch (e) {}
+
+// hourly value at unix second t, linearly interpolated; null outside the data
+function hourlyAt(key, t) {
+  const h = wx.hourly;
+  if (!h || !h.t.length) return null;
+  const x = (t - h.t[0]) / 3600, i = Math.floor(x);
+  if (i < 0 || i + 1 >= h.t.length) return null;
+  const a = h[key][i], b = h[key][i + 1];
+  if (a == null || b == null) return null;
+  return a + (b - a) * (x - i);
+}
+// pressure change over the past three hours, in hPa
+function pressureTrend(t) {
+  const a = hourlyAt('pres', t), b = hourlyAt('pres', t - 3 * 3600);
+  return a == null || b == null ? null : a - b;
+}
+const trendOf = dp => dp == null ? 'stable' : dp > 0.8 ? 'rising' : dp < -0.8 ? 'falling' : 'stable';
+// temperature every three hours over the next 24 hours from t: the melody
+function forecastTemps(t) {
+  const out = [];
+  for (let k = 0; k < 8; k++) {
+    const v = hourlyAt('temp', t + k * 3 * 3600);
+    if (v == null) return null;
+    out.push(v);
+  }
+  return out;
+}
+
+// ---------- musical state, a pure function of time (and the weather data) ----------
+function musicState(ms) {
+  const sun = sunPos(ms);
+  const bright = clamp((sun.alt + 12) / 72, 0, 1);
+  const wd = localWeekday(ms);
+  const day = dayInfo(ms);
+  return {
+    ms, sun, bright, wd, day,
+    mo: moon(ms),
+    rootPc: day.rootPc,                        // one fifth further every day
+    minor: sun.alt < -3,
+    dark: 1 - smooth(-8, 8, sun.alt),
+    weekend: wd >= 5,
+    cutoff: 1400 * Math.pow(2, 3.1 * bright),  // master filter, 1,4 .. 12 kHz
+    padCut: 700 * Math.pow(2, 2 * bright),     // pad filter, 0,7 .. 2,8 kHz
+  };
+}
+// place of 16th step s (counted from the start of the solar day) in the form
+function gridOf(s) {
+  const bar = Math.floor(s / 16), sec = Math.floor(bar / SEC_BARS);
+  return { s, i: s % 16, bar, bi: bar % SEC_BARS, sec, si: sec % TRACK_SECS, track: Math.floor(sec / TRACK_SECS) };
+}
+// eight notes of a two-bar phrase; pitch is a chord-tone index, so the phrase bends with each chord
+function motifFrom(levels, rhythm) {
+  return levels.map((lv, j) => {
+    const next = j + 1 < rhythm.length ? rhythm[j + 1] : 32;
+    return { step: rhythm[j], len: Math.max(1, Math.min(6, next - rhythm[j])), idx: lv % 4, oct: Math.floor(lv / 4) };
+  });
+}
+// everything that holds for a whole track, decided at its first beat
+const trackCache = new Map();
+function trackPlan(day, track) {
+  const key = day.dn * 1000 + track;
+  let tp = trackCache.get(key);
+  if (tp) return tp;
+  const t0 = day.start + track * TRACK_SECS * SEC_BARS * 16 * day.step;
+  const ht = hash(day.dn, track, 1);
+  const dp = pressureTrend(t0), trend = trendOf(dp);
+  const choice = ht % 2;
+  const rhythm = RHYTHMS[hash(ht, 4) % RHYTHMS.length];
+  const temps = forecastTemps(t0);
+  let levels, lo = null, hi = null;
+  if (temps) {
+    // the coldest point of the coming day is the lowest note; at least 6 °C spans the full range
+    lo = Math.min(...temps); hi = Math.max(...temps);
+    const span = Math.max(hi - lo, 6);
+    levels = temps.map(v => Math.round((v - lo) / span * 6));
+  } else {
+    levels = rhythm.map((x, j) => hash(ht, 20 + j) % 7);
+  }
+  tp = {
+    track, t0, dp, trend, choice, rhythm, temps, lo, hi, levels,
+    curve: CURVES[trend],
+    progMinor: PROGS.minor[trend][choice],
+    progMajor: PROGS.major[trend][choice],
+    arpOrder: ARP_ORDERS[hash(ht, 3) % ARP_ORDERS.length],
+    motif: motifFrom(levels, rhythm),
+  };
+  if (trackCache.size > 16) trackCache.clear();
+  trackCache.set(key, tp);
+  return tp;
+}
+// everything that holds for a section (16 bars), decided by the state at its first beat
+const planCache = new Map();
+function sectionPlan(day, sec) {
+  const key = day.dn * 1000 + sec;
+  let p = planCache.get(key);
+  if (p) return p;
+  const t0 = day.start + sec * SEC_BARS * 16 * day.step;
+  const st = musicState(t0 * 1000);
+  const tp = trackPlan(day, Math.floor(sec / TRACK_SECS)), si = sec % TRACK_SECS;
+  const shape = tp.curve[si];
+  const energy = clamp(shape * (0.5 + 0.5 * st.dark) * (st.weekend ? 0.85 : 1), 0, 1);
+  const illum = st.mo.illum;
+  const thr = { pad: 0, bass: 0.22, kick: 0.34, arp: 0.42 - 0.14 * illum, hat: 0.45, snare: 0.55, lead: 0.28 };
+  const on = {};
+  for (const k in thr) on[k] = k === 'pad' || energy > thr[k];
+  on.lead = on.lead && LEAD_SECS.includes(si);
+  p = {
+    sec, si, st, tp, shape, energy, thr, on,
+    minor: st.minor, rootPc: st.rootPc,
+    prog: st.minor ? tp.progMinor : tp.progMajor,
+    kickFour: energy > 0.78,
+    bassPat: BASS_PATS[energy < 0.35 ? 0 : energy < 0.5 ? 1 : energy < 0.75 ? 2 : 3],
+    arpRate: illum > 0.5 ? 1 : 2,               // 16ths around full moon, 8ths otherwise
+    swing: st.weekend ? 0.22 : 0.08,            // delay of odd 16ths, as part of a 16th
+  };
+  if (planCache.size > 64) planCache.clear();
+  planCache.set(key, p);
+  return p;
+}
+// seventh chord on the progression's degree for bar bi, as semitones above C
+function chordTones(p, bi) {
+  const deg = p.prog[(bi >> 1) & 3];
+  const sc = p.minor ? SC_MIN : SC_MAJ;
+  return [0, 2, 4, 6].map(i => sc[(deg + i) % 7] + 12 * Math.floor((deg + i) / 7) + p.rootPc);
+}
+function chordName(t) {
+  const Q = { '4,7,11': 'maj7', '3,7,10': 'm7', '4,7,10': '7', '3,6,10': 'm7♭5' };
+  return NOTE_NAMES[t[0] % 12] + (Q[[t[1] - t[0], t[2] - t[0], t[3] - t[0]].join(',')] ?? '');
+}
+const leadMidi = (tones, n, idx) => wrap(tones[idx], 62) + 12 * n.oct;
+
+// weather -> sound, also pure
+function rainProb(mmh) { return mmh > 0 ? Math.min(0.8, 1 - Math.exp(-mmh * 0.12)) : 0; }
+function windSweep(kmh) { return kmh < 2 ? 0 : 650 * Math.pow(clamp(kmh / 50, 0, 1), 1.2); }
+function cloudWet(c) { return 0.5 + 0.9 * c; }
+
+// ---------- audio engine ----------
+class Engine {
+  constructor(ctx, offset) {
+    this.ctx = ctx;
+    this.offset = offset;           // music seconds = ctx.currentTime + offset
+    this.lastEnd = 0;
+    this.pending = [];
+    this.wx = { cloud: null, rain: 0, wind: 0 };
+    this.build();
+  }
+
+  build() {
+    const c = this.ctx;
+    this.out = c.createGain(); this.out.gain.value = 0.6;
+    this.out.connect(c.destination);
+    this.fader = c.createGain(); this.fader.gain.value = 0;
+    this.fader.connect(this.out);
+    this.limiter = c.createDynamicsCompressor();
+    this.limiter.threshold.value = -10; this.limiter.knee.value = 6;
+    this.limiter.ratio.value = 12; this.limiter.attack.value = 0.003; this.limiter.release.value = 0.25;
+    this.limiter.connect(this.fader);
+    // gentle tape-like saturation before the limiter
+    const shaper = c.createWaveShaper();
+    const curve = new Float32Array(1024);
+    for (let i = 0; i < curve.length; i++) { const x = i / 511.5 - 1; curve[i] = Math.tanh(1.6 * x) / Math.tanh(1.6); }
+    shaper.curve = curve; shaper.oversample = '2x';
+    shaper.connect(this.limiter);
+    this.tone = c.createBiquadFilter(); this.tone.type = 'lowpass'; this.tone.Q.value = 0.5; this.tone.frequency.value = 4000;
+    this.tone.connect(shaper);
+    this.mix = c.createGain(); this.mix.connect(this.tone);
+
+    // reverb (big room) and gated reverb (snare)
+    this.revIn = c.createGain(); this.revIn.gain.value = 0.8;
+    const conv = c.createConvolver(); conv.buffer = makeImpulse(c, 3.2, 0.85, 1931);
+    const revOut = c.createGain(); revOut.gain.value = 0.55;
+    this.revIn.connect(conv).connect(revOut).connect(this.mix);
+    this.gateIn = c.createGain();
+    const gated = c.createConvolver(); gated.buffer = makeGated(c);
+    const gateOut = c.createGain(); gateOut.gain.value = 0.5;
+    this.gateIn.connect(gated).connect(gateOut).connect(this.mix);
+
+    // echo on a dotted eighth, with a darkening feedback loop
+    this.echoIn = c.createGain();
+    this.echo = c.createDelay(2); this.echo.delayTime.value = 0.5;
+    const echoLp = c.createBiquadFilter(); echoLp.type = 'lowpass'; echoLp.frequency.value = 2800;
+    const fb = c.createGain(); fb.gain.value = 0.38;
+    const echoPan = c.createStereoPanner(); echoPan.pan.value = 0.4;
+    this.echoIn.connect(this.echo).connect(echoLp).connect(fb).connect(this.echo);
+    echoLp.connect(echoPan).connect(this.mix);
+    const echoRev = c.createGain(); echoRev.gain.value = 0.3;
+    echoLp.connect(echoRev).connect(this.revIn);
+
+    // pump: pads and bass duck on every kick (sidechain)
+    this.pump = c.createGain();
+    this.pump.connect(this.mix);
+    const pumpRev = c.createGain(); pumpRev.gain.value = 0.35;
+    this.pump.connect(pumpRev).connect(this.revIn);
+
+    // pads: bus -> filter (swept by the wind) -> chorus -> pump
+    this.padBus = c.createGain();
+    this.padTone = c.createBiquadFilter(); this.padTone.type = 'lowpass'; this.padTone.Q.value = 0.7; this.padTone.frequency.value = 1500;
+    this.padBus.connect(this.padTone);
+    const windLfo = c.createOscillator(); windLfo.frequency.value = 0.06;
+    this.windDepth = c.createGain(); this.windDepth.gain.value = 0;
+    windLfo.connect(this.windDepth).connect(this.padTone.frequency);
+    windLfo.start();
+    this.chorus(this.padTone, this.pump);
+
+    this.bassBus = c.createGain();
+    this.bassBus.connect(this.pump);
+
+    this.arpBus = c.createGain();
+    this.chorus(this.arpBus, this.mix);
+    const arpEcho = c.createGain(); arpEcho.gain.value = 0.45;
+    this.arpBus.connect(arpEcho).connect(this.echoIn);
+    const arpRev = c.createGain(); arpRev.gain.value = 0.3;
+    this.arpBus.connect(arpRev).connect(this.revIn);
+
+    this.leadBus = c.createGain();
+    const leadPan = c.createStereoPanner(); leadPan.pan.value = -0.1;
+    this.leadBus.connect(leadPan).connect(this.mix);
+    const leadEcho = c.createGain(); leadEcho.gain.value = 0.5;
+    this.leadBus.connect(leadEcho).connect(this.echoIn);
+    const leadRev = c.createGain(); leadRev.gain.value = 0.55;
+    this.leadBus.connect(leadRev).connect(this.revIn);
+
+    this.drumBus = c.createGain();
+    this.drumBus.connect(this.mix);
+    this.hatPan = c.createStereoPanner(); this.hatPan.pan.value = 0.3;
+    this.hatPan.connect(this.drumBus);
+    const hatRev = c.createGain(); hatRev.gain.value = 0.2;
+    this.hatPan.connect(hatRev).connect(this.revIn);
+
+    this.noise = makeNoise(c, 11);
+  }
+
+  // Juno-like chorus: dry plus two modulated short delays, spread left and right
+  chorus(input, output) {
+    const c = this.ctx;
+    input.connect(output);
+    const lfo = c.createOscillator(); lfo.frequency.value = 0.45; lfo.start();
+    for (const [pan, base, depth] of [[-0.6, 0.012, 0.0025], [0.6, 0.017, -0.0025]]) {
+      const d = c.createDelay(0.05); d.delayTime.value = base;
+      const dg = c.createGain(); dg.gain.value = depth;
+      lfo.connect(dg).connect(d.delayTime);
+      const g = c.createGain(); g.gain.value = 0.7;
+      const p = c.createStereoPanner(); p.pan.value = pan;
+      input.connect(d).connect(g).connect(p).connect(output);
+    }
+  }
+
+  musicNow() { return this.ctx.currentTime + this.offset; }
+
+  // ramp all continuous parameters towards the state; tc = time constant in seconds
+  update(st, wx, tc = 4, wtc = 20) {
+    const now = this.ctx.currentTime;
+    const to = (p, v, k) => p.setTargetAtTime(v, now, k);
+    this.wx = wx;
+    to(this.tone.frequency, st.cutoff, tc);
+    to(this.padTone.frequency, st.padCut, tc);
+    const cl = wx.cloud == null ? 0.3 : wx.cloud / 100;
+    to(this.revIn.gain, cloudWet(cl), wtc);
+    to(this.windDepth.gain, windSweep(wx.wind || 0), wtc);
+    to(this.echo.delayTime, 3 * st.day.step, 0.5);
+  }
+
+  fade(to, seconds) {
+    const g = this.fader.gain, now = this.ctx.currentTime;
+    g.cancelScheduledValues(now);
+    g.setValueAtTime(g.value, now);
+    g.linearRampToValueAtTime(to, now + seconds);
+  }
+
+  // forget the timeline (simulation jump): drop notes that have not started yet
+  reset() {
+    const now = this.ctx.currentTime;
+    for (const p of this.pending) if (p.t > now + 0.02) p.srcs.forEach(o => o.stop(now));
+    this.pending = this.pending.filter(p => p.t <= now + 0.02);
+    this.pump.gain.cancelScheduledValues(now);
+    this.pump.gain.setValueAtTime(1, now);
+    this.lastEnd = 0;
+  }
+
+  // schedule every 16th whose grid time lies in [lastEnd, w1)
+  scheduleUntil(w1) {
+    const nowM = this.musicNow();
+    if (this.lastEnd - nowM > LOOKAHEAD + 2) this.lastEnd = 0;   // clock went backwards
+    let w0 = Math.max(this.lastEnd, nowM + 0.05);
+    while (w0 < w1) {
+      let day = dayInfo(w0 * 1000);
+      if (solarDayEnd(day.dn) <= w0) day = dayInfo(w0 * 1000 + 1);   // rounding at midnight
+      const end = Math.min(w1, solarDayEnd(day.dn));
+      for (let s = Math.max(0, Math.ceil((w0 - day.start) / day.step - 1e-9)); ; s++) {
+        const tg = day.start + s * day.step;
+        if (tg >= end) break;
+        if (tg >= w0) this.scheduleStep(day, s, tg);
+      }
+      w0 = end;
+    }
+    this.lastEnd = w1;
+    const now = this.ctx.currentTime;
+    if (this.pending.length > 256) this.pending = this.pending.filter(p => p.end > now);
+  }
+
+  scheduleStep(day, s, tg) {
+    const g = gridOf(s), p = sectionPlan(day, g.sec), on = p.on, tp = p.tp;
+    const tones = chordTones(p, g.bi);
+    const sd = day.step;
+    const at = tg - this.offset;
+    const sw = s % 2 ? p.swing * sd : 0;
+    const hum = k => (unit(hash(day.dn, s, k)) - 0.5) * 0.012;
+    const vel = k => 0.8 + 0.2 * unit(hash(day.dn, s, k));
+
+    if (g.i === 0 && g.bi % 2 === 0) this.pad(at, tones.map(t => wrap(t, 55)), 32 * sd);
+    if (g.i === 0 && g.bi === 0 && on.snare) this.crash(at, s);
+    if (on.bass) {
+      for (const [bs, up] of p.bassPat) {
+        if (bs !== g.i) continue;
+        let m = 36 + tones[0] % 12;
+        if (m > 43) m -= 12;
+        this.bass(at + sw, mtof(m + 12 * up), sd * 1.6, 0.13 * vel(1));
+      }
+    }
+    const kickHere = p.kickFour ? g.i % 4 === 0 : g.i === 0 || g.i === 10;
+    if (on.kick && kickHere) this.kick(at, 0.5);
+    const snareHere = p.kickFour ? g.i === 4 || g.i === 12 : g.i === 8;
+    if (on.snare && snareHere) this.snare(at + hum(2), 0.2 * vel(3), s);
+    if (on.hat && g.i % 4 === 2) this.hat(at + sw + hum(4), 0.035 * vel(5), s);
+    // rain: soft ticks on the odd 16ths, independent of the arrangement
+    const rp = rainProb(this.wx.rain || 0);
+    if (rp > 0 && s % 2 === 1 && unit(hash(day.dn, s, 6)) < rp) this.hat(at + sw + hum(7), 0.016 * vel(8), s + 7);
+    if (on.arp && s % p.arpRate === 0) {
+      const j = Math.floor(s / p.arpRate), ord = tp.arpOrder;
+      const m = wrap(tones[ord[j % ord.length]], 64) + 12 * (Math.floor(j / ord.length) % 2);
+      this.arp(at + sw + hum(9), mtof(m), 0.03 * vel(10));
+    }
+    if (on.lead) {
+      const pos = (g.bar % 2) * 16 + g.i;
+      const answer = Math.floor(g.bar / 2) % 2 === 1;   // every other repeat ends elsewhere
+      tp.motif.forEach((n, j) => {
+        if (n.step !== pos) return;
+        const idx = answer && j === tp.motif.length - 1 ? (n.idx + 2) % 4 : n.idx;
+        this.lead(at + sw, mtof(leadMidi(tones, n, idx)), n.len * sd * 0.9, 0.045 * vel(11));
+      });
+    }
+  }
+
+  track(t, end, srcs, nodes) {
+    srcs[0].onended = () => nodes.forEach(n => n.disconnect());
+    this.pending.push({ t, end, srcs });
+  }
+  osc(type, f, t, end, detune = 0) {
+    const o = this.ctx.createOscillator();
+    o.type = type; o.frequency.value = f; o.detune.value = detune;
+    o.start(t); o.stop(end);
+    return o;
+  }
+  noiseSrc(t, end, seed) {
+    const n = this.ctx.createBufferSource();
+    n.buffer = this.noise; n.loop = true;
+    n.start(t, unit(hash(seed, 3)) * 10); n.stop(end);
+    return n;
+  }
+
+  pad(t, midis, dur) {
+    const c = this.ctx, end = t + dur + 1.8;
+    const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 2;
+    lp.frequency.setValueAtTime(400, t);
+    lp.frequency.exponentialRampToValueAtTime(2400, t + 1.6);
+    const amp = c.createGain();
+    amp.gain.setValueAtTime(0, t);
+    amp.gain.linearRampToValueAtTime(0.022, t + 0.9);
+    amp.gain.setValueAtTime(0.022, t + dur);
+    amp.gain.setTargetAtTime(0, t + dur, 0.45);
+    lp.connect(amp).connect(this.padBus);
+    const srcs = [];
+    for (const m of midis) for (const d of [-8, 8]) {
+      const o = this.osc('sawtooth', mtof(m), t, end, d);
+      o.connect(lp); srcs.push(o);
+    }
+    this.track(t, end, srcs, [lp, amp]);
+  }
+
+  bass(t, f, len, vel) {
+    const c = this.ctx, end = t + len + 0.3;
+    const o = this.osc('sawtooth', f, t, end);
+    const sub = this.osc('sine', f, t, end);
+    const subG = c.createGain(); subG.gain.value = 0.6;
+    const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 4;
+    lp.frequency.setValueAtTime(1400, t);
+    lp.frequency.setTargetAtTime(220, t, 0.06);
+    const amp = c.createGain();
+    amp.gain.setValueAtTime(0, t);
+    amp.gain.linearRampToValueAtTime(vel, t + 0.004);
+    amp.gain.setTargetAtTime(vel * 0.6, t + 0.004, 0.08);
+    amp.gain.setTargetAtTime(0, t + len, 0.03);
+    o.connect(lp).connect(amp).connect(this.bassBus);
+    sub.connect(subG).connect(amp);
+    this.track(t, end, [o, sub], [lp, amp, subG]);
+  }
+
+  kick(t, vel) {
+    const c = this.ctx, end = t + 0.55;
+    const o = this.osc('sine', 150, t, end);
+    o.frequency.setValueAtTime(150, t);
+    o.frequency.exponentialRampToValueAtTime(42, t + 0.13);
+    const amp = c.createGain();
+    amp.gain.setValueAtTime(vel, t);
+    amp.gain.exponentialRampToValueAtTime(0.001, t + 0.5);
+    o.connect(amp).connect(this.drumBus);
+    this.pump.gain.setTargetAtTime(0.3, t, 0.004);
+    this.pump.gain.setTargetAtTime(1, t + 0.03, 0.11);
+    this.track(t, end, [o], [amp]);
+  }
+
+  snare(t, vel, seed) {
+    const c = this.ctx, end = t + 0.3;
+    const n = this.noiseSrc(t, end, seed);
+    const bp = c.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1900; bp.Q.value = 0.7;
+    const amp = c.createGain();
+    amp.gain.setValueAtTime(vel, t);
+    amp.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+    n.connect(bp).connect(amp);
+    const tri = this.osc('triangle', 185, t, end);
+    const triG = c.createGain();
+    triG.gain.setValueAtTime(vel * 0.5, t);
+    triG.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+    tri.connect(triG).connect(amp);
+    amp.connect(this.drumBus);
+    const gs = c.createGain(); gs.gain.value = 1.2;
+    amp.connect(gs).connect(this.gateIn);
+    this.track(t, end, [n, tri], [bp, amp, triG, gs]);
+  }
+
+  hat(t, vel, seed) {
+    const c = this.ctx, end = t + 0.08;
+    const n = this.noiseSrc(t, end, seed);
+    const hp = c.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 7000;
+    const amp = c.createGain();
+    amp.gain.setValueAtTime(vel, t);
+    amp.gain.exponentialRampToValueAtTime(0.001, t + 0.045);
+    n.connect(hp).connect(amp).connect(this.hatPan);
+    this.track(t, end, [n], [hp, amp]);
+  }
+
+  crash(t, seed) {
+    const c = this.ctx, end = t + 3;
+    const n = this.noiseSrc(t, end, seed + 1);
+    const hp = c.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 4500;
+    const amp = c.createGain();
+    amp.gain.setValueAtTime(0.04, t);
+    amp.gain.exponentialRampToValueAtTime(0.0005, t + 2.8);
+    n.connect(hp).connect(amp).connect(this.hatPan);
+    this.track(t, end, [n], [hp, amp]);
+  }
+
+  arp(t, f, vel) {
+    const c = this.ctx, end = t + 0.35;
+    const o = this.osc('square', f, t, end);
+    const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 3;
+    lp.frequency.setValueAtTime(2600, t);
+    lp.frequency.setTargetAtTime(500, t, 0.07);
+    const amp = c.createGain();
+    amp.gain.setValueAtTime(0, t);
+    amp.gain.linearRampToValueAtTime(vel, t + 0.003);
+    amp.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
+    o.connect(lp).connect(amp).connect(this.arpBus);
+    this.track(t, end, [o], [lp, amp]);
+  }
+
+  lead(t, f, len, vel) {
+    const c = this.ctx, end = t + len + 0.7;
+    const lfo = this.osc('sine', 5.2, t, end);
+    const vib = c.createGain();
+    vib.gain.setValueAtTime(0, t);
+    vib.gain.setValueAtTime(0, t + 0.25);
+    vib.gain.linearRampToValueAtTime(f * 0.006, t + 0.6);
+    lfo.connect(vib);
+    const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2200; lp.Q.value = 1;
+    const amp = c.createGain();
+    amp.gain.setValueAtTime(0, t);
+    amp.gain.linearRampToValueAtTime(vel, t + 0.02);
+    amp.gain.setTargetAtTime(0, t + len, 0.12);
+    const srcs = [lfo];
+    for (const d of [-6, 6]) {
+      const o = this.osc('sawtooth', f, t, end, d);
+      vib.connect(o.frequency);
+      o.connect(lp); srcs.push(o);
+    }
+    lp.connect(amp).connect(this.leadBus);
+    this.track(t, end, srcs, [vib, lp, amp]);
+  }
+}
+
+function makeImpulse(c, seconds, decay, seed) {
+  const sr = c.sampleRate, len = Math.floor(sr * seconds);
+  const buf = c.createBuffer(2, len, sr);
+  const pre = Math.floor(sr * 0.02), fadeLen = Math.floor(sr * 0.6);
+  for (let ch = 0; ch < 2; ch++) {
+    const d = buf.getChannelData(ch), rnd = mulberry32(seed + ch * 7);
+    let lp = 0;
+    for (let i = pre; i < len; i++) {
+      const t = (i - pre) / sr;
+      const k = 0.12 + 0.8 * Math.exp(-t / 0.6);              // tail darkens over time
+      lp += k * ((rnd() * 2 - 1) - lp);
+      let env = Math.exp(-t / decay) * Math.min(1, t / 0.01);
+      if (i > len - fadeLen) env *= (len - i) / fadeLen;
+      d[i] = lp * env;
+    }
+  }
+  return buf;
+}
+// gated reverb: dense, nearly flat, then cut off hard
+function makeGated(c) {
+  const sr = c.sampleRate, len = Math.floor(sr * 0.34);
+  const buf = c.createBuffer(2, len, sr);
+  for (let ch = 0; ch < 2; ch++) {
+    const d = buf.getChannelData(ch), rnd = mulberry32(777 + ch);
+    for (let i = 0; i < len; i++) {
+      const t = i / sr;
+      d[i] = (rnd() * 2 - 1) * (1 - 0.35 * t / 0.34) * Math.min(1, (0.34 - t) / 0.015) * 0.5;
+    }
+  }
+  return buf;
+}
+function makeNoise(c, seconds) {
+  const sr = c.sampleRate, len = Math.floor(sr * seconds);
+  const buf = c.createBuffer(1, len, sr);
+  const d = buf.getChannelData(0), rnd = mulberry32(4242);
+  for (let i = 0; i < len; i++) d[i] = rnd() * 2 - 1;
+  return buf;
+}
+
+// ---------- weather fetching ----------
+async function fetchWeather() {
+  wx.last = Date.now();
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), 12000);
+  try {
+    const r = await fetch(WX_URL, { cache: 'no-store', signal: ac.signal });
+    const j = await r.json();
+    if (!r.ok || j.error) throw new Error(j.reason || ('HTTP ' + r.status));
+    const cur = j.current, interval = cur.interval || 900, hh = j.hourly;
+    Object.assign(wx, {
+      cloud: cur.cloud_cover,
+      rain: cur.precipitation * 3600 / interval,     // mm per interval -> mm/h
+      wind: cur.wind_speed_10m,
+      pres: cur.pressure_msl,
+      hourly: { t: hh.time.map(s => Date.parse(s + 'Z') / 1000), temp: hh.temperature_2m, pres: hh.pressure_msl },
+      at: Date.now(), modelTime: cur.time, error: null,
+    });
+    trackCache.clear(); planCache.clear();
+    try {
+      const { cloud, rain, wind, pres, hourly, at, modelTime } = wx;
+      localStorage.setItem(WX_KEY, JSON.stringify({ cloud, rain, wind, pres, hourly, at, modelTime }));
+    } catch (e) {}
+  } catch (e) {
+    wx.error = e.name === 'AbortError' ? 'time-out' : (e.message || 'geen verbinding');
+  } finally {
+    clearTimeout(timer);
+  }
+  setTimeout(fetchWeather, wx.error ? WX_RETRY_MS : WX_EVERY_MS);
+  render();
+}
+const wxAgeMin = () => wx.at ? (Date.now() - wx.at) / 60000 : Infinity;
+function wxEffective() {
+  if (wxAgeMin() > WX_STALE_MIN) return { cloud: null, rain: 0, wind: 0, off: true };
+  return { cloud: wx.cloud, rain: wx.rain, wind: wx.wind, off: false };
+}
+
+// ---------- clock & simulation ----------
+let simOffset = 0;            // ms added to the real clock
+const simActive = () => simOffset !== 0;
+const nowMs = () => Date.now() + simOffset;
+
+// ---------- app ----------
+let ctx = null, engine = null, playing = false, tickTimer = null;
+const $ = id => document.getElementById(id);
+let volume = 0.6;
+try { const v = parseFloat(localStorage.getItem('verwachting.vol')); if (v >= 0 && v <= 1) volume = v; } catch (e) {}
+$('vol').value = volume;
+const outGain = v => 2 * v * v;
+
+function clockOffset() {
+  // music time for ctx.currentTime, preferring the output timestamp for accuracy
+  if (ctx.getOutputTimestamp) {
+    const ts = ctx.getOutputTimestamp();
+    if (ts.contextTime > 0 && ts.performanceTime > 0)
+      return (performance.timeOrigin + ts.performanceTime + simOffset) / 1000 - ts.contextTime;
+  }
+  return nowMs() / 1000 - ctx.currentTime;
+}
+function tick() {
+  if (!engine) return;
+  const off = clockOffset();
+  if (Math.abs(off - engine.offset) > 0.03) engine.offset = off;
+  engine.scheduleUntil(engine.musicNow() + LOOKAHEAD);
+}
+let paramTc = 4;
+function updateParams() {
+  if (!engine) return;
+  engine.update(musicState(nowMs()), wxEffective(), paramTc);
+  paramTc = 4;
+}
+async function start() {
+  if (!ctx) {
+    ctx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'playback' });
+    engine = new Engine(ctx, nowMs() / 1000 - ctx.currentTime);
+  }
+  await ctx.resume();
+  engine.out.gain.value = outGain(volume);
+  engine.offset = clockOffset();
+  engine.reset();
+  paramTc = 0.5;
+  updateParams();
+  engine.fade(1, 3);
+  tick();
+  tickTimer = setInterval(tick, TICK_MS);
+  playing = true;
+  render();
+}
+function stop() {
+  playing = false;
+  clearInterval(tickTimer);
+  engine.fade(0, 1.5);
+  setTimeout(() => { if (!playing) { engine.reset(); ctx.suspend(); } }, 1700);
+  render();
+}
+$('play').onclick = () => playing ? stop() : start();
+$('vol').oninput = e => {
+  volume = +e.target.value;
+  try { localStorage.setItem('verwachting.vol', volume); } catch (err) {}
+  if (engine) engine.out.gain.setTargetAtTime(outGain(volume), ctx.currentTime, 0.05);
+};
+
+function setSim(ms) {
+  simOffset = ms == null ? 0 : ms - Date.now();
+  if (engine) {
+    engine.reset();
+    engine.offset = clockOffset();
+    paramTc = 2;
+    updateParams();
+    if (playing) tick();
+  }
+  render();
+}
+function toLocalInput(ms) {
+  const d = new Date(ms), p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+$('simAt').value = toLocalInput(Date.now());
+$('simGo').onclick = () => { const v = $('simAt').value; if (v) setSim(new Date(v).getTime()); };
+$('simOff').onclick = () => { $('simAt').value = toLocalInput(Date.now()); setSim(null); };
+// presets stay within the forecast window (yesterday .. tomorrow)
+document.querySelectorAll('[data-preset]').forEach(b => b.onclick = () => {
+  const n = new Date();
+  const d = b.dataset.preset === 'tonight'
+    ? new Date(n.getFullYear(), n.getMonth(), n.getDate(), 22, 0)
+    : new Date(n.getFullYear(), n.getMonth(), n.getDate() + 1, 14, 0);
+  $('simAt').value = toLocalInput(d.getTime());
+  setSim(d.getTime());
+});
+
+// ---------- rendering ----------
+const fmtMoment = new Intl.DateTimeFormat('nl-NL', { timeZone: TZ, weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+const fmtHour = new Intl.DateTimeFormat('nl-NL', { timeZone: TZ, hour: '2-digit', minute: '2-digit' });
+const fmtHz = f => f >= 1000 ? (f / 1000).toFixed(1).replace('.', ',') + ' kHz' : Math.round(f) + ' Hz';
+const nl = (x, d = 1) => x.toFixed(d).replace('.', ',');
+const signed = (x, d = 1) => (x >= 0 ? '+' : '−') + nl(Math.abs(x), d);
+const tag = (kind, text) => `<span class="tag ${kind}">${text || kind}</span>`;
+const hm = h => { const m = Math.round(h * 60); return `${Math.floor(m / 60)}u${String(m % 60).padStart(2, '0')}`; };
+const bar = (x, marks = []) => `<div class="bar"><i style="width:${(clamp(x, 0, 1) * 100).toFixed(1)}%"></i>` +
+  marks.map(m => `<b style="left:${(clamp(m, 0, 1) * 100).toFixed(1)}%"></b>`).join('') + '</div>';
+
+function render() {
+  const ms = nowMs(), st = musicState(ms);
+  const day = st.day, g = gridOf(Math.max(0, Math.floor((ms / 1000 - day.start) / day.step)));
+  const p = sectionPlan(day, g.sec), tp = p.tp;
+  const we = wxEffective(), age = wxAgeMin();
+  const sim = simActive();
+  const timeKind = sim ? tag('sim', 'simulatie') : tag('echt');
+  const calc = sim ? tag('berekend') + ' ' + tag('sim', 'sim') : tag('berekend');
+
+  $('sim').classList.toggle('on', sim);
+  $('simBanner').hidden = !sim;
+  if (sim) $('simBanner').textContent = `SIMULATIE · je hoort ${fmtMoment.format(ms)} · verwachting en luchtdruk zijn die van dat moment zolang het binnen gisteren t/m morgen valt; regen, wind en bewolking zijn van nu`;
+  $('play').textContent = playing ? 'stop' : 'start';
+  $('status').textContent = playing ? (sim ? 'speelt (simulatie)' : 'speelt') : 'stil';
+
+  const root = NOTE_NAMES[st.rootPc];
+  let wxNote;
+  if (we.off) wxNote = wx.at ? `<span class="off">laatste meting ${Math.round(age)} min oud: laag uit</span>` : '<span class="off">nog geen weerdata: laag uit</span>';
+  else if (wx.error) wxNote = `<span class="off">ophalen mislukt (${wx.error}), laatste waarde van ${Math.round(age)} min geleden</span>`;
+  else wxNote = `<span class="dim">Open-Meteo, ${Math.round(age)} min geleden</span>`;
+  const wxTag = tag('echt') + (we.off ? ' <span class="off">uit</span>' : '');
+  const rainP = rainProb(we.rain || 0);
+  const sweep = windSweep(we.wind || 0);
+  const dpNow = pressureTrend(ms / 1000), presNow = hourlyAt('pres', ms / 1000);
+  const fc = forecastTemps(ms / 1000);
+  const fcTag = fc ? tag('echt') : tag('echt') + ' <span class="off">buiten bereik</span>';
+
+  const rows = [
+    ['Klok', fmtMoment.format(ms), timeKind, `16e-raster vanaf middernacht (zonnetijd) · maat ${g.bar + 1} van vandaag`],
+    ['Zonnestand', `${nl(st.sun.alt)}°`, calc,
+      `donker ${Math.round(st.dark * 100)}% → energie ×${nl(0.5 + 0.5 * st.dark, 2)} · filter ${fmtHz(st.cutoff)}<br>` +
+      (st.minor ? 'mineur (zon onder −3°)' : 'majeur (zon boven −3°)')],
+    ['Daglengte', hm(day.D), calc, `tempo ${day.bpm} BPM (76 op de kortste dag, 92 op de langste), vast per zonnedag`],
+    ['Dag', `dag ${day.dn} sinds 1970`, calc, `grondtoon ${root}: elke dag een kwint verder, in 12 dagen de kwintencirkel rond`],
+    ['Weekdag', DAYS[st.wd], calc, st.weekend ? 'weekend: swing 22%, energie ×0,85' : 'doordeweeks: strak (swing 8%)'],
+    ['Maan', `${moonName(st.mo.phase)} · ${Math.round(st.mo.illum * 100)}% verlicht`, calc,
+      `arpeggio in ${st.mo.illum > 0.5 ? '16en' : '8en'} · arpeggio vanaf energie ${nl(0.42 - 0.14 * st.mo.illum, 2)}`],
+    ['Verwachting', fc ? `${nl(Math.min(...fc), 0)}…${nl(Math.max(...fc), 0)} °C` : '—', fcTag,
+      (fc ? `komende 24 u, elke 3 u: ${fc.map(v => nl(v, 0) + '°').join(' ')}<br>wordt de melodie van de lead` : 'geen verwachting voor dit moment: melodie uit hash') + '<br>' + wxNote],
+    ['Luchtdruk', presNow == null ? '—' : `${nl(presNow, 0)} hPa`, dpNow == null ? tag('echt') + ' <span class="off">buiten bereik</span>' : tag('echt'),
+      dpNow == null ? 'geen druktrend: stabiel aangenomen' : `${signed(dpNow)} hPa in 3 u → ${TREND_NL[trendOf(dpNow)]}: kiest akkoordengroep en opbouw`],
+    ['Bewolking', wx.cloud == null ? '—' : `${Math.round(wx.cloud)}%`, wxTag,
+      (we.off ? 'vaste middengalm' : `galm-send ${Math.round(cloudWet(we.cloud / 100) * 100)}%`) + '<br>' + wxNote],
+    ['Neerslag', wx.rain == null ? '—' : `${nl(wx.rain)} mm/u`, wxTag,
+      (rainP > 0 ? `zachte tikken op de oneven 16en, ~${Math.round(rainP * day.bpm * 2)} per minuut` : 'geen regentikken') + '<br>' + wxNote],
+    ['Wind', wx.wind == null ? '—' : `${nl(wx.wind)} km/u`, wxTag,
+      (sweep > 0 ? `trage filterzwaai op de pads, ±${Math.round(sweep)} Hz` : 'pads staan stil') + '<br>' + wxNote],
+    ['Klank', 'zaagtand · blokgolf · sinus · ruis', tag('synthese'), 'alles gesynthetiseerd in de browser, geen samples'],
+    ['Mix', 'chorus · echo · galm · pomp', tag('synthese'), 'pads en bas duiken weg op de kick; echo op een gepunte 8e; lichte tape-verzadiging'],
+  ];
+  $('inputs').innerHTML = rows.map(r => `<tr><td class="n">${r[0]}</td><td class="v">${r[1]}</td><td>${r[2]}</td><td class="fx">${r[3]}</td></tr>`).join('');
+
+  const chordIdx = (g.bi >> 1) & 3;
+  const chords = [0, 2, 4, 6].map((bi, j) => {
+    const name = chordName(chordTones(p, bi));
+    return j === chordIdx ? `<span class="cur">${name}</span>` : name;
+  }).join(' · ');
+  const tones = chordTones(p, g.bi);
+  const motifNotes = tp.motif.map(n => noteName(leadMidi(tones, n, n.idx))).join(' ');
+  const trackBars = TRACK_SECS * SEC_BARS;
+  const posInTrack = (g.si * SEC_BARS + g.bi + g.i / 16) / trackBars;
+  const trackStart = fmtHour.format(tp.t0 * 1000);
+  const trendSrc = tp.dp == null ? 'geen druktrend, stabiel aangenomen' : `luchtdruk ${signed(tp.dp)} hPa in 3 u bij de start (${trackStart})`;
+  const arr = [
+    ['Track', `#${tp.track + 1} · sectie ${g.si + 1}/12 · maat ${g.bi + 1}/16`, calc,
+      `${trackBars} maten (${nl(trackBars * 16 * day.step / 60)} min), gestart ${trackStart}` + bar(posInTrack, tp.curve.map((x, j) => j / TRACK_SECS))],
+    ['Opbouw', TREND_NL[tp.trend], tp.dp == null ? tag('hash', 'aanname') : tag('echt'),
+      `${trendSrc} · stijgend: rustig glooiend, stabiel: klassiek, dalend: harder en voller`],
+    ['Energie', nl(p.energy, 2), calc, `vorm ${nl(p.shape, 2)} × (0,5 + 0,5 × donker)${p.st.weekend ? ' × 0,85 (weekend)' : ''}` + bar(p.energy)],
+    ['Akkoorden', chords, (tp.dp == null ? '' : tag('echt') + ' ') + tag('hash'),
+      `groep ${TREND_NL[tp.trend]} (luchtdruk), daarbinnen progressie ${tp.choice + 1} van 2 (hash) · ${p.minor ? 'mineur' : 'majeur'}, twee maten per akkoord`],
+    ['Motief', motifNotes, (tp.temps ? tag('echt') + ' ' : '') + tag('hash', 'ritme: hash'),
+      tp.temps
+        ? `toonhoogte = temperatuur van ${trackStart} tot 24 u later (${tp.temps.map(v => nl(v, 0) + '°').join(' ')}); koudste punt = laagste noot, ${nl(Math.max(tp.hi - tp.lo, 6), 0)} °C beslaat het hele bereik; buigt mee met het akkoord`
+        : 'geen verwachting voor dit moment: toonhoogtes uit hash'],
+    ['Groove', p.kickFour ? 'four-on-the-floor' : 'halftime', calc, `swing ${Math.round(p.swing * 100)}% · ${day.bpm} BPM · baspatroon ${BASS_PATS.indexOf(p.bassPat) + 1} van 4 (op energie)`],
+  ];
+  $('arr').innerHTML = arr.map(r => `<tr><td class="n">${r[0]}</td><td class="v">${r[1]}</td><td>${r[2]}</td><td class="fx">${r[3]}</td></tr>`).join('');
+
+  $('parts').innerHTML = PARTS.map(x => {
+    const on = p.on[x.key];
+    return `<tr class="${on ? '' : 'rest'}"><td class="n">${x.name}</td><td>${x.key === 'pad' ? 'altijd' : nl(p.thr[x.key], 2) + (x.key === 'lead' ? ', sectie 3–5 en 8–11' : '')}</td>` +
+      `<td>${on ? 'speelt' : 'rust'}</td><td class="fx">${x.sound}</td></tr>`;
+  }).join('');
+}
+
+render();
+setInterval(() => { updateParams(); if (!document.hidden) render(); }, 1000);
+fetchWeather();
+</script>
+</body>
+</html>

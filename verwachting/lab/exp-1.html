@@ -1,0 +1,739 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="robots" content="noindex, nofollow">
+<title>verwachting — ambient</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Doorlopende, rustige achtergrondmuziek voor thuis, gestuurd door zon, maan, kalender en weer in Ravenstein.">
+<meta name="author" content="Rick van der Wolk">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8E%90%3C/text%3E%3C/svg%3E">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body {
+    background: #0d0d10; color: #d8d8d4;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 13px; line-height: 1.5;
+    padding: 28px 16px 60px;
+  }
+  main { max-width: 860px; margin: 0 auto; }
+  h1 { font-size: 15px; font-weight: normal; letter-spacing: .18em; color: #e8e8e6; }
+  .sub { color: #66666c; margin-top: 4px; }
+  h2 {
+    font-size: 10px; font-weight: normal; letter-spacing: .18em; text-transform: uppercase;
+    color: #55555a; margin: 28px 0 8px;
+  }
+  button {
+    background: #17171c; color: #e8e8e6; border: 1px solid #2a2a31; font: inherit;
+    padding: 7px 14px; cursor: pointer; letter-spacing: .08em;
+  }
+  button:hover { border-color: #4a4a52; }
+  button.big { padding: 10px 22px; }
+  .row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 18px; margin-top: 22px; }
+  label { color: #88888e; display: inline-flex; align-items: center; gap: 10px; }
+  input[type=range] { width: 160px; accent-color: #9a9aa2; }
+  input[type=datetime-local] {
+    background: #17171c; color: #e8e8e6; border: 1px solid #2a2a31; font: inherit; padding: 6px 8px;
+    color-scheme: dark;
+  }
+  #status { color: #66666c; }
+
+  .scroll { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; min-width: 640px; }
+  td, th { text-align: left; padding: 6px 10px 6px 0; vertical-align: top; border-top: 1px solid #1b1b21; }
+  th { font-weight: normal; font-size: 10px; letter-spacing: .14em; color: #55555a; text-transform: uppercase; border-top: 0; }
+  td.v { color: #e8e8e6; white-space: nowrap; }
+  td.fx { color: #9a9aa0; }
+  td.n { color: #b8b8b4; white-space: nowrap; }
+  .tag { font-size: 10px; letter-spacing: .1em; padding: 1px 6px; border: 1px solid; white-space: nowrap; }
+  .echt { color: #8fc79a; border-color: #2f4a35; }
+  .berekend { color: #8fb3d9; border-color: #2c3e52; }
+  .synthese { color: #c19ad9; border-color: #46324f; }
+  .sim { color: #e3b35c; border-color: #5a4422; }
+  .off { color: #d97a6a; }
+  .dim { color: #55555a; }
+
+  #sim { border: 1px dashed #2a2a31; padding: 12px; }
+  #sim.on { border-color: #e3b35c; background: #1a150c; }
+  #simBanner { color: #e3b35c; margin-top: 10px; letter-spacing: .04em; }
+  #sim .row { margin-top: 0; }
+
+  .bar { height: 3px; background: #1b1b21; width: 120px; position: relative; }
+  .bar i { position: absolute; left: 0; top: 0; bottom: 0; background: #6a6a72; }
+  .bar b { position: absolute; top: -2px; width: 1px; height: 7px; background: #c8c8c4; }
+  tr.rest td { color: #45454a; }
+  tr.rest .bar i { background: #2a2a31; }
+  .note { font-size: 11px; color: #66666c; margin-top: 16px; max-width: 70ch; }
+</style>
+</head>
+<body>
+<main>
+  <h1>VERWACHTING · AMBIENT</h1>
+  <div class="sub">Achtergrondmuziek voor thuis, gestuurd door zon, maan, kalender en weer in Ravenstein (51,80 N · 5,65 O).</div>
+
+  <div class="row">
+    <button id="play" class="big">start</button>
+    <label>volume <input id="vol" type="range" min="0" max="1" step="0.01" value="0.6"></label>
+    <span id="status">stil</span>
+  </div>
+
+  <h2>Simuleer moment</h2>
+  <div id="sim">
+    <div class="row">
+      <input id="simAt" type="datetime-local">
+      <button id="simGo">simuleer</button>
+      <button data-preset="winter">winternacht</button>
+      <button data-preset="summer">zomerochtend</button>
+      <button id="simOff">terug naar nu</button>
+    </div>
+    <div id="simBanner" hidden></div>
+  </div>
+
+  <h2>Inputs</h2>
+  <div class="scroll">
+    <table>
+      <thead><tr><th>input</th><th>waarde</th><th>soort</th><th>doet nu</th></tr></thead>
+      <tbody id="inputs"></tbody>
+    </table>
+  </div>
+
+  <h2>Stemmen</h2>
+  <div class="scroll">
+    <table>
+      <thead><tr><th>lus</th><th>klank</th><th>fase</th><th>noot</th><th>stand</th></tr></thead>
+      <tbody id="voices"></tbody>
+    </table>
+  </div>
+
+  <p class="note">Geen toeval: elke noot volgt uit de klok (fase vanaf Unix-epoch) en de inputs hierboven. Twee apparaten die tegelijk spelen, spelen hetzelfde. Ruis wordt alleen gebruikt als klankmateriaal (galm en wind) en komt uit een vaste seed.</p>
+</main>
+
+<script>
+'use strict';
+
+// ---------- constants ----------
+
+const LAT = 51.80, LON = 5.65;
+const RAD = Math.PI / 180;
+const TZ = 'Europe/Amsterdam';
+const WX_URL = `https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}` +
+  `&current=cloud_cover,precipitation,wind_speed_10m&wind_speed_unit=kmh&timezone=UTC`;
+const WX_EVERY_MS = 15 * 60 * 1000;
+const WX_RETRY_MS = 3 * 60 * 1000;
+const WX_STALE_MIN = 90;          // older than this: weather layers off
+const LOOKAHEAD = 4;              // seconds scheduled ahead
+const TICK_MS = 250;
+const RAIN_SLOT = 0.4;            // seconds per possible raindrop
+
+const MAJ = [0, 2, 4, 7, 9];
+const MIN = [0, 3, 5, 7, 10];
+const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+
+// loop seconds, timbre, octave, number of scale steps walked, step size, pan, level, plays at night
+const VOICES = [
+  { loop: 17, kind: 'bel',     oct: 5, range: 6, stride: 2, pan: -0.45, level: 0.034, night: false },
+  { loop: 23, kind: 'epiano',  oct: 3, range: 9, stride: 1, pan:  0.15, level: 0.085, night: true  },
+  { loop: 29, kind: 'epiano',  oct: 4, range: 7, stride: 3, pan: -0.25, level: 0.062, night: true  },
+  { loop: 31, kind: 'bel',     oct: 4, range: 7, stride: 1, pan:  0.50, level: 0.040, night: false },
+  { loop: 37, kind: 'epiano',  oct: 3, range: 8, stride: 2, pan:  0.35, level: 0.070, night: false },
+  { loop: 41, kind: 'epiano',  oct: 2, range: 6, stride: 1, pan: -0.05, level: 0.085, night: true  },
+];
+
+// ---------- deterministic helpers ----------
+
+function mix32(h) {
+  h ^= h >>> 16; h = Math.imul(h, 0x7feb352d);
+  h ^= h >>> 15; h = Math.imul(h, 0x846ca68b);
+  h ^= h >>> 16; return h >>> 0;
+}
+// hash of non-negative integers (may exceed 2^32)
+function hash(...xs) {
+  let h = 0x811c9dc5;
+  for (const x of xs) {
+    h = mix32(h ^ (x >>> 0));
+    h = mix32(h ^ (Math.floor(x / 4294967296) >>> 0) ^ 0x9e3779b9);
+  }
+  return h;
+}
+const unit = h => h / 4294967296;
+// seeded noise for synthesis only (reverb impulse, wind)
+function mulberry32(a) {
+  return () => {
+    a |= 0; a = a + 0x6d2b79f5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
+const noteName = m => NOTE_NAMES[((m % 12) + 12) % 12] + (Math.floor(m / 12) - 1);
+
+// ---------- astronomy ----------
+
+function sunPos(ms) {
+  const d = ms / 86400000 - 10957.5;                       // days since J2000.0
+  const g = (357.529 + 0.98560028 * d) * RAD;
+  const q = 280.459 + 0.98564736 * d;
+  const lam = q + 1.915 * Math.sin(g) + 0.020 * Math.sin(2 * g);   // ecliptic longitude (deg)
+  const L = lam * RAD;
+  const e = (23.439 - 0.00000036 * d) * RAD;
+  const ra = Math.atan2(Math.cos(e) * Math.sin(L), Math.cos(L));
+  const dec = Math.asin(Math.sin(e) * Math.sin(L));
+  const gmst = 18.697374558 + 24.06570982441908 * d;       // hours
+  const H = (gmst * 15 + LON) * RAD - ra;
+  const phi = LAT * RAD;
+  const alt = Math.asin(Math.sin(phi) * Math.sin(dec) + Math.cos(phi) * Math.cos(dec) * Math.cos(H));
+  return { alt: alt / RAD, dec, lam: ((lam % 360) + 360) % 360 };
+}
+function dayLengthFromDec(dec) {
+  const phi = LAT * RAD;
+  const c = (Math.sin(-0.833 * RAD) - Math.sin(phi) * Math.sin(dec)) / (Math.cos(phi) * Math.cos(dec));
+  if (c >= 1) return 0;
+  if (c <= -1) return 24;
+  return 2 * Math.acos(c) / RAD / 15;
+}
+// local mean solar day: the tempo is fixed per solar day so loop phases stay put within a day
+const solarDay = ms => Math.floor(ms / 86400000 + LON / 360);
+const solarDayEnd = dn => (dn + 1 - LON / 360) * 86400;   // unix seconds
+const DAY_MIN = dayLengthFromDec(-23.44 * RAD), DAY_MAX = dayLengthFromDec(23.44 * RAD);
+const dayCache = new Map();
+function dayInfo(ms) {
+  const dn = solarDay(ms);
+  let info = dayCache.get(dn);
+  if (!info) {
+    const noon = (dn + 0.5 - LON / 360) * 86400000;
+    const D = dayLengthFromDec(sunPos(noon).dec);
+    const k = (D - DAY_MIN) / (DAY_MAX - DAY_MIN) * 2 - 1;   // -1 shortest day, +1 longest
+    info = { dn, D, k, speed: 1 + 0.15 * k };
+    if (dayCache.size > 8) dayCache.clear();
+    dayCache.set(dn, info);
+  }
+  return info;
+}
+
+const SYNODIC = 29.530588853, NEW_MOON_REF = 947182440000;   // 2000-01-06 18:14 UTC
+function moon(ms) {
+  const p = ((((ms - NEW_MOON_REF) / 86400000) / SYNODIC) % 1 + 1) % 1;
+  return { phase: p, illum: (1 - Math.cos(2 * Math.PI * p)) / 2 };
+}
+function moonName(p) {
+  if (p < 0.034 || p > 0.966) return 'nieuwe maan';
+  if (p < 0.216) return 'wassende sikkel';
+  if (p < 0.284) return 'eerste kwartier';
+  if (p < 0.466) return 'wassende maan';
+  if (p < 0.534) return 'volle maan';
+  if (p < 0.716) return 'afnemende maan';
+  if (p < 0.784) return 'laatste kwartier';
+  return 'afnemende sikkel';
+}
+function seasonName(lam) {
+  return ['lente', 'zomer', 'herfst', 'winter'][Math.floor(lam / 90) % 4];
+}
+
+// ---------- calendar ----------
+
+const monthFmt = new Intl.DateTimeFormat('en-GB', { timeZone: TZ, month: 'numeric' });
+const monthCache = new Map();
+function localMonth(ms) {           // 0..11 in Dutch time; NL offsets are whole hours
+  const hr = Math.floor(ms / 3600000);
+  let m = monthCache.get(hr);
+  if (m === undefined) {
+    m = +monthFmt.format(ms) - 1;
+    if (monthCache.size > 48) monthCache.clear();
+    monthCache.set(hr, m);
+  }
+  return m;
+}
+const MONTHS = ['januari', 'februari', 'maart', 'april', 'mei', 'juni', 'juli', 'augustus', 'september', 'oktober', 'november', 'december'];
+
+// ---------- musical state, a pure function of time ----------
+
+function musicState(ms) {
+  const sun = sunPos(ms);
+  const day = dayInfo(ms);
+  const month = localMonth(ms);
+  const rootPc = (month * 7) % 12;                         // jan C, feb G, mrt D ... dec F
+  const bright = clamp((sun.alt + 12) / 72, 0, 1);
+  const mo = moon(ms);
+  return {
+    ms, sun, day, month, rootPc, mo,
+    minor: sun.alt < -3,
+    night: sun.alt < -6,
+    bright,
+    cutoff: 450 * Math.pow(2, 4.4 * bright),
+    fmEp: 0.35 + 2.2 * bright,
+    fmBell: 0.6 + 2.6 * bright,
+    nightGain: 0.55 + 0.45 * smooth(-9, -3, sun.alt),
+    season: seasonName(sun.lam),
+  };
+}
+function midiFor(v, deg, st) {
+  const sc = st.minor ? MIN : MAJ;
+  return 12 * (v.oct + 1) + st.rootPc + sc[deg % 5] + 12 * Math.floor(deg / 5);
+}
+// notes in cycle n of voice vi: 1 or 2 notes; pitch walks up and down the scale cycle by cycle
+function cycleNotes(vi, n) {
+  const v = VOICES[vi];
+  const h = hash(vi + 1, n);
+  const P = 2 * v.range - 2;
+  const p = (n * v.stride) % P;
+  const deg = p < v.range ? p : P - p;
+  const a = 0.05 + 0.45 * unit(hash(h, 1));
+  const notes = [{ frac: a, deg, vel: 0.75 + 0.25 * unit(hash(h, 2)) }];
+  if (h % 100 < 25) {
+    const deg2 = deg + 2 < v.range ? deg + 2 : deg - 2;
+    notes.push({ frac: a + 0.2 + 0.25 * unit(hash(h, 3)), deg: deg2, vel: 0.55 + 0.2 * unit(hash(h, 4)) });
+  }
+  return notes;
+}
+
+// weather -> sound, also pure
+function rainProb(mmh) { return mmh > 0 ? Math.min(0.8, 1 - Math.exp(-mmh * 0.12)) : 0; }
+function windLevel(kmh) { return kmh < 2 ? 0 : 0.09 * Math.pow(clamp(kmh / 50, 0, 1), 1.4); }
+function windFreq(kmh) { return 180 + 14 * clamp(kmh, 0, 60); }
+function cloudWet(c) { return 0.2 + 0.8 * c; }
+
+// ---------- audio engine ----------
+
+class Engine {
+  constructor(ctx, offset) {
+    this.ctx = ctx;
+    this.offset = offset;           // music seconds = ctx.currentTime + offset
+    this.lastEnd = 0;
+    this.pending = [];
+    this.wx = { cloud: null, rain: 0, wind: 0 };
+    this.lastNote = VOICES.map(() => null);
+    this.build();
+  }
+  build() {
+    const c = this.ctx;
+    this.out = c.createGain(); this.out.gain.value = 0.6;
+    this.out.connect(c.destination);
+    this.limiter = c.createDynamicsCompressor();
+    this.limiter.threshold.value = -12; this.limiter.knee.value = 8;
+    this.limiter.ratio.value = 10; this.limiter.attack.value = 0.004; this.limiter.release.value = 0.35;
+    this.limiter.connect(this.out);
+    this.fader = c.createGain(); this.fader.gain.value = 0;
+    this.fader.connect(this.limiter);
+    this.master = c.createGain(); this.master.gain.value = 1;
+    this.master.connect(this.fader);
+
+    this.conv = c.createConvolver();
+    this.conv.buffer = makeImpulse(c, 2.6);   // longer impulses cost a lot of CPU in Chrome
+    this.revOut = c.createGain(); this.revOut.gain.value = 0.7;
+    this.conv.connect(this.revOut).connect(this.master);
+
+    // voices: per-voice panner -> bus -> brightness filter -> dry / reverb
+    this.voiceBus = c.createGain();
+    this.tone = c.createBiquadFilter(); this.tone.type = 'lowpass'; this.tone.Q.value = 0.5; this.tone.frequency.value = 2000;
+    this.dry = c.createGain(); this.dry.gain.value = 0.85;
+    this.send = c.createGain(); this.send.gain.value = 0.45;
+    this.voiceBus.connect(this.tone);
+    this.tone.connect(this.dry).connect(this.master);
+    this.tone.connect(this.send).connect(this.conv);
+    this.voicePan = VOICES.map(v => {
+      const p = c.createStereoPanner(); p.pan.value = v.pan; p.connect(this.voiceBus); return p;
+    });
+
+    // rain: high plucks, own filter, a little more reverb
+    this.rainBus = c.createGain();
+    const rainHp = c.createBiquadFilter(); rainHp.type = 'highpass'; rainHp.frequency.value = 900;
+    this.rainBus.connect(rainHp).connect(this.master);
+    const rainSend = c.createGain(); rainSend.gain.value = 0.6;
+    rainHp.connect(rainSend).connect(this.conv);
+    this.rainPan = [-0.7, -0.35, 0, 0.35, 0.7].map(x => {
+      const p = c.createStereoPanner(); p.pan.value = x; p.connect(this.rainBus); return p;
+    });
+
+    // wind: seeded white noise, looped (a white-noise seam is inaudible), shaped by filters
+    this.noise = c.createBufferSource();
+    this.noise.buffer = makeNoise(c, 13);
+    this.noise.loop = true;
+    this.windBp = c.createBiquadFilter(); this.windBp.type = 'bandpass'; this.windBp.Q.value = 0.6; this.windBp.frequency.value = 300;
+    const windLp = c.createBiquadFilter(); windLp.type = 'lowpass'; windLp.frequency.value = 2200;
+    this.windGain = c.createGain(); this.windGain.gain.value = 0;
+    this.noise.connect(this.windBp).connect(windLp).connect(this.windGain).connect(this.master);
+    const windSend = c.createGain(); windSend.gain.value = 0.3;
+    this.windGain.connect(windSend).connect(this.conv);
+    this.noise.start();
+
+    // drone on the root, volume from moon illumination
+    this.drone1 = c.createOscillator(); this.drone1.type = 'sine';
+    this.drone2 = c.createOscillator(); this.drone2.type = 'sine';
+    const d2g = c.createGain(); d2g.gain.value = 0.35;
+    this.droneLp = c.createBiquadFilter(); this.droneLp.type = 'lowpass'; this.droneLp.frequency.value = 500;
+    this.droneGain = c.createGain(); this.droneGain.gain.value = 0;
+    this.drone1.connect(this.droneLp);
+    this.drone2.connect(d2g).connect(this.droneLp);
+    this.droneLp.connect(this.droneGain).connect(this.master);
+    const droneSend = c.createGain(); droneSend.gain.value = 0.25;
+    this.droneGain.connect(droneSend).connect(this.conv);
+    this.drone1.frequency.value = 65; this.drone2.frequency.value = 130.1;
+    this.drone1.start(); this.drone2.start();
+  }
+
+  musicNow() { return this.ctx.currentTime + this.offset; }
+
+  // ramp all continuous parameters towards the state; tc = time constant in seconds
+  update(st, wx, tc = 4, wtc = 20) {
+    const now = this.ctx.currentTime;
+    const to = (p, v, k) => p.setTargetAtTime(v, now, k);
+    this.wx = wx;
+    to(this.tone.frequency, st.cutoff, tc);
+    to(this.master.gain, st.nightGain, tc);
+    const cl = wx.cloud == null ? 0.3 : wx.cloud / 100;
+    to(this.send.gain, cloudWet(cl) * 0.6, wtc);
+    to(this.dry.gain, 1 - 0.3 * cl, wtc);
+    to(this.windGain.gain, windLevel(wx.wind || 0), wtc);
+    to(this.windBp.frequency, windFreq(wx.wind || 0), wtc);
+    const f = mtof(36 + st.rootPc);
+    to(this.drone1.frequency, f, 6);
+    to(this.drone2.frequency, f * 2 * 1.0006, 6);
+    to(this.droneGain.gain, 0.05 * st.mo.illum, tc);
+  }
+
+  fade(to, seconds) {
+    const g = this.fader.gain, now = this.ctx.currentTime;
+    g.cancelScheduledValues(now);
+    g.setValueAtTime(g.value, now);
+    g.linearRampToValueAtTime(to, now + seconds);
+  }
+
+  // forget the timeline (simulation jump): drop notes that have not started yet
+  reset() {
+    const now = this.ctx.currentTime;
+    for (const p of this.pending) if (p.t > now + 0.02) p.oscs.forEach(o => o.stop(now));
+    this.pending = this.pending.filter(p => p.t <= now + 0.02);
+    this.lastEnd = 0;
+  }
+
+  // schedule every note whose music time lies in [lastEnd, w1)
+  scheduleUntil(w1) {
+    const nowM = this.musicNow();
+    if (this.lastEnd - nowM > LOOKAHEAD + 2) this.lastEnd = 0;   // clock went backwards
+    let w0 = Math.max(this.lastEnd, nowM + 0.03);
+    while (w0 < w1) {
+      const day = dayInfo(w0 * 1000);
+      const end = Math.min(w1, solarDayEnd(day.dn));
+      this.scheduleVoices(w0, end, day.speed);
+      this.scheduleRain(w0, end);
+      w0 = end;
+    }
+    this.lastEnd = w1;
+    const now = this.ctx.currentTime;
+    if (this.pending.length > 64) this.pending = this.pending.filter(p => p.end > now);
+  }
+
+  scheduleVoices(w0, w1, speed) {
+    for (let vi = 0; vi < VOICES.length; vi++) {
+      const v = VOICES[vi];
+      const L = v.loop / speed;
+      const n0 = Math.floor(w0 / L) - 1, n1 = Math.floor(w1 / L);
+      for (let n = n0; n <= n1; n++) {
+        for (const note of cycleNotes(vi, n)) {
+          const t = (n + note.frac) * L;
+          if (t < w0 || t >= w1) continue;
+          const st = musicState(t * 1000);
+          if (st.night && !v.night) continue;
+          const m = midiFor(v, note.deg, st);
+          const at = t - this.offset;
+          if (v.kind === 'bel') this.bell(at, mtof(m), v.level * note.vel, st.fmBell, this.voicePan[vi]);
+          else this.epiano(at, mtof(m), v.level * note.vel, st.fmEp, this.voicePan[vi]);
+          this.lastNote[vi] = { t, m };
+        }
+      }
+    }
+  }
+
+  scheduleRain(w0, w1) {
+    const mmh = this.wx.rain || 0;
+    const p = rainProb(mmh);
+    if (p <= 0) return;
+    const k0 = Math.floor(w0 / RAIN_SLOT), k1 = Math.floor(w1 / RAIN_SLOT);
+    for (let k = k0; k <= k1; k++) {
+      const h = hash(7777, k);
+      if (unit(h) >= p) continue;
+      const t = (k + 0.9 * unit(hash(h, 1))) * RAIN_SLOT;
+      if (t < w0 || t >= w1) continue;
+      const st = musicState(t * 1000);
+      const sc = st.minor ? MIN : MAJ;
+      const deg = hash(h, 2) % 8;
+      const m = 84 + st.rootPc + sc[deg % 5] + 12 * Math.floor(deg / 5);
+      const vel = 0.012 + 0.014 * unit(hash(h, 3));
+      this.pluck(t - this.offset, mtof(m), vel, this.rainPan[hash(h, 4) % 5]);
+    }
+  }
+
+  // two-operator FM voice: carrier + one modulator, decaying index, exponential amp decay to silence
+  fm(t, f, vel, ratio, index, indexTail, indexTc, attack, dur, out) {
+    const c = this.ctx;
+    const car = c.createOscillator(), mod = c.createOscillator();
+    const mg = c.createGain(), amp = c.createGain();
+    car.frequency.value = f;
+    mod.frequency.value = f * ratio;
+    const I = index * f * ratio;
+    mg.gain.setValueAtTime(I, t);
+    mg.gain.setTargetAtTime(I * indexTail, t + attack, indexTc);
+    amp.gain.setValueAtTime(0, t);
+    amp.gain.linearRampToValueAtTime(vel, t + attack);
+    amp.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    mod.connect(mg).connect(car.frequency);
+    car.connect(amp).connect(out);
+    car.start(t); mod.start(t);
+    car.stop(t + dur + 0.05); mod.stop(t + dur + 0.05);
+    car.onended = () => { amp.disconnect(); mg.disconnect(); };
+    this.pending.push({ t, end: t + dur + 0.1, oscs: [car, mod] });
+  }
+  epiano(t, f, vel, index, out) {
+    const dur = 6 + 4 * clamp((400 - f) / 300, 0, 1);       // lower notes ring longer
+    this.fm(t, f, vel, 1, index, 0.18, 0.35, 0.008, dur, out);
+  }
+  bell(t, f, vel, index, out) {
+    this.fm(t, f, vel, 3.5, index * 0.5, 0.25, 1.6, 0.004, 12, out);
+  }
+  pluck(t, f, vel, out) {
+    this.fm(t, f, vel, 2, 0.6, 0.1, 0.08, 0.003, 1.4, out);
+  }
+}
+
+function makeImpulse(c, seconds) {
+  const sr = c.sampleRate, len = Math.floor(sr * seconds);
+  const buf = c.createBuffer(2, len, sr);
+  const pre = Math.floor(sr * 0.018), fadeLen = Math.floor(sr * 0.6);
+  for (let ch = 0; ch < 2; ch++) {
+    const d = buf.getChannelData(ch), rnd = mulberry32(1931 + ch * 7);
+    let lp = 0;
+    for (let i = pre; i < len; i++) {
+      const t = (i - pre) / sr;
+      const k = 0.12 + 0.8 * Math.exp(-t / 0.5);              // tail darkens over time
+      lp += k * ((rnd() * 2 - 1) - lp);
+      let env = Math.exp(-t / 0.55) * Math.min(1, t / 0.01);
+      if (i > len - fadeLen) env *= (len - i) / fadeLen;
+      d[i] = lp * env;
+    }
+  }
+  return buf;
+}
+function makeNoise(c, seconds) {
+  const sr = c.sampleRate, len = Math.floor(sr * seconds);
+  const buf = c.createBuffer(1, len, sr);
+  const d = buf.getChannelData(0), rnd = mulberry32(4242);
+  for (let i = 0; i < len; i++) d[i] = rnd() * 2 - 1;
+  return buf;
+}
+
+// ---------- weather ----------
+
+const wx = { cloud: null, rain: null, wind: null, at: 0, modelTime: null, error: null, last: 0 };
+try {
+  const saved = JSON.parse(localStorage.getItem('verwachting.wx') || 'null');
+  if (saved && saved.at) Object.assign(wx, saved, { error: null });
+} catch (e) {}
+
+async function fetchWeather() {
+  wx.last = Date.now();
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), 12000);
+  try {
+    const r = await fetch(WX_URL, { cache: 'no-store', signal: ac.signal });
+    const j = await r.json();
+    if (!r.ok || j.error) throw new Error(j.reason || ('HTTP ' + r.status));
+    const cur = j.current, interval = cur.interval || 900;
+    Object.assign(wx, {
+      cloud: cur.cloud_cover,
+      rain: cur.precipitation * 3600 / interval,     // mm per interval -> mm/h
+      wind: cur.wind_speed_10m,
+      at: Date.now(), modelTime: cur.time, error: null,
+    });
+    try { localStorage.setItem('verwachting.wx', JSON.stringify({ cloud: wx.cloud, rain: wx.rain, wind: wx.wind, at: wx.at, modelTime: wx.modelTime })); } catch (e) {}
+  } catch (e) {
+    wx.error = e.name === 'AbortError' ? 'time-out' : (e.message || 'geen verbinding');
+  } finally {
+    clearTimeout(timer);
+  }
+  setTimeout(fetchWeather, wx.error ? WX_RETRY_MS : WX_EVERY_MS);
+  render();
+}
+const wxAgeMin = () => wx.at ? (Date.now() - wx.at) / 60000 : Infinity;
+function wxEffective() {
+  if (wxAgeMin() > WX_STALE_MIN) return { cloud: null, rain: 0, wind: 0, off: true };
+  return { cloud: wx.cloud, rain: wx.rain, wind: wx.wind, off: false };
+}
+
+// ---------- clock & simulation ----------
+
+let simOffset = 0;            // ms added to the real clock
+const simActive = () => simOffset !== 0;
+const nowMs = () => Date.now() + simOffset;
+
+// ---------- app ----------
+
+let ctx = null, engine = null, playing = false, tickTimer = null;
+const $ = id => document.getElementById(id);
+let volume = 0.6;
+try { const v = parseFloat(localStorage.getItem('verwachting.vol')); if (v >= 0 && v <= 1) volume = v; } catch (e) {}
+$('vol').value = volume;
+const outGain = v => 2 * v * v;
+
+function clockOffset() {
+  // music time for ctx.currentTime, preferring the output timestamp for accuracy
+  if (ctx.getOutputTimestamp) {
+    const ts = ctx.getOutputTimestamp();
+    if (ts.contextTime > 0 && ts.performanceTime > 0)
+      return (performance.timeOrigin + ts.performanceTime + simOffset) / 1000 - ts.contextTime;
+  }
+  return nowMs() / 1000 - ctx.currentTime;
+}
+
+function tick() {
+  if (!engine) return;
+  const off = clockOffset();
+  if (Math.abs(off - engine.offset) > 0.03) engine.offset = off;
+  engine.scheduleUntil(engine.musicNow() + LOOKAHEAD);
+}
+
+let paramTc = 4;
+function updateParams() {
+  if (!engine) return;
+  engine.update(musicState(nowMs()), wxEffective(), paramTc);
+  paramTc = 4;
+}
+
+async function start() {
+  if (!ctx) {
+    ctx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'playback' });
+    engine = new Engine(ctx, nowMs() / 1000 - ctx.currentTime);
+  }
+  await ctx.resume();
+  engine.out.gain.value = outGain(volume);
+  engine.offset = clockOffset();
+  engine.reset();
+  paramTc = 0.5;
+  updateParams();
+  engine.fade(1, 4);
+  tick();
+  tickTimer = setInterval(tick, TICK_MS);
+  playing = true;
+  render();
+}
+function stop() {
+  playing = false;
+  clearInterval(tickTimer);
+  engine.fade(0, 1.5);
+  setTimeout(() => { if (!playing) { engine.reset(); ctx.suspend(); } }, 1700);
+  render();
+}
+$('play').onclick = () => playing ? stop() : start();
+$('vol').oninput = e => {
+  volume = +e.target.value;
+  try { localStorage.setItem('verwachting.vol', volume); } catch (err) {}
+  if (engine) engine.out.gain.setTargetAtTime(outGain(volume), ctx.currentTime, 0.05);
+};
+
+function setSim(ms) {
+  simOffset = ms == null ? 0 : ms - Date.now();
+  if (engine) {
+    engine.reset();
+    engine.offset = clockOffset();
+    paramTc = 2;
+    updateParams();
+    if (playing) tick();
+  }
+  render();
+}
+function toLocalInput(ms) {
+  const d = new Date(ms), p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+$('simAt').value = toLocalInput(Date.now());
+$('simGo').onclick = () => { const v = $('simAt').value; if (v) setSim(new Date(v).getTime()); };
+$('simOff').onclick = () => { $('simAt').value = toLocalInput(Date.now()); setSim(null); };
+document.querySelectorAll('[data-preset]').forEach(b => b.onclick = () => {
+  const y = new Date().getFullYear();
+  const d = b.dataset.preset === 'winter' ? new Date(y, 11, 21, 2, 0) : new Date(y, 5, 21, 6, 30);
+  $('simAt').value = toLocalInput(d.getTime());
+  setSim(d.getTime());
+});
+
+// ---------- rendering ----------
+
+const fmtMoment = new Intl.DateTimeFormat('nl-NL', { timeZone: TZ, weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+const fmtHz = f => f >= 1000 ? (f / 1000).toFixed(1).replace('.', ',') + ' kHz' : Math.round(f) + ' Hz';
+const nl = (x, d = 1) => x.toFixed(d).replace('.', ',');
+const db = g => g > 0 ? Math.round(20 * Math.log10(g)) + ' dB' : '−∞';
+const tag = (kind, text) => `<span class="tag ${kind}">${text || kind}</span>`;
+const hm = h => { const m = Math.round(h * 60); return `${Math.floor(m / 60)}u${String(m % 60).padStart(2, '0')}`; };
+
+function render() {
+  const ms = nowMs(), st = musicState(ms);
+  const we = wxEffective(), age = wxAgeMin();
+  const sim = simActive();
+  const timeKind = sim ? tag('sim', 'simulatie') : tag('echt');
+  const calc = sim ? tag('berekend') + ' ' + tag('sim', 'sim') : tag('berekend');
+
+  $('sim').classList.toggle('on', sim);
+  $('simBanner').hidden = !sim;
+  if (sim) $('simBanner').textContent = `SIMULATIE · je hoort ${fmtMoment.format(ms)} · het weer is het huidige echte weer, niet dat van dit moment`;
+
+  $('play').textContent = playing ? 'stop' : 'start';
+  $('status').textContent = playing ? (sim ? 'speelt (simulatie)' : 'speelt') : 'stil';
+
+  const root = NOTE_NAMES[st.rootPc];
+  const activeVoices = VOICES.filter(v => !st.night || v.night).length;
+  const pct = Math.round((st.day.speed - 1) * 100);
+
+  let wxNote;
+  if (we.off) wxNote = wx.at ? `<span class="off">laatste meting ${Math.round(age)} min oud: laag uit</span>` : '<span class="off">nog geen weerdata: laag uit</span>';
+  else if (wx.error) wxNote = `<span class="off">ophalen mislukt (${wx.error}), laatste waarde van ${Math.round(age)} min geleden</span>`;
+  else wxNote = `<span class="dim">Open-Meteo, ${Math.round(age)} min geleden</span>`;
+  const wxTag = tag('echt') + (we.off ? ' <span class="off">uit</span>' : '');
+
+  const rainP = rainProb(we.rain || 0);
+  const rows = [
+    ['Klok', fmtMoment.format(ms), timeKind, `fase van zes lussen, gerekend vanaf 1 jan 1970`],
+    ['Zonnestand', `${nl(st.sun.alt)}°`, calc,
+      `helderheid ${Math.round(st.bright * 100)}% · filter ${fmtHz(st.cutoff)} · FM-index ${nl(st.fmEp, 2)}<br>` +
+      `${st.minor ? 'mineur (zon onder −3°)' : 'majeur (zon boven −3°)'}` +
+      (st.night ? ` · nacht: ${activeVoices} van 6 stemmen, volume ${Math.round(st.nightGain * 100)}%` : st.nightGain < 0.999 ? ` · schemer: volume ${Math.round(st.nightGain * 100)}%` : '')],
+    ['Daglengte', hm(st.day.D), calc, `lussen ${pct >= 0 ? pct + '% sneller' : -pct + '% trager'} · 17 s → ${nl(17 / st.day.speed)} s (vast per zonnedag)`],
+    ['Maand', MONTHS[st.month], calc, `grondtoon ${root} (kwintencirkel) · ${root} ${st.minor ? 'mineur' : 'majeur'}-pentatonisch`],
+    ['Seizoen', st.season, calc, `<span class="dim">geen eigen rol; werkt via daglengte en maand</span>`],
+    ['Maan', `${moonName(st.mo.phase)} · ${Math.round(st.mo.illum * 100)}% verlicht`, calc, `drone op ${noteName(36 + st.rootPc)}, ${db(0.05 * st.mo.illum)}`],
+    ['Bewolking', wx.cloud == null ? '—' : `${Math.round(wx.cloud)}%`, wxTag,
+      (we.off ? 'vaste middengalm' : `galm ${Math.round(cloudWet(we.cloud / 100) * 100)}% nat`) + '<br>' + wxNote],
+    ['Neerslag', wx.rain == null ? '—' : `${nl(wx.rain)} mm/u`, wxTag,
+      (rainP > 0 ? `${nl(rainP * 60 / RAIN_SLOT, 0)} plukjes per minuut` : 'geen plukjes') + '<br>' + wxNote],
+    ['Wind', wx.wind == null ? '—' : `${nl(wx.wind)} km/u`, wxTag,
+      (windLevel(we.wind || 0) > 0 ? `ruis ${db(windLevel(we.wind))} · band rond ${fmtHz(windFreq(we.wind))}` : 'geen ruis') + '<br>' + wxNote],
+    ['Klank', 'FM-epiano · FM-bel', tag('synthese'), 'twee operatoren per noot, index zakt na de aanslag; uitklank 6–12 s'],
+    ['Galm', 'impulsrespons 2,6 s', tag('synthese'), 'gezaaide ruis met exponentieel verval, staart wordt donkerder'],
+    ['Windruis', 'witte ruis, vaste seed', tag('synthese'), 'bandfilter + laagdoorlaat, alleen hoorbaar bij wind'],
+    ['Limiter', '−12 dB, ratio 10', tag('synthese'), 'vangt zachtjes eventuele pieken op'],
+  ];
+  $('inputs').innerHTML = rows.map(r => `<tr><td class="n">${r[0]}</td><td class="v">${r[1]}</td><td>${r[2]}</td><td class="fx">${r[3]}</td></tr>`).join('');
+  renderVoices(ms, st);
+}
+
+function renderVoices(ms, st) {
+  const t = ms / 1000;
+  $('voices').innerHTML = VOICES.map((v, vi) => {
+    const L = v.loop / st.day.speed;
+    const n = Math.floor(t / L), ph = t / L - n;
+    const resting = st.night && !v.night;
+    const marks = cycleNotes(vi, n).map(x => `<b style="left:${(x.frac * 100).toFixed(1)}%"></b>`).join('');
+    const notes = cycleNotes(vi, n).map(x => noteName(midiFor(v, x.deg, st))).join(' + ');
+    return `<tr class="${resting ? 'rest' : ''}"><td class="n">${v.loop} s → ${nl(L)} s</td><td>${v.kind}</td>` +
+      `<td><div class="bar"><i style="width:${(ph * 100).toFixed(1)}%"></i>${marks}</div></td>` +
+      `<td class="v">${notes}</td><td>${resting ? 'rust (nacht)' : 'speelt'}</td></tr>`;
+  }).join('');
+}
+
+render();
+setInterval(() => { updateParams(); if (!document.hidden) render(); }, 1000);
+fetchWeather();
+</script>
+</body>
+</html>

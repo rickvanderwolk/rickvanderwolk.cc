@@ -110,6 +110,20 @@ ook aanhoudt. Dat is het verschil met `exp-15`, waar de stilte hetzelfde blijft
 en de klank verzonnen wordt. Bij het starten zet `exp-16` erbij hoe laat er
 vandaag getikt wordt. Bij `5275x` krijg je de opname exact terug zoals hij is.
 
+### De machine zelf — hoor wat je computer doet
+
+Echt, net als `exp-10`, maar directer: één meting is één knop, en elk nieuw proces
+krijgt een eigen stem.
+
+| # | wat | wat je hoort / ziet |
+|---|-----|---------------------|
+| `exp-17` | **Hoor wat je computer doet** | Drone waarvan de processor de toonhoogte zet (80–320 Hz) en het geheugen het volume. Elke 64 KB netwerkverkeer is één tikje. Start er ergens een proces, dan klinkt één korte toon; de hoogte komt uit een hash van de procesnaam, dus `git` klinkt altijd hetzelfde. Met `--say` meldt `say` grote sprongen hardop, hoogstens eens per 10 seconden. |
+| `exp-18` | **Je computer praat terug** | Als `exp-17`, maar drukker: praten staat standaard aan, elke nieuwe procesnaam wordt hardop gezegd in een eigen stem (ook gekozen uit de hash, uit alle stemmen die macOS heeft), tot vier stemmen door elkaar. Lagere drempels voor meldingen, meer tikjes (één per 16 KB), sneller glijden. Een build of het openen van een browser wordt een koor. `--stil` zet het praten uit. |
+| `exp-19` | **Wat gebeurt er zoal** | Niet meer meters voorlezen maar vertellen wat er gebeurt. Elk nieuw proces geeft een toon, maar hardop alleen als het nieuw is of tien minuten niet gezien, als ingekorte opdracht ("mdworker shared", "trivial rewrite"); wat tegelijk start wordt één zin ("Google Chrome Helper, 8 keer"). Daartussen in een Nederlandse stem: wie nu het drukst is, schijf erin/eruit, stekker, netwerk weg/terug, en "wakker, na 40 minuten". Bekend wordt stil, zeldzaam springt eruit. Kijkt elke 0,1 s, maar wat sneller klaar is (een `ls`, een `git status`) mist hij nog. |
+| `exp-20` | **De log hardop** | Als `exp-19`, zonder interpretatie: hij leest voor wat de machine meldt, in logtaal. "spawn git symbolic-ref HEAD, pid 67971, parent bash" en even later "exit git, pid 67971, 0.1 seconds" — echte levensduur. Daartussen "power battery, 64 percent", "mount /Volumes/USB", "en0 down", "resume, gap 2400 seconds". Elk woord is een gemeten waarde; niks samengevat of mooier gemaakt. Zo hoor je wat er écht onder je handen draait, zoals Docker die elke paar seconden `ps` doet. |
+| `exp-21` | **De verteller** | Een stem die vertelt wat *jij* doet, in de tweede persoon: "Je gaat naar Safari." "Na 40 seconden terug naar Terminal." "Weer Chrome. De zesde keer in 5 minuten." "Je opent Notities." "Al 15 minuten niets aangeraakt." "Je bent terug. Na 17 minuten." Alles gemeten (actieve app via `lsappinfo`, stilte via `ioreg` HIDIdleTime, opdrachten in je terminal, slaap); alleen de zinnen zijn verzonnen, en welke zin hij kiest hangt aan hoe vaak en hoe lang, niet aan toeval. Eén stem, nooit door elkaar; zacht een drone eronder. |
+| `exp-22` | **De verteller kijkt mee** | Als `exp-21`, maar hij mist minder. Hij leest de titel van het actieve tabblad in Chrome, Safari, Arc, Brave en Edge ("Je gaat naar Chrome, Pull requests · GitHub."), praat sneller en vat drukte samen in plaats van zinnen weg te gooien: "Vier wissels: Terminal, Chrome, Finder, Chrome." Een wissel telt al na een halve seconde. De eerste keer vraagt macOS of Terminal je browser mag besturen; zonder die toestemming gaat hij door zonder tabbladen. |
+
 ## Sleutelen
 
 Bovenin elk bestand staan de knoppen (frequentie, tempo, bereik, volume) als

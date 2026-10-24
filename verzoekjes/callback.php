@@ -1,6 +1,19 @@
 <?php
 
+session_start();
 require_once __DIR__ . '/config.php';
+
+if (file_exists(TOKEN_FILE)) {
+    http_response_code(403);
+    die('Al ingelogd');
+}
+
+$state = $_SESSION['oauth_state'] ?? '';
+unset($_SESSION['oauth_state']);
+if ($state === '' || !hash_equals($state, $_GET['state'] ?? '')) {
+    http_response_code(400);
+    die('Ongeldige state');
+}
 
 if (!isset($_GET['code'])) {
     die('Geen code ontvangen');

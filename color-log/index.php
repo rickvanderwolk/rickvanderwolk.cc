@@ -84,7 +84,7 @@
     <?php
     $filename = 'colors.json';
 
-    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['color'])) {
+    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['color']) && preg_match('/^#[0-9a-f]{6}$/i', $_POST['color'])) {
         $color = $_POST['color'];
         $timestamp = date('Y-m-d H:i:s');
         $id = uniqid();
@@ -122,8 +122,10 @@
                 echo '<div class="color-item-group">';
             }
 
-            echo "<div class='color-item' onclick=\"confirmDelete('{$entry['id']}')\">
-                    <div class='color-circle' style='background-color: {$entry['color']}'></div>
+            $id = htmlspecialchars($entry['id'], ENT_QUOTES);
+            $color = htmlspecialchars($entry['color'], ENT_QUOTES);
+            echo "<div class='color-item' onclick=\"confirmDelete('{$id}')\">
+                    <div class='color-circle' style='background-color: {$color}'></div>
                   </div>";
         }
 

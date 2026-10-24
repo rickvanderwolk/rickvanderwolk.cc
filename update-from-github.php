@@ -13,6 +13,11 @@
  * - Downloads first image as preview
  */
 
+if (PHP_SAPI !== 'cli') {
+    http_response_code(404);
+    exit;
+}
+
 $dryRun = in_array('--dry-run', $argv);
 $dataFile = __DIR__ . '/data.json';
 $imageDir = __DIR__ . '/assets/images/';

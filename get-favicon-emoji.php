@@ -36,7 +36,7 @@ function getWeatherAndMoonEmoji(
     if (file_exists($cacheFile) && (filemtime($cacheFile) > (time() - 300))) {
         $response = file_get_contents($cacheFile);
     } else {
-        $url = 'http://api.openweathermap.org/data/2.5/weather?q=' . urlencode($location) . '&appid=' . $apiKey . '&units=metric';
+        $url = 'https://api.openweathermap.org/data/2.5/weather?q=' . urlencode($location) . '&appid=' . $apiKey . '&units=metric';
 
         $curl = curl_init();
         curl_setopt($curl, CURLOPT_URL, $url);

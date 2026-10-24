@@ -1,5 +1,10 @@
 <?php
 
+if (PHP_SAPI !== 'cli') {
+    http_response_code(404);
+    exit;
+}
+
 $feedUrl = 'https://feeds.nos.nl/nosnieuwsalgemeen';
 $dataDir = __DIR__ . '/data';
 

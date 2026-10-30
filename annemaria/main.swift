@@ -1,6 +1,7 @@
 import CoreGraphics
 import Foundation
 import IOKit.hid
+import IOKit.pwr_mgt
 
 // Blinks the keyboard LEDs while the screen is locked. Use --test to play all rhythms without locking.
 
@@ -87,7 +88,7 @@ IOHIDManagerSetDeviceMatching(manager, [
 
 let result = IOHIDManagerOpen(manager, IOOptionBits(kIOHIDOptionsTypeNone))
 guard result == kIOReturnSuccess else {
-    print("Can't open the keyboard (\(result)). Give your terminal access via Input Monitoring.")
+    print("Can't open the keyboard (\(result)). Allow main under Input Monitoring.")
     exit(1)
 }
 
@@ -96,7 +97,21 @@ guard let device = (IOHIDManagerCopyDevices(manager) as? Set<IOHIDDevice>)?.firs
     exit(1)
 }
 
+// launchd starts a new process, which finds the keyboard again once it's back
+IOHIDManagerRegisterDeviceRemovalCallback(manager, { _, _, _, _ in exit(0) }, nil)
+IOHIDManagerScheduleWithRunLoop(manager, CFRunLoopGetMain(), CFRunLoopMode.defaultMode.rawValue)
+
 var lastMask: UInt8? = nil
+var sleepAssertion = IOPMAssertionID(0)
+
+// Keeps the Mac awake while locked. macOS only honours this on AC power, on battery it sleeps as usual
+@Sendable func keepAwake(_ awake: Bool) {
+    if awake {
+        IOPMAssertionCreateWithName(kIOPMAssertionTypePreventSystemSleep as CFString, IOPMAssertionLevel(kIOPMAssertionLevelOn), "Annemaria is blinking" as CFString, &sleepAssertion)
+    } else {
+        IOPMAssertionRelease(sleepAssertion)
+    }
+}
 
 // Only writes on a change, so the slow PS/2 side isn't flooded
 func set(_ mask: UInt8) {
@@ -156,6 +171,7 @@ func inputSinceLock() -> Bool {
     guard newValue != locked else { return }
     locked = newValue
     log(locked ? "locked" : "unlocked")
+    keepAwake(locked)
     if locked {
         startBlinking()
     } else {
@@ -174,7 +190,10 @@ center.addObserver(forName: Notification.Name("com.apple.screenIsUnlocked"), obj
 let test = CommandLine.arguments.contains("--test")
 var locked = screenIsLocked()
 log(test ? "test mode" : "waiting for lock (now \(locked ? "locked" : "unlocked"))")
-if locked && !test { startBlinking() }
+if locked && !test {
+    keepAwake(true)
+    startBlinking()
+}
 
 // Backup for missed notifications: read the session state once per second
 Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in

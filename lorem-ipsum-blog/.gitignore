@@ -1,1 +1,9 @@
-vendor
+# WordPress lives in this folder on the server, installed and updated via the
+# hosting provider. Only the custom posting script is tracked here.
+/*
+!/.gitignore
+!/README.md
+!/composer.json
+!/composer.lock
+!/crontab.txt
+!/publish_post.php

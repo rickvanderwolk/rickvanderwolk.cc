@@ -6,7 +6,7 @@
 <title>Doolhof</title>
 <style>
   html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; touch-action: none; }
-  canvas { display: block; position: fixed; inset: 0; }
+  canvas { display: block; position: fixed; inset: 0; image-rendering: pixelated; }
   #hint {
     position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 2;
     font: 13px/1.4 "Courier New", ui-monospace, monospace; color: #f2f2f2;
@@ -19,27 +19,47 @@
 </head>
 <body>
 <canvas id="c"></canvas>
-<div id="hint">arrows / wasd &nbsp;·&nbsp; or hold mouse / touch to walk, aim left &amp; right to steer</div>
+<div id="hint">arrows / wasd &nbsp;·&nbsp; or hold: centre walks, left / right turns</div>
 <script>
-// Doolhof ("maze") — the 3D Maze screensaver, but you drive.
+// Doolhof ("maze") -- the Windows 95 3D Maze screensaver, except you walk it.
 // ----------------------------------------------------------------------------
-// Same old-school raycaster (DDA, one vertical strip per column) and the same
-// red-brick / wood-floor / light-ceiling look as the screensaver, except now
-// YOU walk it: arrow keys or WASD to turn and move, with walls you can't pass
-// through. No exit, no levels, no score -- one big labyrinth to wander forever.
+// Everything follows the screensaver: brick walls with globe pictures, wooden
+// floor, tiled ceiling, flat lighting (no distance shading), tile-by-tile
+// movement with smooth 90-degree turns, a floating Start button at the
+// entrance, floating OpenGL logos, a wandering rat, grey spinning polyhedra
+// that roll the camera upside down, and a translucent smiley as the exit:
+// reach it and the walls sink, a new maze is generated and the walls rise.
+// The only change: instead of the built-in wall-follower, the player steers,
+// moving tile by tile with 90-degree turns just like the screensaver did.
+//
+// URL options (the screensaver's settings dialog, more or less):
+//   ?map=1      overlay map      ?rats=N   number of rats (default 1)
+//   ?res=N      render height in pixels (default 360, lower = chunkier)
+//   ?free=1     free walking (analog turning, sliding along walls)
 // ----------------------------------------------------------------------------
 
 const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d', { alpha: false });
+const params = new URLSearchParams(location.search);
 
 // ---- tunables --------------------------------------------------------------
-const COLS = 18, ROWS = 18;        // maze size in cells (corridors are 1 tile)
-const MOVE_SPEED = 2.8;            // tiles per second while walking
-const TURN_SPEED = 2.4;           // radians per second while turning
-const CARVE_STRAIGHT = 0.78;       // generator's bias toward long straight halls
-const RADIUS = 0.26;               // player collision radius in tiles
-const FOG = 9.0;                  // tiles until a wall fades fully to black
+const COLS = 12, ROWS = 12;        // maze size in cells (corridors are 1 tile)
+const MOVE_SPEED = 2.0;            // classic: tiles per second
+const TURN_TIME = 0.3;             // classic: seconds per 90-degree turn
+const WALK_SPEED = 2.8;            // free: tiles per second
+const TURN_SPEED = 2.4;            // free: radians per second
+const RADIUS = 0.26;               // free: collision radius in tiles
+const CARVE_STRAIGHT = 0.7;        // generator's bias toward long straight halls
 const TS = 64;                     // texture size in pixels
+const ROCKS = 3;                   // grey polyhedra per maze
+const LOGOS = 4;                   // floating OpenGL logos per maze
+const WALL_ANIM = 1.6;             // seconds for the walls to rise / sink
+const ROLL_TIME = 1.2;             // seconds for the upside-down roll
+const SHOW_MAP = params.get('map') === '1';
+const CLASSIC = params.get('free') !== '1';
+const RATS = Math.max(1, Math.min(100, parseInt(params.get('rats')) || 1));
+const RES = Math.max(120, Math.min(1080, parseInt(params.get('res')) || 360));
+const RAT_SPEED = MOVE_SPEED * 2;  // the rat steps twice as often as the camera
 
 // ---- maze generation (recursive backtracker) -------------------------------
 function genMaze(cols, rows) {
@@ -77,10 +97,16 @@ function genMaze(cols, rows) {
 }
 
 // ---- textures --------------------------------------------------------------
-function makeCanvas() {
+// Drawn on small canvases, then read back as packed 32-bit pixels so the
+// renderer can sample them directly.
+function makeCanvas(size = TS) {
   const cv = document.createElement('canvas');
-  cv.width = cv.height = TS;
+  cv.width = cv.height = size;
   return cv;
+}
+function toTex(cv) {
+  const d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height);
+  return { w: cv.width, h: cv.height, d: new Uint32Array(d.data.buffer) };
 }
 
 function makeBrick() {
@@ -94,47 +120,62 @@ function makeBrick() {
     for (let x = off; x < TS; x += rw) {
       const shade = 0.85 + Math.random() * 0.28;
       const r = Math.round(186 * shade), gg = Math.round(46 * shade), b = Math.round(42 * shade);
-      c.fillStyle = `rgb(${r},${gg},${b})`;     // saturated red brick, like the original
+      c.fillStyle = `rgb(${r},${gg},${b})`;
       c.fillRect(x + m, y + m, rw - m, rh - m);
     }
   }
-  const grad = c.createLinearGradient(0, 0, 0, TS);
-  grad.addColorStop(0, 'rgba(255,255,255,0.08)');
-  grad.addColorStop(1, 'rgba(0,0,0,0.12)');
-  c.fillStyle = grad;
-  c.fillRect(0, 0, TS, TS);
   return cv;
 }
 
-function makePlaque(brick, draw) {
+// Wooden floor: four planks per tile, staggered ends, light grain.
+function makeWood() {
   const cv = makeCanvas();
   const c = cv.getContext('2d');
-  c.drawImage(brick, 0, 0);
-  c.fillStyle = '#d8c5a0';
-  c.fillRect(14, 14, 36, 36);
-  c.strokeStyle = '#3a342c';
-  c.lineWidth = 2;
-  c.strokeRect(14, 14, 36, 36);
-  draw(c);
+  const ph = TS / 4;
+  for (let p = 0; p < 4; p++) {
+    const y = p * ph, cut = ((p * 37) % 48) + 8;
+    for (const [x0, x1] of [[0, cut], [cut, TS]]) {
+      const s = 0.85 + Math.random() * 0.25;
+      c.fillStyle = `rgb(${176 * s | 0},${120 * s | 0},${62 * s | 0})`;
+      c.fillRect(x0, y, x1 - x0, ph);
+      for (let i = 0; i < 5; i++) {
+        c.fillStyle = `rgba(70,40,15,${0.08 + Math.random() * 0.1})`;
+        c.fillRect(x0, y + 1 + Math.random() * (ph - 2), x1 - x0, 1);
+      }
+      c.fillStyle = 'rgba(50,28,10,0.6)';
+      c.fillRect(x0, y, 1, ph);
+    }
+    c.fillStyle = 'rgba(50,28,10,0.7)';
+    c.fillRect(0, y, TS, 1);
+  }
   return cv;
 }
 
-const brick = makeBrick();
+// Speckled office ceiling tiles, 2x2 per maze tile.
+function makeCeiling() {
+  const cv = makeCanvas();
+  const c = cv.getContext('2d');
+  c.fillStyle = '#d6d6d0';
+  c.fillRect(0, 0, TS, TS);
+  for (let i = 0; i < 260; i++) {
+    const v = 120 + Math.random() * 60 | 0;
+    c.fillStyle = `rgb(${v},${v},${v - 6})`;
+    c.fillRect(Math.random() * TS | 0, Math.random() * TS | 0, 1, 1);
+  }
+  c.fillStyle = '#8e8e88';
+  c.fillRect(0, 0, TS, 1); c.fillRect(0, TS / 2, TS, 1);
+  c.fillRect(0, 0, 1, TS); c.fillRect(TS / 2, 0, 1, TS);
+  return cv;
+}
 
-// The only wall plaque now is the OpenGL globe; the Start button and the goal
-// smiley float in the air instead, the way the original did.
-const signs = [ makePlaque(brick, drawGlobe) ];
-
-// Billboard sprites (transparent): rat, floating OpenGL logos, the floating
-// Start button you pass through at the entrance, and the goal smiley.
-function makeSprite(draw) { const cv = makeCanvas(); draw(cv.getContext('2d')); return cv; }
-const ratTex = makeSprite(drawRat);
-const logoTex = makeSprite(drawOglLogo);
-const startTex = makeSprite(drawStartButton);
-const smileyTex = makeSprite(drawSmileyBall);
-
-// A blocky, colourful "Lego" globe, after the OpenGL Programming Guide cover.
-function drawGlobe(c) {
+// A blocky, colourful globe on a framed plaque, after the OpenGL Programming
+// Guide cover the screensaver hangs on its walls.
+function makeGlobePlaque(brickCv) {
+  const cv = makeCanvas();
+  const c = cv.getContext('2d');
+  c.drawImage(brickCv, 0, 0);
+  c.fillStyle = '#d8c5a0'; c.fillRect(14, 14, 36, 36);
+  c.strokeStyle = '#3a342c'; c.lineWidth = 2; c.strokeRect(14, 14, 36, 36);
   c.save();
   c.beginPath(); c.arc(32, 32, 16, 0, Math.PI * 2); c.clip();
   c.fillStyle = '#0e1428'; c.fillRect(15, 15, 34, 34);
@@ -152,14 +193,16 @@ function drawGlobe(c) {
   c.restore();
   c.strokeStyle = '#0a1530'; c.lineWidth = 1.5;
   c.beginPath(); c.arc(32, 32, 16, 0, Math.PI * 2); c.stroke();
+  return cv;
 }
 
-// A brown rat in profile, facing right -- the maze's other little wanderer.
+function makeSprite(draw) { const cv = makeCanvas(); draw(cv.getContext('2d')); return toTex(cv); }
+
 function drawRat(c) {
   c.save(); c.translate(30, 38);
-  c.strokeStyle = '#bd8f7d'; c.lineWidth = 2.2; c.lineCap = 'round';     // tail
+  c.strokeStyle = '#bd8f7d'; c.lineWidth = 2.2; c.lineCap = 'round';
   c.beginPath(); c.moveTo(-16, 4); c.quadraticCurveTo(-30, 2, -27, -12); c.stroke();
-  const g = c.createLinearGradient(0, -14, 0, 14);                        // brown body
+  const g = c.createLinearGradient(0, -14, 0, 14);
   g.addColorStop(0, '#82603c'); g.addColorStop(0.6, '#5e4126'); g.addColorStop(1, '#3f2c19');
   c.fillStyle = g;
   c.beginPath();
@@ -170,20 +213,15 @@ function drawRat(c) {
   c.quadraticCurveTo(14, 12, 0, 12);
   c.quadraticCurveTo(-12, 12, -16, 4);
   c.closePath(); c.fill();
-  c.strokeStyle = 'rgba(0,0,0,0.18)'; c.lineWidth = 1;                    // haunch crease
-  c.beginPath(); c.moveTo(-4, -8); c.quadraticCurveTo(-8, 6, -2, 11); c.stroke();
-  c.fillStyle = '#5a3f28'; c.beginPath(); c.ellipse(11, -9, 4.2, 5, -0.3, 0, Math.PI * 2); c.fill();  // ear
+  c.fillStyle = '#5a3f28'; c.beginPath(); c.ellipse(11, -9, 4.2, 5, -0.3, 0, Math.PI * 2); c.fill();
   c.fillStyle = '#caa092'; c.beginPath(); c.ellipse(11, -8, 2, 2.8, -0.3, 0, Math.PI * 2); c.fill();
-  c.fillStyle = '#140d06'; c.beginPath(); c.arc(17, -3, 1.5, 0, Math.PI * 2); c.fill();               // eye
-  c.fillStyle = '#e2a3ab'; c.beginPath(); c.arc(24, 3, 1.7, 0, Math.PI * 2); c.fill();                // nose
-  c.strokeStyle = '#d59f93'; c.lineWidth = 2.6; c.lineCap = 'round';                                   // feet
+  c.fillStyle = '#140d06'; c.beginPath(); c.arc(17, -3, 1.5, 0, Math.PI * 2); c.fill();
+  c.fillStyle = '#e2a3ab'; c.beginPath(); c.arc(24, 3, 1.7, 0, Math.PI * 2); c.fill();
+  c.strokeStyle = '#d59f93'; c.lineWidth = 2.6; c.lineCap = 'round';
   c.beginPath(); c.moveTo(12, 11); c.lineTo(13, 15); c.moveTo(-2, 11); c.lineTo(-3, 15); c.stroke();
-  c.strokeStyle = 'rgba(240,240,240,0.7)'; c.lineWidth = 0.6;                                          // whiskers
-  c.beginPath(); c.moveTo(23, 3); c.lineTo(31, 0); c.moveTo(23, 4); c.lineTo(31, 6); c.stroke();
   c.restore();
 }
 
-// The "OpenGL" wordmark: chunky multicolour letters with a black outline.
 function drawOglLogo(c) {
   c.font = 'bold 17px Arial, Helvetica, sans-serif';
   c.textAlign = 'left'; c.textBaseline = 'middle';
@@ -201,13 +239,12 @@ function drawOglLogo(c) {
   }
 }
 
-// The floating Windows 95 Start button you pass through at the entrance.
 function drawStartButton(c) {
   const x = 4, y = 23, w = 56, h = 18;
   c.fillStyle = '#c0c0c0'; c.fillRect(x, y, w, h);
   c.fillStyle = '#fff'; c.fillRect(x, y, w, 1.5); c.fillRect(x, y, 1.5, h);
   c.fillStyle = '#808080'; c.fillRect(x, y + h - 1.5, w, 1.5); c.fillRect(x + w - 1.5, y, 1.5, h);
-  c.save(); c.translate(x + 5, y + 5); c.transform(1, 0, -0.18, 1, 0, 0);   // waving flag
+  c.save(); c.translate(x + 5, y + 5); c.transform(1, 0, -0.18, 1, 0, 0);
   const pane = [['#e7000e', 0, 0], ['#27a700', 5, 0], ['#0057d8', 0, 5], ['#ffd400', 5, 5]];
   for (const [col, dx, dy] of pane) { c.fillStyle = col; c.fillRect(dx, dy, 4.4, 4.4); }
   c.restore();
@@ -215,7 +252,6 @@ function drawStartButton(c) {
   c.fillText('Start', x + 17, y + h / 2);
 }
 
-// The floating glossy goal smiley.
 function drawSmileyBall(c) {
   const g = c.createRadialGradient(26, 26, 4, 32, 32, 26);
   g.addColorStop(0, '#fff7a8'); g.addColorStop(0.5, '#ffe000'); g.addColorStop(1, '#d6a400');
@@ -227,6 +263,62 @@ function drawSmileyBall(c) {
   c.beginPath(); c.arc(32, 34, 13, 0.25, Math.PI - 0.25); c.stroke();
 }
 
+// Grey spinning polyhedron (an icosahedron, flat-shaded, each face a slightly
+// different grey), pre-rendered as a loop of animation frames.
+function makeRockFrames(n) {
+  const p = (1 + Math.sqrt(5)) / 2;
+  const V = [[-1, p, 0], [1, p, 0], [-1, -p, 0], [1, -p, 0], [0, -1, p], [0, 1, p],
+             [0, -1, -p], [0, 1, -p], [p, 0, -1], [p, 0, 1], [-p, 0, -1], [-p, 0, 1]];
+  const F = [];
+  const d2 = (a, b) => (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2;
+  for (let i = 0; i < 12; i++) for (let j = i + 1; j < 12; j++) for (let k = j + 1; k < 12; k++)
+    if (Math.abs(d2(V[i], V[j]) - 4) < 1e-6 && Math.abs(d2(V[j], V[k]) - 4) < 1e-6 && Math.abs(d2(V[i], V[k]) - 4) < 1e-6)
+      F.push([i, j, k]);
+  const L = [-0.4, -0.6, 0.7], ll = Math.hypot(...L);
+  const frames = [];
+  for (let f = 0; f < n; f++) {
+    const a = f / n * Math.PI * 2, tilt = 0.5;
+    const rot = v => {
+      let [x, y, z] = v;
+      [x, z] = [x * Math.cos(a) + z * Math.sin(a), -x * Math.sin(a) + z * Math.cos(a)];
+      [y, z] = [y * Math.cos(tilt) - z * Math.sin(tilt), y * Math.sin(tilt) + z * Math.cos(tilt)];
+      return [x, y, z];
+    };
+    const R = V.map(rot);
+    const cv = makeCanvas();
+    const c = cv.getContext('2d');
+    const faces = F.map((fc, idx) => {
+      const cen = [0, 1, 2].map(ax => (R[fc[0]][ax] + R[fc[1]][ax] + R[fc[2]][ax]) / 3);
+      return { fc, cen, idx };
+    }).filter(o => o.cen[2] > 0).sort((a1, b1) => a1.cen[2] - b1.cen[2]);
+    for (const { fc, cen, idx } of faces) {
+      const nl = Math.hypot(...cen);
+      const lit = Math.max(0, (cen[0] * L[0] + cen[1] * L[1] + cen[2] * L[2]) / (nl * ll));
+      const v = (70 + 120 * lit - (idx % 4) * 8) | 0;
+      c.fillStyle = c.strokeStyle = `rgb(${v},${v},${v})`;
+      c.beginPath();
+      for (let i = 0; i < 3; i++) {
+        const q = R[fc[i]];
+        c[i ? 'lineTo' : 'moveTo'](32 + q[0] * 14, 32 + q[1] * 14);
+      }
+      c.closePath(); c.fill(); c.lineWidth = 0.8; c.stroke();
+    }
+    frames.push(toTex(cv));
+  }
+  return frames;
+}
+
+const brickCv = makeBrick();
+const brickTex = toTex(brickCv);
+const globeTex = toTex(makeGlobePlaque(brickCv));
+const floorTex = toTex(makeWood());
+const ceilTex = toTex(makeCeiling());
+const ratTex = makeSprite(drawRat);
+const logoTex = makeSprite(drawOglLogo);
+const startTex = makeSprite(drawStartButton);
+const smileyTex = makeSprite(drawSmileyBall);
+const rockFrames = makeRockFrames(32);
+
 let texGrid;
 function buildTexGrid(g, W, H) {
   texGrid = Array.from({ length: H }, () => new Array(W).fill(null));
@@ -234,33 +326,28 @@ function buildTexGrid(g, W, H) {
     for (let x = 0; x < W; x++) {
       if (g[y][x] !== 1) continue;
       const h = (x * 73856093) ^ (y * 19349663);
-      texGrid[y][x] = ((h >>> 0) % 23 === 0) ? signs[(x + y) % signs.length] : brick;
+      texGrid[y][x] = ((h >>> 0) % 19 === 0) ? globeTex : brickTex;
     }
 }
 
-// ---- the player ------------------------------------------------------------
-let maze, posX, posY, dir, bob = 0, clock = 0;
-let rats = [], logos = [], startObj = null, goalObj = null;
-const RAT_SPEED = 1.6;                          // tiles/sec, slower than the player
-const DEMO = new URLSearchParams(location.search).get('demo');
-// one rat, like the original; override with ?rats=N (e.g. ?rats=60 to find one fast)
-const RATS = Math.max(1, Math.min(100, parseInt(new URLSearchParams(location.search).get('rats')) || 1));
+// ---- world state -----------------------------------------------------------
+// The camera moves like the screensaver's: from tile centre to tile centre,
+// facing one of four headings (0 = east, 1 = south, 2 = west, 3 = north).
+const HEADINGS = [[1, 0], [0, 1], [-1, 0], [0, -1]];
+let maze, posX, posY, dir, clock = 0;
+let tileX, tileY, heading;
+let act = null;                     // current move or turn being animated
+let rats = [], logos = [], rocks = [], startObj = null, goalObj = null, startHeading = 0;
+let phase = 'rising', wallH = 0;    // 'rising' | 'play' | 'sinking'
+let flipped = false, roll = 0;      // upside down after touching a rock
 
-function isWall(x, y) {
-  const gx = Math.floor(x), gy = Math.floor(y);
-  return !(maze.g[gy] && maze.g[gy][gx] === 0);
-}
-function free(x, y) {                     // player circle vs the four corners
-  return !isWall(x - RADIUS, y - RADIUS) && !isWall(x + RADIUS, y - RADIUS) &&
-         !isWall(x - RADIUS, y + RADIUS) && !isWall(x + RADIUS, y + RADIUS);
-}
+function isOpen(x, y) { return !!(maze.g[y] && maze.g[y][x] === 0); }
 
-// ---- the rat: wanders the maze tile by tile, just like the screensaver ------
 function openNeighbors(cx, cy) {
-  return [[1, 0], [-1, 0], [0, 1], [0, -1]].filter(([dx, dy]) => maze.g[cy + dy] && maze.g[cy + dy][cx + dx] === 0);
+  return HEADINGS.filter(([dx, dy]) => isOpen(cx + dx, cy + dy));
 }
 function ratPick(rat) {
-  const cx = Math.round(rat.x - 0.5), cy = Math.round(rat.y - 0.5);
+  const cx = Math.floor(rat.x), cy = Math.floor(rat.y);
   const opts = openNeighbors(cx, cy);
   const back = rat.prev ? [rat.prev.x - cx, rat.prev.y - cy] : null;
   let live = opts.filter(([dx, dy]) => !(back && dx === back[0] && dy === back[1]));
@@ -279,11 +366,15 @@ function updateRats(dt) {
     else { rat.x += dx / d * step; rat.y += dy / d * step; }
   }
 }
+
+const used = new Set();
 function randomOpenTile(minDist) {
-  for (let t = 0; t < 200; t++) {
+  for (let t = 0; t < 400; t++) {
     const cx = 1 + ((Math.random() * (maze.W - 2)) | 0);
     const cy = 1 + ((Math.random() * (maze.H - 2)) | 0);
-    if (maze.g[cy] && maze.g[cy][cx] === 0 && Math.hypot(cx - 1, cy - 1) >= minDist) return [cx, cy];
+    if (!isOpen(cx, cy) || used.has(cx + ',' + cy) || Math.hypot(cx - 1, cy - 1) < minDist) continue;
+    used.add(cx + ',' + cy);
+    return [cx, cy];
   }
   return [maze.W - 2, maze.H - 2];
 }
@@ -291,19 +382,24 @@ function randomOpenTile(minDist) {
 function newMaze() {
   maze = genMaze(COLS, ROWS);
   buildTexGrid(maze.g, maze.W, maze.H);
+  used.clear(); used.add('1,1');
+  tileX = 1; tileY = 1;
+  heading = HEADINGS.findIndex(([dx, dy]) => isOpen(1 + dx, 1 + dy));
+  if (heading < 0) heading = 0;
+  startHeading = heading;
   posX = 1.5; posY = 1.5;
-  // face the first open neighbour so we start looking down a corridor
-  const dirs = [[1, 0], [0, 1], [-1, 0], [0, -1]];
-  const open = dirs.find(([dx, dy]) => !isWall(1.5 + dx, 1.5 + dy)) || [1, 0];
-  dir = Math.atan2(open[1], open[0]);
+  dir = heading * Math.PI / 2;
+  act = null;
 
-  // floating Start button just ahead, so you pass through it on the way in
-  startObj = { x: 1.5 + Math.cos(dir) * 1.5, y: 1.5 + Math.sin(dir) * 1.5 };
-  // the goal smiley floating far off in the maze
-  const gt = randomOpenTile(Math.max(COLS, ROWS) - 3);
+  const [hx, hy] = HEADINGS[heading];
+  used.add((1 + hx) + ',' + (1 + hy));
+  startObj = { x: 1.5 + hx * 0.75, y: 1.5 + hy * 0.75 };
+  const gt = randomOpenTile(Math.max(COLS, ROWS) * 1.4);
   goalObj = { x: gt[0] + 0.5, y: gt[1] + 0.5 };
-
-  // the wandering rat(s) + a few floating OpenGL logos
+  rocks = [];
+  for (let i = 0; i < ROCKS; i++) { const t = randomOpenTile(3); rocks.push({ x: t[0] + 0.5, y: t[1] + 0.5, phase: Math.random() * 32 }); }
+  logos = [];
+  for (let i = 0; i < LOGOS; i++) { const t = randomOpenTile(3); logos.push({ x: t[0] + 0.5, y: t[1] + 0.5 }); }
   rats = [];
   for (let i = 0; i < RATS; i++) {
     const r = randomOpenTile(4);
@@ -311,32 +407,40 @@ function newMaze() {
     ratPick(rt);
     rats.push(rt);
   }
-  logos = [];
-  for (let i = 0; i < 4; i++) { const t = randomOpenTile(3); logos.push({ x: t[0] + 0.5, y: t[1] + 0.5, phase: Math.random() * 6.28 }); }
+  phase = 'rising'; wallH = 0;
+}
 
-  if (DEMO) {                                   // line them up straight ahead for a screenshot
-    const fx = Math.round(Math.cos(dir)), fy = Math.round(Math.sin(dir));
-    rats[0].x = 1.5 + fx * 2; rats[0].y = 1.5 + fy * 2; rats[0].target = { x: rats[0].x, y: rats[0].y }; rats[0].dir = [fx, fy];
-    logos = [{ x: 1.5 + fx * 1.3, y: 1.5 + fy * 1.3, phase: 0 }];
-  }
+function isWall(x, y) { return !isOpen(Math.floor(x), Math.floor(y)); }
+function free(x, y) {                     // player circle vs the four corners
+  return !isWall(x - RADIUS, y - RADIUS) && !isWall(x + RADIUS, y - RADIUS) &&
+         !isWall(x - RADIUS, y + RADIUS) && !isWall(x + RADIUS, y + RADIUS);
 }
 
 // ---- input -----------------------------------------------------------------
+// Free (default): arrows / wasd turn and walk; hold mouse / touch to walk and
+// aim left or right of centre to steer.
+// Classic: up / w walks one tile at a time (hold to keep walking), left / right
+// turn 90 degrees, down / s turns around; hold the centre of the screen to
+// walk, the left or right third to turn.
 const keys = {};
 const ARROWS = ['arrowup', 'arrowdown', 'arrowleft', 'arrowright'];
+const KEY_ACTION = { arrowup: 'fwd', w: 'fwd', arrowleft: 'left', a: 'left',
+                     arrowright: 'right', d: 'right', arrowdown: 'back', s: 'back' };
+// Classic: a press made mid-move is remembered and runs as soon as the
+// current step or turn ends, so quick taps are never lost.
+let queued = null;
 addEventListener('keydown', e => {
   const k = e.key.toLowerCase();
   keys[k] = true;
   if (ARROWS.includes(k)) e.preventDefault();
+  if (!e.repeat && KEY_ACTION[k]) queued = KEY_ACTION[k];
   hideHint();
 });
 addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
+addEventListener('blur', () => { for (const k in keys) keys[k] = false; pointers.clear(); });
 
-// touch / mouse: hold to walk forward, steer toward where you point.
-// Pointing at the centre (the vanishing point straight ahead) walks dead
-// straight; pointing left/right of centre turns, more the further out you aim.
 const pointers = new Map();              // pointerId -> clientX
-canvas.addEventListener('pointerdown', e => { pointers.set(e.pointerId, e.clientX); hideHint(); });
+canvas.addEventListener('pointerdown', e => { pointers.set(e.pointerId, e.clientX); queued = regionAction(e.clientX); hideHint(); });
 canvas.addEventListener('pointermove', e => { if (pointers.has(e.pointerId)) pointers.set(e.pointerId, e.clientX); });
 canvas.addEventListener('pointerup', e => pointers.delete(e.pointerId));
 canvas.addEventListener('pointercancel', e => pointers.delete(e.pointerId));
@@ -350,9 +454,68 @@ function hideHint() {
   setTimeout(() => h.remove(), 1100);
 }
 
-function update(dt) {
-  clock += dt;
-  updateRats(dt);
+function regionAction(clientX) {
+  const x = clientX / innerWidth;
+  return x < 1 / 3 ? 'left' : x > 2 / 3 ? 'right' : 'fwd';
+}
+
+// Which action does the player want next? 'fwd' | 'left' | 'right' | 'back' | null
+// A queued press goes first. Then a held forward keeps walking; a held turn
+// only repeats when forward isn't held, so forward + a tap of left turns once
+// and walks on instead of spinning.
+function wanted() {
+  let w = queued;
+  queued = null;
+  const fwd = keys['arrowup'] || keys['w'];
+  if (!w) {
+    if (fwd) w = 'fwd';
+    else if (keys['arrowleft'] || keys['a']) w = 'left';
+    else if (keys['arrowright'] || keys['d']) w = 'right';
+    else if (keys['arrowdown'] || keys['s']) w = 'back';
+    else if (pointers.size) w = regionAction(pointers.values().next().value);
+  }
+  // Upside down the camera is rolled 180 degrees, so the screen's left is the
+  // world's right: swap turns so "left" still turns toward the screen's left.
+  if (flipped && (w === 'left' || w === 'right')) w = w === 'left' ? 'right' : 'left';
+  return w;
+}
+
+function startAction() {
+  const w = wanted();
+  if (!w) return;
+  if (w === 'fwd') {
+    const [dx, dy] = HEADINGS[heading];
+    if (!isOpen(tileX + dx, tileY + dy)) return;
+    act = { type: 'move', fx: posX, fy: posY, tx: tileX + dx + 0.5, ty: tileY + dy + 0.5, t: 0, dur: 1 / MOVE_SPEED };
+    tileX += dx; tileY += dy;
+  } else {
+    const delta = w === 'left' ? -1 : w === 'right' ? 1 : 2;
+    const from = dir;
+    heading = (heading + delta + 4) % 4;
+    act = { type: 'turn', from, to: from + delta * Math.PI / 2, t: 0, dur: TURN_TIME * Math.abs(delta) };
+  }
+}
+
+const ease = t => t < 0.5 ? 2 * t * t : 1 - 2 * (1 - t) * (1 - t);
+
+function updateClassic(dt) {
+  if (!act) startAction();
+  if (!act) return;
+  act.t = Math.min(1, act.t + dt / act.dur);
+  // walking keeps a steady pace when chained; turns ease in and out
+  if (act.type === 'move') {
+    posX = act.fx + (act.tx - act.fx) * act.t;
+    posY = act.fy + (act.ty - act.fy) * act.t;
+  } else {
+    dir = act.from + (act.to - act.from) * ease(act.t);
+  }
+  if (act.t >= 1) {
+    if (act.type === 'turn') dir = heading * Math.PI / 2;
+    act = null;
+  }
+}
+
+function updateFree(dt) {
   let mv = 0, turn = 0;
   if (keys['arrowup'] || keys['w']) mv += 1;
   if (keys['arrowdown'] || keys['s']) mv -= 1;
@@ -368,42 +531,88 @@ function update(dt) {
     else s = (s - Math.sign(s) * dead) / (1 - dead);
     turn += s;
   }
-
+  // upside down the screen's left is the world's right
+  if (flipped) turn = -turn;
   if (turn) dir += Math.max(-1, Math.min(1, turn)) * TURN_SPEED * dt;
   if (mv) {
-    const sp = Math.max(-1, Math.min(1, mv)) * MOVE_SPEED * dt;
+    const sp = Math.max(-1, Math.min(1, mv)) * WALK_SPEED * dt;
     const fx = Math.cos(dir) * sp, fy = Math.sin(dir) * sp;
     if (free(posX + fx, posY)) posX += fx;     // slide along walls: axis by axis
     if (free(posX, posY + fy)) posY += fy;
-    bob += Math.abs(sp) * 3.6;
   }
 }
 
-// ---- render (raycaster) ----------------------------------------------------
-let W = 0, H = 0, STEP = 2;
+function update(dt) {
+  clock += dt;
+  updateRats(dt);
+
+  // the camera roll eases toward upright or upside down
+  const rollTarget = flipped ? Math.PI : 0;
+  const rs = Math.PI / ROLL_TIME * dt;
+  roll += Math.max(-rs, Math.min(rs, rollTarget - roll));
+
+  if (phase === 'rising') {
+    wallH = Math.min(1, wallH + dt / WALL_ANIM);
+    if (wallH >= 1) phase = 'play';
+    return;
+  }
+  if (phase === 'sinking') {
+    wallH = Math.max(0, wallH - dt / WALL_ANIM);
+    if (wallH <= 0) newMaze();
+    return;
+  }
+
+  if (CLASSIC) updateClassic(dt); else updateFree(dt);
+
+  // touching a rock rolls the camera; it is used up so it can't re-trigger
+  for (let i = rocks.length - 1; i >= 0; i--) {
+    if (Math.hypot(rocks[i].x - posX, rocks[i].y - posY) < 0.4) { rocks.splice(i, 1); flipped = !flipped; }
+  }
+  // reaching the smiley ends the maze
+  if (Math.hypot(goalObj.x - posX, goalObj.y - posY) < 0.4) { phase = 'sinking'; act = null; }
+}
+
+// ---- render (raycaster into a low-res pixel buffer) ------------------------
+let W = 0, H = 0, RW = 0, RH = 0;
+let buf, bctx, img, pix, zbuf, wtop;
+
+function blend(d, c, a) {
+  const ia = 1 - a;
+  const r = ((c & 255) * a + (d & 255) * ia) | 0;
+  const g = (((c >>> 8) & 255) * a + ((d >>> 8) & 255) * ia) | 0;
+  const b = (((c >>> 16) & 255) * a + ((d >>> 16) & 255) * ia) | 0;
+  return 0xff000000 | (b << 16) | (g << 8) | r;
+}
+
 function render() {
   const dirX = Math.cos(dir), dirY = Math.sin(dir);
-  // Keep the corridor's proportions identical on every screen by scaling the
-  // camera plane with the aspect ratio, anchored to the desktop look (~16:10,
-  // where this is exactly 0.66). Without it walls stretch tall in portrait and
-  // go flat in wide landscape. projH stays H, so the desktop view is unchanged.
-  const FOV = Math.max(0.32, Math.min(0.95, 0.66 * (W / H) / 1.6));
+  // Scale the camera plane with the aspect ratio so corridors keep the same
+  // proportions on every screen (0.66 at ~16:10).
+  const FOV = Math.max(0.32, Math.min(0.95, 0.66 * (RW / RH) / 1.6));
   const planeX = -dirY * FOV, planeY = dirX * FOV;
-  const projH = H;
-  const horizon = H / 2 + Math.sin(bob) * H * 0.012;
-  const zbuf = new Float32Array(W); zbuf.fill(1e9);   // per-column wall depth, for sprites
+  const half = RH / 2;
+  const TM = TS - 1;
 
-  let grad = ctx.createLinearGradient(0, 0, 0, horizon);
-  grad.addColorStop(0, '#d8dad7'); grad.addColorStop(1, '#a9ada9');   // light tiled ceiling
-  ctx.fillStyle = grad; ctx.fillRect(0, 0, W, horizon);
-  grad = ctx.createLinearGradient(0, horizon, 0, H);
-  grad.addColorStop(0, '#b07b40'); grad.addColorStop(1, '#7c542a');   // honey wooden floor
-  ctx.fillStyle = grad; ctx.fillRect(0, horizon, W, H - horizon);
+  // floor and ceiling, cast row by row (flat lighting, like the original)
+  const r0x = dirX - planeX, r0y = dirY - planeY, r1x = dirX + planeX, r1y = dirY + planeY;
+  const fd = floorTex.d, cd = ceilTex.d;
+  for (let y = half; y < RH; y++) {
+    const rd = half / (y - half + 0.5);
+    const sx = rd * (r1x - r0x) / RW, sy = rd * (r1y - r0y) / RW;
+    let fx = posX + rd * r0x, fy = posY + rd * r0y;
+    const o = y * RW, oc = (RH - 1 - y) * RW;
+    for (let x = 0; x < RW; x++) {
+      const i = ((((fy * TS) | 0) & TM) * TS) + (((fx * TS) | 0) & TM);
+      pix[o + x] = fd[i];
+      pix[oc + x] = cd[i];
+      fx += sx; fy += sy;
+    }
+  }
 
-  for (let col = 0; col < W; col += STEP) {
-    const camX = 2 * col / W - 1;
-    const rayX = dirX + planeX * camX;
-    const rayY = dirY + planeY * camX;
+  // walls
+  for (let x = 0; x < RW; x++) {
+    const camX = 2 * (x + 0.5) / RW - 1;
+    const rayX = dirX + planeX * camX, rayY = dirY + planeY * camX;
     let mapX = Math.floor(posX), mapY = Math.floor(posY);
     const dDistX = Math.abs(1 / rayX), dDistY = Math.abs(1 / rayY);
     let stepX, stepY, sideX, sideY;
@@ -411,65 +620,109 @@ function render() {
     else { stepX = 1; sideX = (mapX + 1 - posX) * dDistX; }
     if (rayY < 0) { stepY = -1; sideY = (posY - mapY) * dDistY; }
     else { stepY = 1; sideY = (mapY + 1 - posY) * dDistY; }
-
     let side = 0;
-    for (let guard = 0; guard < 64; guard++) {
+    for (let guard = 0; guard < 128; guard++) {
       if (sideX < sideY) { sideX += dDistX; mapX += stepX; side = 0; }
       else { sideY += dDistY; mapY += stepY; side = 1; }
-      if (maze.g[mapY] && maze.g[mapY][mapX] === 1) break;
+      if (!maze.g[mapY] || maze.g[mapY][mapX] !== 0) break;
     }
-
-    const perp = side === 0 ? (sideX - dDistX) : (sideY - dDistY);
-    if (perp <= 0) continue;
-    const lineH = projH / perp;
-    const drawStart = horizon - lineH / 2;
-
+    const perp = Math.max(1e-4, side === 0 ? (sideX - dDistX) : (sideY - dDistY));
+    const lineH = RH / perp;
+    const bottom = half + lineH / 2;
+    const top = bottom - lineH * wallH;          // walls grow up out of the floor
     let wallX = side === 0 ? posY + perp * rayY : posX + perp * rayX;
     wallX -= Math.floor(wallX);
     let texX = Math.floor(wallX * TS);
     if (side === 0 && rayX > 0) texX = TS - texX - 1;
     if (side === 1 && rayY < 0) texX = TS - texX - 1;
-
-    const tex = (texGrid[mapY] && texGrid[mapY][mapX]) || brick;
-    ctx.drawImage(tex, texX, 0, 1, TS, col, drawStart, STEP, lineH);
-
-    let shade = Math.min(1, perp / FOG) * 0.62;
-    if (side === 1) shade = Math.min(1, shade + 0.12);
-    if (shade > 0.01) {
-      ctx.fillStyle = `rgba(0,0,0,${shade})`;
-      ctx.fillRect(col, drawStart, STEP, lineH);
+    const tex = (texGrid[mapY] && texGrid[mapY][mapX]) || brickTex;
+    const td = tex.d;
+    const y0 = Math.max(0, Math.ceil(top)), y1 = Math.min(RH, Math.ceil(bottom));
+    const step = TS / lineH;
+    let ty = (y0 - top) * step;
+    for (let y = y0; y < y1; y++) {
+      pix[y * RW + x] = td[((ty | 0) & TM) * TS + texX];
+      ty += step;
     }
-    zbuf[col] = perp;
+    zbuf[x] = perp;
+    wtop[x] = y0;
   }
 
-  // ---- billboard sprites: the rat + floating OpenGL logos --------------------
+  // billboard sprites, far to near
   const sprites = [];
   for (const rt of rats) sprites.push({ x: rt.x, y: rt.y, tex: ratTex, scale: 0.46, raise: 0 });
-  for (const L of logos) sprites.push({ x: L.x, y: L.y, tex: logoTex, scale: 0.58, raise: 0.34 + Math.sin(clock * 1.6 + L.phase) * 0.06 });
-  if (startObj) sprites.push({ x: startObj.x, y: startObj.y, tex: startTex, scale: 0.64, raise: 0.26 + Math.sin(clock * 1.4) * 0.04 });
-  if (goalObj) sprites.push({ x: goalObj.x, y: goalObj.y, tex: smileyTex, scale: 0.52, raise: 0.3 + Math.sin(clock * 1.2 + 1) * 0.05 });
+  for (const L of logos) sprites.push({ x: L.x, y: L.y, tex: logoTex, scale: 0.58, raise: 0.34 });
+  for (const r of rocks) sprites.push({ x: r.x, y: r.y, tex: rockFrames[((clock * 16 + r.phase) | 0) % rockFrames.length], scale: 0.5, raise: 0.25 });
+  if (startObj) sprites.push({ x: startObj.x, y: startObj.y, tex: startTex, scale: 0.64, raise: 0.26 });
+  if (goalObj) sprites.push({ x: goalObj.x, y: goalObj.y, tex: smileyTex, scale: 0.52, raise: 0.28, alpha: 0.65 });
   sprites.sort((a, b) => ((b.x - posX) ** 2 + (b.y - posY) ** 2) - ((a.x - posX) ** 2 + (a.y - posY) ** 2));
 
   const invDet = 1 / (planeX * dirY - dirX * planeY);
   for (const s of sprites) {
     const relX = s.x - posX, relY = s.y - posY;
     const tX = invDet * (dirY * relX - dirX * relY);
-    const tY = invDet * (-planeY * relX + planeX * relY);   // depth along the view
+    const tY = invDet * (-planeY * relX + planeX * relY);
     if (tY <= 0.12) continue;
-    const screenX = (W / 2) * (1 + tX / tY);
-    const sh = Math.abs(projH / tY) * s.scale;               // square sprites
-    const ground = horizon + (projH / tY) / 2;
-    const topY = ground - sh - s.raise * (projH / tY);
-    const left = screenX - sh / 2;
-    const tw = s.tex.width, th = s.tex.height;
-    let c0 = Math.floor(left); c0 -= ((c0 % STEP) + STEP) % STEP;   // align to the STEP grid
-    for (let col = Math.max(0, c0); col < Math.min(W, screenX + sh / 2); col += STEP) {
-      if (tY >= zbuf[col]) continue;                          // hidden behind a wall here
-      const texX = ((col - left) / sh * tw) | 0;
-      if (texX < 0 || texX >= tw) continue;
-      ctx.drawImage(s.tex, texX, 0, 1, th, col, topY, STEP, sh);
+    const screenX = (RW / 2) * (1 + tX / tY);
+    const size = (RH / tY) * s.scale;
+    const ground = half + (RH / tY) / 2;
+    const topY = ground - size - s.raise * (RH / tY);
+    const left = screenX - size / 2;
+    const tw = s.tex.w, th = s.tex.h, sd = s.tex.d;
+    const x0 = Math.max(0, Math.ceil(left)), x1 = Math.min(RW, Math.ceil(left + size));
+    const y0 = Math.max(0, Math.ceil(topY)), y1 = Math.min(RH, Math.ceil(topY + size));
+    for (let x = x0; x < x1; x++) {
+      const yEnd = tY >= zbuf[x] ? Math.min(y1, wtop[x]) : y1;   // hidden behind a wall
+      const tx = ((x - left) / size * tw) | 0;
+      if (tx < 0 || tx >= tw) continue;
+      for (let y = y0; y < yEnd; y++) {
+        const tyy = ((y - topY) / size * th) | 0;
+        const c = sd[tyy * tw + tx];
+        if ((c >>> 24) < 128) continue;
+        const i = y * RW + x;
+        pix[i] = s.alpha ? blend(pix[i], c, s.alpha) : c;
+      }
     }
   }
+
+  bctx.putImageData(img, 0, 0);
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, H);
+  ctx.save();
+  ctx.translate(W / 2, H / 2);
+  ctx.rotate(roll);
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(buf, -W / 2, -H / 2, W, H);
+  ctx.restore();
+
+  if (SHOW_MAP) drawMap();
+}
+
+// ---- overlay map (?map=1): you blue, start red, smiley green, rocks spinning
+// white, logos white, rat orange -----------------------------------------------
+function tri(x, y, ang, col, sz) {
+  ctx.save();
+  ctx.translate(x, y); ctx.rotate(ang);
+  ctx.fillStyle = col;
+  ctx.beginPath(); ctx.moveTo(sz, 0); ctx.lineTo(-sz * 0.7, -sz * 0.7); ctx.lineTo(-sz * 0.7, sz * 0.7); ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+function drawMap() {
+  const size = Math.min(W, H) * 0.4;
+  const cs = size / maze.W;
+  const ox = 16, oy = 16;
+  ctx.fillStyle = 'rgba(255,255,255,0.75)';
+  for (let y = 0; y < maze.H; y++)
+    for (let x = 0; x < maze.W; x++)
+      if (maze.g[y][x] === 1) ctx.fillRect(ox + x * cs, oy + y * cs, Math.ceil(cs), Math.ceil(cs));
+  const P = (wx, wy) => [ox + wx * cs, oy + wy * cs];
+  const sz = Math.max(3, cs * 0.45);
+  tri(...P(1.5, 1.5), startHeading * Math.PI / 2, '#e02020', sz);
+  for (const L of logos) tri(...P(L.x, L.y), -Math.PI / 2, '#ffffff', sz);
+  for (const r of rocks) tri(...P(r.x, r.y), clock * 3, '#ffffff', sz);
+  for (const rt of rats) tri(...P(rt.x, rt.y), Math.atan2(rt.dir[1], rt.dir[0]), '#ff8a00', sz);
+  tri(...P(goalObj.x, goalObj.y), 0, '#20c040', sz);
+  tri(...P(posX, posY), dir, '#2050ff', sz);
 }
 
 // ---- loop ------------------------------------------------------------------
@@ -486,9 +739,20 @@ function frame(now) {
 function resize() {
   W = canvas.width = window.innerWidth;
   H = canvas.height = window.innerHeight;
-  STEP = W > 1400 ? 3 : 2;
+  RH = Math.min(RES, H) & ~1;
+  RW = Math.max(1, Math.round(RH * W / H));
+  buf = document.createElement('canvas');
+  buf.width = RW; buf.height = RH;
+  bctx = buf.getContext('2d');
+  img = bctx.createImageData(RW, RH);
+  pix = new Uint32Array(img.data.buffer);
+  zbuf = new Float32Array(RW);
+  wtop = new Int32Array(RW);
 }
 window.addEventListener('resize', resize);
+
+if (!CLASSIC) document.getElementById('hint').innerHTML =
+  'arrows / wasd &nbsp;·&nbsp; or hold mouse / touch to walk, aim left &amp; right to steer';
 
 resize();
 newMaze();
